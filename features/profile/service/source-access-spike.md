@@ -6,7 +6,7 @@ This is evidence and a recommendation, not a decision. Nothing here changes the 
 
 ## Recommendation
 
-1. **Primary live path — shared links, fetched through Apify.** The student pastes links to a few reels or TikToks they like. The server fetches public caption, hashtags, sound and optional transcript through Apify (a sponsor), and Claude analyzes that. Label it honestly in S03, e.g. "Paste links to a few reels or TikToks you love" — not "connect your account". **Tested 2026-10-24** on public posts from @instagram and @tiktok and on 10 real liked posts (results below): every direct link fetched, and a bad link comes back as a clear error. Links copied from the phone apps' share sheets are still untested, and the team has to accept the terms-of-service risk below. Keep Instagram transcripts off by default; they cost about 18× more than the post itself.
+1. **Primary live path — shared links, fetched through Apify.** The student pastes links to a few reels or TikToks they like. The server fetches public caption, hashtags, sound and optional transcript through Apify (a sponsor), and Claude analyzes that. Label it honestly in S03, e.g. "Paste links to a few reels or TikToks you love" — not "connect your account". **Tested 2026-10-24** on public posts from @instagram and @tiktok, 10 real liked posts and two links copied from the phone apps (results below). Every link fetched except one age-restricted reel, and failures come back as clear errors. The team still has to accept the terms-of-service risk below. Keep Instagram transcripts off by default; they cost about 18× more than the post itself.
 2. **Second path — screenshots.** The student uploads 2–3 screenshots of their Reels/Explore or For You feed, and Claude reads them directly. No platform API and no third-party scraping, so it works regardless of what happens with Apify. **Untested.**
 3. **Optional — data export upload.** Richest source (likes, saves, watch history), but it takes hours to days to arrive. Anyone who wants to demo with their own export should request it **today**.
 4. **Fallback — fixture content**, labelled "Demo content" on screen as S03 and §10 require.
@@ -80,24 +80,32 @@ A second run used 10 posts a teammate actually liked, copied from the desktop si
 | Ads | 1 of 5 was an ad (`productType: "ad"`) | none (`isAd` / `isSponsored` fields exist) |
 | Charged | under $0.01 | under $0.01 |
 
+Then two links copied from the phone apps' share buttons:
+
+| | Instagram `/reel/<code>/?dlrf=…` | TikTok `tiktok.com/t/<code>/` short link |
+| --- | --- | --- |
+| Result | `error: restricted_page`, "This content is age-restricted". Same error with the query string removed, so it's the post, not the link format; the scraper did reach the post | Fetched. The scraper expanded the short link to the full `/video/<id>` URL itself |
+| Actor run time | 4 s | 10 s |
+
 Total Apify spend for the whole spike: $0.22 of the $5 monthly free credit.
 
 What this tells us:
 
 - On brand posts, captions and @mentions carried most of the signal and hashtags were almost absent. Real liked posts had more hashtags (8 of 10) but shorter captions, and one had 16 characters of text and no hashtags. Some links will be too thin on their own, so S04 should ask for more rather than guess (the spec already says this).
 - People like and share ads. Analysis should skip or down-weight posts marked as ads or paid partnerships rather than treat them as the student's interests.
+- Age-restricted Instagram posts can't be read at all. That's acceptable, but a batch of links will sometimes come back partly empty.
 - Transcripts cost about 18× the post price and were empty on music-only reels. Five reels cost about $0.015 without transcripts and $0.25–0.35 with them. Keep transcripts off by default.
 - Instagram took 9 s for 5 links without transcripts, 29 s with them, and 62 s through a profile; TikTok took 5–28 s. S04's persisted job ID and honest stage display (already in the spec) still matter.
 - The free plan's $5 a month covers about 1,900 Instagram reels or 1,350 TikToks without transcripts.
 
-Not tested: screenshots, real exports, and links copied from the phone apps' share sheets (Instagram `/reel/<code>/?igsh=…`, TikTok `vm.tiktok.com/…` short links). Every link tested so far was a desktop-site URL.
+Not tested: screenshots, real exports, an Instagram phone link to a post that isn't age-restricted, and TikTok's older `vm.tiktok.com/…` short links.
 
 ## Open questions to close before S03 is built
 
 - **Terms risk:** does the team accept sponsor-run scraping of public posts the student points us to? If not, screenshots become the primary path.
-- **Phone share links:** desktop-site URLs all worked, but students will mostly paste from their phones. TikTok's share sheet gives `vm.tiktok.com/…` short links and Instagram's gives `/reel/<code>/?igsh=…`. Try one of each, or resolve and normalize links before calling the actor.
+- **Instagram phone links:** the one phone link tested pointed at an age-restricted post. Confirm a `/reel/<code>/?dlrf=…` or `?igsh=…` link to an ordinary post fetches, or strip the query string before calling the actor. `/p/`, `/reel/` and `/reels/` forms have all resolved by shortcode.
 - **Mapping errors to inputs:** Instagram error items don't carry `inputUrl`, so the service needs to match failures back to the student's links itself, e.g. by shortcode.
-- **Private accounts:** TikTok reports "not found or private" as one error, so S03's "unsupported link" state should cover both cases.
+- **Unreadable posts:** TikTok reports "not found or private" as one error; Instagram reports `not_found` and `restricted_page` (age-restricted) separately. S03 needs a per-link "we couldn't read this one" state that covers all of them without failing the rest of the batch.
 - **Instagram export contents:** confirm the folder and file names on a real export before writing a parser.
 
 ## Effect on the rest of the spec (proposals only — not made)
