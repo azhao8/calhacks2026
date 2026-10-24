@@ -75,7 +75,7 @@ export type AcceptOutcome =
 
 const fail = (error: AcceptError): AcceptOutcome => ({ ok: false, error })
 
-const holdsSeat = (m: MembershipRecord) => m.status === 'reserved' || m.status === 'participating'
+export const holdsSeat = (m: MembershipRecord) => m.status === 'reserved' || m.status === 'participating'
 
 export function decideAccept(input: AcceptInput): AcceptOutcome {
   const { callerUserId, invitationId, now, snapshot } = input

@@ -1,83 +1,15 @@
 // Run from the repo root with no installs (Node 24 strips the types):
 //   node --test 'features/matching/service/*.test.ts'
 //
-// The tests drive decideAccept through acceptSerially, a stand-in for the real serialized step
-// (load snapshot, decide, apply effects). Serial execution proves the decision logic. It does NOT prove
-// the database's locking, so the last-seat test has to be rerun against the transactional accept.
+// acceptSerially (in test-world.ts) stands in for the real serialized step. Serial execution proves the
+// decision logic, not the database's locking, so the last-seat test has to be rerun against the real accept.
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { decideAccept } from './accept.ts'
-import type { AcceptOutcome, InvitationRecord, MeetupRecord, MembershipRecord } from './accept.ts'
+import { HOUR, ISSUED, NOW, START, acceptSerially, seatsHeld, world } from './test-world.ts'
+import type { Db } from './test-world.ts'
 import { TIMING, cutoffFor, invitationExpiry } from './timing.ts'
-
-const HOUR = 60 * 60 * 1000
-const START = Date.UTC(2026, 9, 29, 18, 30)
-const ISSUED = START - TIMING.initialLeadMs
-const NOW = START - 11 * HOUR // inside the window: after issue, before expiry and cutoff
-
-interface Db {
-  meetup: MeetupRecord
-  invitations: Map<string, InvitationRecord>
-  memberships: MembershipRecord[]
-  users: Map<string, { universityId: string; otherActiveMeetupIds: string[] }>
-}
-
-// A meetup with `taken` seats already reserved and one pending invitation per contender.
-function world(opts: { target?: number; taken?: number; contenders?: string[] } = {}): Db {
-  const { target = 4, taken = 0, contenders = ['alice'] } = opts
-  const meetup: MeetupRecord = {
-    id: 'm1',
-    universityId: 'u1',
-    status: 'inviting',
-    targetCount: target,
-    cutoffAt: cutoffFor(START),
-  }
-  const db: Db = { meetup, invitations: new Map(), memberships: [], users: new Map() }
-  for (let i = 0; i < taken; i++) {
-    const userId = `taken${i}`
-    db.users.set(userId, { universityId: 'u1', otherActiveMeetupIds: [] })
-    db.invitations.set(`inv-${userId}`, {
-      id: `inv-${userId}`, meetupId: 'm1', userId, status: 'accepted',
-      issuedAt: ISSUED, expiresAt: invitationExpiry(ISSUED, START),
-    })
-    db.memberships.push({ meetupId: 'm1', userId, status: 'reserved', acceptedAt: ISSUED + HOUR })
-  }
-  for (const userId of contenders) {
-    db.users.set(userId, { universityId: 'u1', otherActiveMeetupIds: [] })
-    db.invitations.set(`inv-${userId}`, {
-      id: `inv-${userId}`, meetupId: 'm1', userId, status: 'pending',
-      issuedAt: ISSUED, expiresAt: invitationExpiry(ISSUED, START),
-    })
-  }
-  return db
-}
-
-function acceptSerially(db: Db, callerUserId: string | null, invitationId: unknown, now = NOW): AcceptOutcome {
-  const invitation = typeof invitationId === 'string' ? db.invitations.get(invitationId) : undefined
-  const user = callerUserId ? db.users.get(callerUserId) : undefined
-  const outcome = decideAccept({
-    callerUserId,
-    invitationId,
-    now,
-    snapshot: {
-      invitation,
-      meetup: invitation ? db.meetup : undefined,
-      meetupMemberships: db.memberships.filter((m) => m.meetupId === db.meetup.id),
-      callerUniversityId: user?.universityId,
-      callerOtherActiveMeetupIds: user?.otherActiveMeetupIds ?? [],
-    },
-  })
-  if (outcome.ok && outcome.kind === 'reserved') {
-    db.invitations.get(outcome.invitationId)!.status = 'accepted'
-    db.memberships.push(outcome.membership)
-  }
-  return outcome
-}
-
-const seatsHeld = (db: Db) =>
-  db.memberships.filter((m) => m.status === 'reserved' || m.status === 'participating').length
 
 test('accept reserves a seat and records the acceptance time', () => {
   const db = world()
