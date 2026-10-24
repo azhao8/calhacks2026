@@ -23,3 +23,9 @@ Entry format:
 - Why: one writer per workstream, per CLAUDE.md §9.
 - Replaces: new — workstream A ownership
 - Affects: S01–S06 and A's S15 subsections; User, AnalysisJob, InterestProfile, MeetupPreferences; workstream A
+
+## 2026-10-24 10:06 PT · iamjohncao · Claim: workstream B
+- Changed: Claim: iamjohncao takes workstream B — Bring the group together; owned files: `features/matching/ui`, `features/matching/service`
+- Why: one writer per workstream, per CLAUDE.md §9.
+- Replaces: new — workstream B ownership
+- Affects: S07–S09 and B's S15 subsection (cancelling an accepted meetup); Meetup, Invitation, Membership; workstream B
