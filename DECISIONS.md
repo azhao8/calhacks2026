@@ -61,3 +61,51 @@ Entry format:
 - Why: one designer, one coherent look.
 - Replaces: CONFIRMED — v1's "black background, white text, highly minimal" (the minimal black-and-white look is now the designer's call).
 - Affects: `CLAUDE.md` §4 and every screen.
+
+## 2026-10-24 16:33 PT · azhao8 · Sign-up for any .edu email, with a school picker
+- Changed: any address whose domain ends in `.edu` (subdomains included, after trimming and lowercasing) can sign up; the server refuses everything else with `not_edu_email` before storing or sending anything. The design's school picker stays, with only UC Berkeley open (UCLA and Stanford shown as "Coming soon"); `universityId` comes from the picker. Students from different schools can be paired: the "same university" filter is dropped. Melos stays built for UC Berkeley, and the named community is unchanged. Sign-in uses 6-digit Convex Auth codes, valid 15 minutes, at most one new code every 30 seconds, sent from "Melos <hello@melos.azhao.dev>"; the site is `melos.azhao.dev`.
+- Why: let judges and students from other schools try Melos while the product stays focused on Berkeley.
+- Replaces: CONFIRMED — "UC Berkeley only, verified with an @berkeley.edu email code" and "Berkeley email first". OPEN — departmental `*.berkeley.edu` addresses (now accepted) and the Resend domain (now `melos.azhao.dev`).
+- Affects: S02 (new school picker), S03, S16; `CLAUDE.md` §1, §3, §6.4, §8.5 `users` and `universities`, error codes, §10 tests 1–2.
+
+## 2026-10-24 16:33 PT · azhao8 · John's design system is the design source of truth, ported into Tailwind
+- Changed: `design/` (iamjohncao's tokens, fonts, components, docs and mockups) is the design source of truth, and `design/docs/voice.md` is the copy source. The app uses Tailwind: the tokens become the Tailwind theme and the components are rebuilt in React and Tailwind; the design's React 18 script bundle and CSS are never loaded directly. Screens without a mockup are built in the same style. Owner rulings where the design and the spec disagreed: no chat (`ChatBubble` unused; the day-of "Open chat" becomes Stay in touch); the partner's first name shows from the offer on; the school picker stays with only Berkeley open; phone and Instagram sharing; distance from campus on the week cards; no local artists page; copy fixes (any `.edu`, events arrive daily, "Your Melos number", no pronouns). Touch targets are 48px. Screens are renumbered S01–S17.
+- Why: John finished the design; one coherent look; Tailwind is the team's chosen styling tool.
+- Replaces: BASELINE — the v1 placeholder tokens, the component names, the copy table, and 44px touch targets. CONFIRMED — "partner's first name only on meetup day" and "optional number sharing" (now phone or Instagram).
+- Affects: `CLAUDE.md` §3, §4, §5 (every screen), §8.5 `contactShares`; `components/`, `app/`.
+
+## 2026-10-24 16:33 PT · azhao8 · Events come from an Apify event agent and publish automatically
+- Changed: every event is real; demo events are removed. Our own Apify actor, the event scout, is an agent (the Anthropic SDK's tool runner) with tools for web search, reading pages (Apify Proxy for public pages that block plain requests), map lookups (OpenStreetMap), and saving events. One copy runs per source in parallel, and the actor is published on the Apify Store. It runs daily at about 6 AM PT and on admin demand, looking 14 days ahead. Prices come from the listing, then the ticket page, then a web search; when none is found the event shows "Price not listed". The agent chooses one meeting spot per venue under written rules (busy, public, near the entrance, confirmed on the map within about 250 m, 30 minutes before the start). A run reaches Convex through Apify's webhook (shared secret, repeated runs ignored); the import checks the rules, merges duplicates, stores venues keyed by OpenStreetMap ID, and publishes automatically. The team can pull or edit any event. Upcoming events that go missing are flagged, not deleted. Places to visit move to stretch.
+- Why: real, current events without a manual vetting bottleneck; fits the Apify track and Best Actor.
+- Replaces: CONFIRMED — "events come from an Apify scrape of public listings that the team curates". BASELINE — demo events, team-vetted meeting spots, excluding events with unknown prices, and the 6–12 event weekly set.
+- Affects: `CLAUDE.md` §6.1, §7, §8.5 `venues`, `meetingSpots`, `events`, `eventImports`; S10, S17.
+
+## 2026-10-24 16:33 PT · azhao8 · Plans with two seats, matched within seconds
+- Changed: a plan (`meetups` row) has two seats (`meetupMembers` rows). The matcher runs about 15 seconds after any yes or reopened seat, plus a 30-minute sweep and the admin "Run matching now", and does three jobs in order: refill open seats, pair the rest with blossom matching, and fill gaps with demo students. Offers show the partner's first name and last until the earlier of 2 hours or the cutoff. "Next time", no answer, or dropping out before the cutoff reopens only that seat; the other person stays in and does nothing more. There is no cooldown after "Next time". A student holds one seat at a time. After the cutoff nothing is refilled, and a plan with an empty seat is called off. One reconcile step per plan drives every time-based change, and the demo clock calls it directly. Plan states: `forming`, `set`, `done`, `called_off`. Seat states: `offered`, `in`, `out`.
+- Why: the old flow was slow (2-hour rounds, 6-hour invitations), restarted everything when one person dropped, and had too many states for the time left.
+- Replaces: CONFIRMED — "matching runs in scheduled rounds plus an admin run now" (the triggers now include every change), the 6-hour invitation expiry, the 1-hour "Next time" cooldown, and dissolve-and-backfill re-pairing (re-pairing from the same event stays). BASELINE — the meetup and invitation states and the one-pending-invitation limit.
+- Affects: S11–S13; `CLAUDE.md` §6.4–§6.6, §8.5 `meetups`, `meetupMembers`, `matchRuns`, §8.7, §10 tests 7–11.
+
+## 2026-10-24 16:33 PT · azhao8 · Matching from taste embeddings and blossom matching
+- Changed: each confirmed taste profile gets a Voyage `voyage-4` vector (1024 dimensions) stored with a Convex vector index, and events are embedded in the same space. Labels come from a fixed list of about 150. The ask picker uses vector search over events, the hard rules, a rerank, and Claude's pick of 3. Pair scores combine vector similarity, rarity-weighted shared items (rarity measured across our own students), a year bonus, and a waiting boost; a pair needs at least one real shared artist, track, or label. Every pair in an event's pool is scored exactly in memory; vector-neighbor search is the documented path if one pool reaches hundreds. Blossom matching (`edmonds-blossom`) pairs the most people first, then the best total fit. The admin page gets a matching inspector.
+- Why: the owner asked for a technically serious matcher instead of hand-weighted greedy points.
+- Replaces: BASELINE — the point-score weights, greedy assignment, and the deterministic event pre-score.
+- Affects: S09, S17; `CLAUDE.md` §6.2–§6.4, §7, §8.5 `tasteProfiles`, `events`, `matchRuns`. Adds Voyage as an outside service.
+
+## 2026-10-24 16:33 PT · azhao8 · Demo students act like real students
+- Changed: six demo students are created through the app's own functions from generated listening data, so they get real summaries and vectors. They say yes to every ask, fill a seat after a 1-minute wait when no real partner is free, accept offers and tap "Got my ticket" automatically, and are never paired with each other. They share only fictional 555-0100 to 555-0199 numbers and never Instagram handles. They are labeled on the admin page and left out of every number quoted to judges. Demo plans (every member a demo student or team account) follow the demo clock. Reset never deletes a real student's records.
+- Why: this is a demo build, and real signups will be few.
+- Replaces: BASELINE — demo students kept apart from real students and asked only about demo events.
+- Affects: `CLAUDE.md` §6.7, §10 test 15; S17; seed data.
+
+## 2026-10-24 16:33 PT · azhao8 · Architecture and implementation choices
+- Changed: Convex Auth runs client-side (no Next.js server-side auth). Every outside service sits behind one module in `convex/services/`, and outside calls go through Convex's Workpool component for retries. Error codes now cover `.edu` and seats (`not_edu_email`, `code_cooldown`, `offer_expired`, `seat_unavailable`, `already_seated`). Email is limited to sign-in codes and the Spotify-ready notice, because Resend's free plan allows 100 a day; offers arrive in the app only. Spotify's February 2026 changes are recorded: `GET /me` no longer returns the email (a 403 now detects a wrong or un-added account), artist popularity is gone, and genres are deprecated. The Spotify OAuth state is signed. Claude is called with the Anthropic SDK (the tool runner for the scout, validated JSON otherwise) on Opus 5.5 with explicit effort and the server-side refusal fallback; no agent frameworks. §8 now explains how the parts interact, and §13 lists the parallel sessions and human steps.
+- Why: decisions made while checking the foundation plan against current Spotify, Convex, Apify, Resend, and Voyage documentation.
+- Replaces: BASELINE — §8 operations, error codes, and Spotify notes, and "invitations arrive in-app and by email". OPEN — the Spotify reference check (done).
+- Affects: S03, S07, S10; `CLAUDE.md` §7, §8, §9 file layout, §13.
+
+## 2026-10-24 16:33 PT · azhao8 · Prize tracks
+- Changed: the Apify row now shows the Store-published agent and the webhook into Convex; the Convex row adds vector search and the Workpool component. Added Best People-First Hack (a Cal Hacks general prize) and Microsoft "Built for the Real World" (OPEN: required technology). Bright Data was considered and declined: it duplicates Apify, competes with it directly, and would only be a small fallback here. The live demo now uses a real event and matching on yes instead of a demo event and the admin button.
+- Why: raise the odds of winning a track without changing the product.
+- Replaces: BASELINE — the §11 prize table and live demo script.
+- Affects: `CLAUDE.md` §11; the Devpost write-up.
