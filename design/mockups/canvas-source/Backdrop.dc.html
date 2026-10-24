@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Melos background frame</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/melos/tokens.css">
+<link rel="stylesheet" href="ds/melos/components/bundle.css">
+<script src="ds/melos/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.mb-grain{background-image:url(/_blob/79bb609121af050438fef1ef5cc0a115);background-size:256px 256px}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: {{field}}">
+  <div aria-hidden="true" style="position: absolute; left: -60px; top: 250px; width: 520px; height: 170px; background: {{haze}}; filter: blur(34px); opacity: 0.75"></div>
+  <div aria-hidden="true" style="position: absolute; left: -90px; top: 345px; width: 560px; height: 120px; background: {{streak}}; filter: blur(26px); transform: rotate(-4deg)"></div>
+  <div aria-hidden="true" style="position: absolute; left: -60px; top: 392px; width: 470px; height: 30px; background: {{core}}; filter: blur(9px); opacity: 0.85; transform: rotate(-4deg)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; top: 430px; width: 390px; height: 414px; background: {{floor}}"></div>
+
+  <sc-if value="{{hasObject}}" hint-placeholder-val="{{ true }}">
+    <div aria-hidden="true" style="position: absolute; left: 120px; top: 468px; width: 300px; height: 90px; border-radius: 50%; background: {{cast}}; filter: blur(26px); opacity: 0.9; transform: skewX(-24deg)"></div>
+    <div aria-hidden="true" style="position: absolute; left: 140px; top: 270px; width: 240px; height: 230px; filter: blur({{blurPx}}) saturate(1.25)">
+
+      <sc-if value="{{isSpeaker}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 50px; top: 10px; width: 150px; height: 205px; border-radius: 14px; background: linear-gradient(180deg, #0e8a3e 0%, #064028 55%, #06301f 100%); box-shadow: inset 0 0 0 7px #e8231c, inset 0 0 0 14px #ff7a1a, inset 0 18px 0 14px #fff27a"></div>
+        <div style="position: absolute; left: 100px; top: 40px; width: 50px; height: 50px; border-radius: 50%; background: radial-gradient(circle, #fffef2 0%, #fff27a 30%, #ff7a1a 55%, #e8231c 75%, #06301f 100%)"></div>
+        <div style="position: absolute; left: 70px; top: 100px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, #fffef2 0%, #fff27a 18%, #ffb02e 34%, #e8231c 52%, #0e8a3e 72%, #06301f 100%)"></div>
+      </sc-if>
+
+      <sc-if value="{{isHeadphones}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 40px; top: 20px; width: 170px; height: 160px; box-sizing: border-box; border: 20px solid #ff7a1a; border-bottom: 0; border-radius: 95px 95px 0 0; box-shadow: 0 -4px 0 0 #e8231c, inset 0 6px 0 0 #fff27a"></div>
+        <div style="position: absolute; left: 22px; top: 120px; width: 66px; height: 96px; border-radius: 30px; background: radial-gradient(circle at 60% 40%, #fffef2 0%, #fff27a 24%, #ffb02e 42%, #e8231c 62%, #0e8a3e 84%, #06301f 100%)"></div>
+        <div style="position: absolute; left: 162px; top: 120px; width: 66px; height: 96px; border-radius: 30px; background: radial-gradient(circle at 40% 40%, #fff27a 0%, #ffb02e 26%, #e8231c 50%, #0e8a3e 76%, #06301f 100%)"></div>
+      </sc-if>
+
+      <sc-if value="{{isCassette}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 14px; top: 60px; width: 216px; height: 136px; border-radius: 16px; background: linear-gradient(180deg, #fffef2 0%, #fff27a 26%, #ffb02e 58%, #e8231c 86%, #0e8a3e 100%); transform: rotate(-8deg)">
+          <div style="position: absolute; left: 18px; top: 14px; width: 180px; height: 20px; border-radius: 6px; background: #e8231c"></div>
+          <div style="position: absolute; left: 42px; top: 52px; width: 132px; height: 48px; border-radius: 24px; background: #06301f"></div>
+          <div style="position: absolute; left: 54px; top: 58px; width: 36px; height: 36px; border-radius: 50%; box-sizing: border-box; border: 8px solid #0e8a3e; background: #fff27a"></div>
+          <div style="position: absolute; left: 126px; top: 58px; width: 36px; height: 36px; border-radius: 50%; box-sizing: border-box; border: 8px solid #0e8a3e; background: #ffb02e"></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isTicket}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 10px; top: 70px; width: 224px; height: 116px; border-radius: 12px; background: linear-gradient(90deg, #0e8a3e 0%, #e8231c 22%, #ffb02e 30%, #fff27a 46%, #fffef2 58%, #fff27a 72%, #ff7a1a 92%, #e8231c 100%); transform: rotate(-14deg)">
+          <div style="position: absolute; left: 52px; top: 8px; width: 0; height: 100px; border-left: 4px dashed #06301f"></div>
+          <div style="position: absolute; left: 80px; top: 30px; width: 110px; height: 14px; border-radius: 7px; background: #e8231c"></div>
+          <div style="position: absolute; left: 80px; top: 56px; width: 76px; height: 12px; border-radius: 6px; background: #ff7a1a"></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isRecords}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 0; top: 50px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, #fffef2 0%, #fffef2 5%, #e8231c 6%, #e8231c 20%, #06301f 22%, #0e8a3e 48%, #06301f 52%, #0e8a3e 76%, #06301f 100%); box-shadow: 0 0 0 5px #ff7a1a"></div>
+        <div style="position: absolute; left: 86px; top: 20px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, #fffef2 0%, #fffef2 5%, #fff27a 6%, #ffb02e 20%, #06301f 22%, #0e8a3e 48%, #06301f 52%, #0e8a3e 76%, #06301f 100%); box-shadow: 0 0 0 5px #fff27a"></div>
+      </sc-if>
+
+      <sc-if value="{{isMic}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 116px; top: 80px; width: 12px; height: 140px; border-radius: 6px; background: #0e8a3e; transform: rotate(10deg)"></div>
+        <div style="position: absolute; left: 70px; top: 200px; width: 120px; height: 24px; border-radius: 50%; background: #e8231c"></div>
+        <div style="position: absolute; left: 110px; top: 0; width: 84px; height: 110px; border-radius: 42px; background: radial-gradient(circle at 40% 35%, #fffef2 0%, #fff27a 26%, #ffb02e 44%, #e8231c 66%, #0e8a3e 88%, #06301f 100%); transform: rotate(18deg)"></div>
+      </sc-if>
+
+      <sc-if value="{{isRadio}}" hint-placeholder-val="{{ false }}">
+        <div style="position: absolute; left: 110px; top: 10px; width: 6px; height: 90px; background: #ff7a1a; transform: rotate(30deg)"></div>
+        <div style="position: absolute; left: 10px; top: 80px; width: 220px; height: 130px; border-radius: 20px; background: linear-gradient(180deg, #0e8a3e 0%, #064028 70%, #06301f 100%); box-shadow: inset 0 8px 0 0 #fff27a, inset 0 0 0 6px #e8231c">
+          <div style="position: absolute; left: 20px; top: 30px; width: 100px; height: 76px; border-radius: 10px; background: repeating-linear-gradient(90deg, #ff7a1a 0 6px, #06301f 6px 12px)"></div>
+          <div style="position: absolute; left: 136px; top: 30px; width: 68px; height: 68px; border-radius: 50%; background: radial-gradient(circle, #fffef2 0%, #fff27a 28%, #ffb02e 48%, #e8231c 72%, #06301f 100%)"></div>
+        </div>
+      </sc-if>
+
+    </div>
+  </sc-if>
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, {{vignette}} 100%)"></div>
+  <div aria-hidden="true" class="mb-grain" style="position: absolute; inset: 0; mix-blend-mode: overlay; opacity: {{grain}}"></div>
+  <div aria-hidden="true" class="mb-grain" style="position: absolute; inset: 0; opacity: {{grainFine}}"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"object":{"editor":"enum","options":["speaker","headphones","cassette","ticket","records","mic","radio","none"],"default":"speaker"},"theme":{"editor":"enum","options":["berkeley","base"],"default":"berkeley"},"grain":{"editor":"range","min":0,"max":0.5,"step":0.02,"default":0.14},"blur":{"editor":"range","min":0,"max":20,"step":1,"unit":"px","default":7},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var o = this.props.object ?? 'speaker';
+    var base = (this.props.theme ?? 'berkeley') === 'base';
+    var T = base ? {
+      field: 'radial-gradient(90% 45% at 10% 0%, #6a35f2 0%, transparent 70%), linear-gradient(180deg, #3a27e8 0%, #3532e2 28%, #3b54d0 44%, #4a6fa8 60%, #46607e 80%, #262e48 100%)',
+      haze: 'linear-gradient(90deg, #40e0f066 0%, #6a35f240 60%, transparent 100%)',
+      streak: 'linear-gradient(90deg, #f4e445 0%, #f4e445 16%, #40e0f0 40%, #2fb7e8 62%, transparent 92%)',
+      core: 'linear-gradient(90deg, #fffbd0 0%, #f4e445 30%, #8ff0ff 55%, transparent 90%)',
+      floor: 'linear-gradient(180deg, transparent 0%, #4d6a9a33 40%, transparent 100%)',
+      cast: '#4a1fd0', vignette: '#1a2038cc'
+    } : {
+      field: 'radial-gradient(90% 45% at 10% 0%, #4b2fe8 0%, transparent 70%), linear-gradient(180deg, #2337e6 0%, #2440da 28%, #2a5fc4 44%, #3f7ea6 60%, #3d6886 80%, #1c2f47 100%)',
+      haze: 'linear-gradient(90deg, #00b0da66 0%, #2337e640 60%, transparent 100%)',
+      streak: 'linear-gradient(90deg, #fdb515 0%, #ffd34d 16%, #3fd6f2 42%, #00b0da 62%, transparent 92%)',
+      core: 'linear-gradient(90deg, #fff4c2 0%, #fdb515 30%, #9ef0ff 55%, transparent 90%)',
+      floor: 'linear-gradient(180deg, transparent 0%, #3b7ea133 40%, transparent 100%)',
+      cast: '#3a1fd0', vignette: '#0f1d33cc'
+    };
+    return Object.assign({}, T, {
+      grain: this.props.grain ?? 0.14,
+      grainFine: (this.props.grain ?? 0.14) * 0.1,
+      blurPx: (this.props.blur ?? 7) + 'px',
+      hasObject: o !== 'none',
+      isSpeaker: o === 'speaker', isHeadphones: o === 'headphones', isCassette: o === 'cassette',
+      isTicket: o === 'ticket', isRecords: o === 'records', isMic: o === 'mic', isRadio: o === 'radio'
+    });
+  }
+}
+</script>
+</body>
+</html>

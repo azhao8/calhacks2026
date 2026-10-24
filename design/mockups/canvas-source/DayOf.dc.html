@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Day of the show</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/melos/tokens.css">
+<link rel="stylesheet" href="ds/melos/components/bundle.css">
+<script src="ds/melos/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&amp;family=Figtree:wght@400..700&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div data-theme="berkeley" style="position: relative; width: 390px; height: 844px; overflow: hidden; font-family: var(--font-body); color: #ffffff">
+  <div style="position: absolute; inset: 0">
+    <dc-import name="Backdrop" object="mic" theme="berkeley" hint-size="390px,844px"></dc-import>
+  </div>
+  <div style="position: absolute; inset: 0; box-sizing: border-box; padding: 24px 20px 32px; display: flex; flex-direction: column; justify-content: space-between">
+    <div style="display: flex; flex-direction: column; gap: 20px">
+      <div style="display: flex; align-items: center; justify-content: space-between">
+        <x-import component-from-global-scope="Melos.Wordmark" size="m"></x-import>
+        <button type="button" aria-label="Open menu" style="width: 48px; height: 48px; padding: 0; border-radius: 999px; border: 1px solid #ffffff3d; background: #0f1d3359; color: #ffffff; display: grid; place-items: center; cursor: pointer; backdrop-filter: blur(14px)"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9h16M4 15h10"></path></svg></button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 4px">
+        <p style="margin: 0; font-size: 15px; font-weight: 600; color: #ffd34d">Tonight, 8:30 pm</p>
+        <h1 style="margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em">Look for Maya</h1>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <p style="margin: 0; font-size: 13px; font-weight: 600; color: #dfe6f2">Her Melos number</p>
+          <p style="margin: 0; font-family: var(--font-display); font-size: 96px; line-height: 92px; font-weight: 800; letter-spacing: -0.03em; color: #fdb515; font-variant-numeric: tabular-nums">27</p>
+        </div>
+        <p style="margin: 0 0 10px; max-width: 150px; text-align: right; font-size: 15px; line-height: 21px; color: #dfe6f2">Bench outside The UC Theatre, 8:10 pm</p>
+      </div>
+      <div style="padding: 14px 16px; border-radius: 16px; background: #0f1d33b3; display: flex; flex-direction: column; gap: 4px">
+        <p style="margin: 0; font-size: 13px; font-weight: 600; color: #c3cce0">Something to start with</p>
+        <p style="margin: 0; font-size: 17px; line-height: 24px">Ask which Faye Lindqvist song got her through midterms.</p>
+      </div>
+      <x-import component-from-global-scope="Melos.Button" variant="secondary" block="{{yes}}">Open chat</x-import>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return { yes: true }; }
+}
+</script>
+</body>
+</html>

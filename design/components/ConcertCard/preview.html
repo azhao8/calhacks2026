@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en" data-theme="berkeley">
+<head><meta charset="utf-8"><title>ConcertCard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../../tokens/tokens.css">
+<link rel="stylesheet" href="../bundle.css">
+<script src="../vendor/react.production.min.js"></script>
+<script src="../vendor/react-dom.production.min.js"></script>
+<script src="../bundle.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var M = window.Melos, h = React.createElement, root = ReactDOM.createRoot(document.getElementById('root'));
+function Demo() {
+  var a = React.useState(false), b = React.useState(true);
+  return h('div', { className: 'ml-demo' },
+    h(M.ConcertCard, { day: 'Friday', time: '8:30 pm', price: '$18 to $25', distance: '0.6 mi from campus', going: a[0], onToggle: function () { a[1](!a[0]); } }),
+    h(M.ConcertCard, { revealed: true, artist: 'Saltwater Tapes', day: 'Saturday', time: '9:00 pm', price: '$22', venue: 'The UC Theatre', going: b[0], onToggle: function () { b[1](!b[0]); } }));
+}
+root.render(h(Demo));
+</script>
+</body>
+</html>
