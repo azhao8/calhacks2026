@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="berkeley">
+<head><meta charset="utf-8"><title>QuestionnaireStep</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../../tokens/tokens.css">
+<link rel="stylesheet" href="../bundle.css">
+<script src="../vendor/react.production.min.js"></script>
+<script src="../vendor/react-dom.production.min.js"></script>
+<script src="../bundle.js"></script>
+</head>
+<body>
+<div id="root"></div>
+<script>
+var M = window.Melos, h = React.createElement, root = ReactDOM.createRoot(document.getElementById('root'));
+function Demo() {
+  var s = React.useState(['20_40']);
+  return h('div', { style: { padding: '16px', maxWidth: '26rem' } }, h(M.QuestionnaireStep, { id: 'budget', step: 2, total: 4, multi: true, value: s[0],
+    onChange: function (id) { s[1](s[0].indexOf(id) > -1 ? s[0].filter(function (x) { return x !== id; }) : s[0].concat(id)); },
+    title: 'What do you usually spend on a ticket?', hint: 'Pick any that work. You can change this later.',
+    options: [{ id: 'free', label: 'Free' }, { id: 'u20', label: 'Under $20' }, { id: '20_40', label: '$20 to $40' }, { id: 'o40', label: 'Over $40' }] }));
+}
+root.render(h(Demo));
+</script>
+</body>
+</html>

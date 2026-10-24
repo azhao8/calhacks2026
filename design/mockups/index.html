@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en" data-theme="berkeley">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Melos screen mockups</title>
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
+<link rel="stylesheet" href="../tokens/tokens.css">
+<link rel="stylesheet" href="../components/bundle.css">
+<script src="../components/vendor/react.production.min.js"></script>
+<script src="../components/vendor/react-dom.production.min.js"></script>
+<script src="../components/bundle.js"></script>
+<style>
+  body { padding: 32px 16px 64px; }
+  .gallery { display: flex; flex-wrap: wrap; gap: 40px 32px; justify-content: center; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+  figcaption { font-size: 14px; color: var(--ink-muted); }
+  .phone { width: 390px; height: 844px; border-radius: 44px; max-width: 100%; }
+  h1.page { font-family: var(--font-display); font-size: 32px; margin: 0 auto 32px; max-width: 1400px; }
+  .code { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+  .code input { height: 56px; min-width: 0; box-sizing: border-box; border-radius: 10px; border: 1.5px solid var(--line-strong); background: var(--backdrop-vignette); color: var(--ink); font: 700 24px var(--font-display); text-align: center; }
+  .code input:first-child { border-color: var(--accent); }
+  .lead { margin: 0; font-size: 17px; line-height: 24px; color: #dfe6f2; }
+  .eyebrow { margin: 0; font-size: 15px; font-weight: 600; color: var(--streak-warm-2); }
+  .h-display { margin: 0; font-family: var(--font-display); font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em; text-wrap: balance; }
+  .h-title { margin: 0; font-family: var(--font-display); font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.01em; }
+  .col { display: flex; flex-direction: column; gap: 16px; }
+  .col-s { display: flex; flex-direction: column; gap: 8px; }
+</style>
+</head>
+<body>
+<h1 class="page">Melos screens on the Backdrop</h1>
+<div id="root" class="gallery"></div>
+<script>
+var M = window.Melos, h = React.createElement;
+
+function Screen(p) {
+  return h('figure', null,
+    h('div', { className: 'ml-screen phone', id: p.id, 'data-theme': p.school || 'berkeley' },
+      h(M.Backdrop, { object: p.object, quiet: p.quiet }),
+      h('div', { className: 'ml-screen__content' }, p.children)),
+    h('figcaption', null, p.caption));
+}
+function Top(p) { return h('div', { className: 'ml-topbar' }, h(M.Wordmark, { size: 'm' }), p.menu ? h(M.MenuButton) : (p.right || null)); }
+var step = function (t) { return h('p', { className: 'ml-caption', style: { color: '#dfe6f2', fontWeight: 600 } }, t); };
+
+var screens = [
+  h(Screen, { key: 1, id: 'welcome', object: 'speaker', caption: 'Welcome · speaker' },
+    h(Top), h('div', { className: 'col' },
+      h('p', { className: 'eyebrow' }, 'For UC Berkeley students'),
+      h('h2', { className: 'h-display' }, 'Your Spotify, turned into plans'),
+      h('p', { className: 'lead' }, 'Meet students who share your taste and go to shows together.'),
+      h('div', { className: 'col-s' }, h(M.Button, { block: true }, 'Get started'), h(M.Button, { variant: 'quiet', block: true }, 'I already have an account')))),
+  h(Screen, { key: 2, id: 'school', object: 'speaker', school: 'base', caption: 'School picker · base theme' },
+    h('div', { className: 'col' }, h(Top), h('h2', { className: 'h-title' }, 'Where do you go to school?')),
+    h('div', { className: 'col-s' },
+      h(M.SchoolPicker, { value: 'berkeley', schools: [
+        { id: 'berkeley', name: 'UC Berkeley', city: 'Berkeley, CA', colors: ['#003262', '#fdb515'] },
+        { id: 'ucla', name: 'UCLA', status: 'soon', colors: ['#2774ae', '#ffd100'] },
+        { id: 'stanford', name: 'Stanford', status: 'soon', colors: ['#8c1515', '#ffffff'] }] }),
+      h(M.Button, { block: true }, 'Continue'))),
+  h(Screen, { key: 3, id: 'verify', object: 'headphones', caption: 'Berkeley email code · headphones' },
+    h(Top, { right: step('Step 1 of 4') }), h('div', { className: 'col' },
+      h('h2', { className: 'h-title' }, 'Check your Berkeley email'),
+      h('p', { className: 'lead' }, 'We sent a 6 digit code to jordan@berkeley.edu.'),
+      h('div', { className: 'code', role: 'group', 'aria-label': 'Your code' }, ['4', '1', '7', '', '', ''].map(function (v, i) { return h('input', { key: i, id: 'code-' + i, defaultValue: v, inputMode: 'numeric', 'aria-label': 'Digit ' + (i + 1) }); })),
+      h('div', { className: 'col-s' }, h(M.Button, { block: true }, 'Continue'), h(M.Button, { variant: 'quiet', block: true }, 'Send a new code')))),
+  h(Screen, { key: 4, id: 'spotify', object: 'cassette', caption: 'Connect Spotify · cassette' },
+    h(Top, { right: step('Step 3 of 4') }), h('div', { className: 'col' },
+      h('h2', { className: 'h-title' }, 'Let us hear what you play'),
+      h('p', { className: 'lead' }, 'We use your top artists, top tracks and liked songs to write a short read on your taste. You get to correct it.'),
+      h(M.SpotifyConnectButton, { note: 'We never post for you. Disconnect anytime.' }))),
+  h(Screen, { key: 5, id: 'week', object: 'ticket', caption: 'This week · ticket' },
+    h('div', { className: 'col' }, h(Top, { menu: true }), h('div', { className: 'col-s' },
+      h('h2', { className: 'h-title' }, 'Your week'), h('p', { className: 'lead', style: { color: '#e6ebff' } }, 'Three shows fit your taste. Tap the ones that work.'))),
+    h('div', { className: 'col-s' }, h(M.ConcertCard, { day: 'Friday', time: '8:30 pm', price: '$18 to $25', distance: '0.6 mi from campus' }),
+      h('p', { className: 'ml-caption', style: { textAlign: 'center', color: '#dfe6f2' } }, '1 of 3 · swipe up for more'))),
+  h(Screen, { key: 6, id: 'invite', object: 'records', caption: 'Invitation · two records' },
+    h('div', { className: 'col' }, h(Top, { menu: true }), h('div', { className: 'col-s' },
+      h('p', { className: 'eyebrow' }, 'New invitation'), h('h2', { className: 'h-display' }, 'Maya can make it too'))),
+    h('div', { className: 'col', style: { gap: '12px' } },
+      h('p', { className: 'ml-headline' }, 'Saltwater Tapes at The UC Theatre'),
+      h('p', { className: 'ml-small', style: { color: '#dfe6f2' } }, 'Fri, 8:30 pm · $22'),
+      h('p', { className: 'ml-panel', style: { margin: 0, color: 'var(--accent)', fontWeight: 600, fontSize: '15px' } }, 'You both have Faye Lindqvist on repeat.'),
+      h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' } }, h(M.Button, { block: true }, 'Accept'), h(M.Button, { variant: 'secondary', block: true }, 'Next time')),
+      h('p', { className: 'ml-caption', style: { textAlign: 'center', color: '#dfe6f2' } }, "Saying next time is always fine. Maya won't be told why."))),
+  h(Screen, { key: 7, id: 'dayof', object: 'mic', caption: 'Day of · microphone' },
+    h('div', { className: 'col' }, h(Top, { menu: true }), h('div', { className: 'col-s', style: { gap: '4px' } },
+      h('p', { className: 'eyebrow' }, 'Tonight, 8:30 pm'), h('h2', { className: 'h-display' }, 'Look for Maya'))),
+    h('div', { className: 'col', style: { gap: '14px' } },
+      h('div', { style: { display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '12px' } },
+        h('div', null, h('p', { className: 'ml-caption', style: { color: '#dfe6f2' } }, 'Her Melos number'),
+          h('p', { style: { margin: 0, fontFamily: 'var(--font-display)', fontSize: '96px', lineHeight: '92px', fontWeight: 800, letterSpacing: '-0.03em', color: 'var(--accent)', fontVariantNumeric: 'tabular-nums' } }, '27')),
+        h('p', { className: 'ml-small', style: { textAlign: 'right', maxWidth: '150px', color: '#dfe6f2', marginBottom: '10px' } }, 'Bench outside The UC Theatre, 8:10 pm')),
+      h('div', { className: 'ml-panel', style: { borderRadius: '16px' } },
+        h('p', { className: 'ml-caption' }, 'Something to start with'),
+        h('p', { style: { margin: '4px 0 0' } }, 'Ask which Faye Lindqvist song got her through midterms.')),
+      h(M.Button, { variant: 'secondary', block: true }, 'Open chat'))),
+  h(Screen, { key: 8, id: 'chat', object: 'none', quiet: true, caption: 'Chat · quiet, no object' },
+    h('div', { className: 'ml-topbar' },
+      h('div', null, h('p', { style: { margin: 0, fontFamily: 'var(--font-display)', fontSize: '20px', fontWeight: 700 } }, 'Maya'), h('p', { className: 'ml-caption', style: { color: '#dfe6f2' } }, 'Fri at The UC Theatre')),
+      h(M.MenuButton)),
+    h('div', { className: 'ml-thread', style: { flex: 1, justifyContent: 'flex-end' } },
+      h(M.ChatBubble, { from: 'system' }, 'You and Maya are going Friday'),
+      h(M.ChatBubble, { from: 'them', name: 'Maya', time: '6:02 pm' }, 'hey! are you getting there early for the opener?'),
+      h(M.ChatBubble, { from: 'me', time: '6:04 pm' }, 'Yes, I heard they are really good live. See you at 8:10'),
+      h(M.ChatBubble, { from: 'them', name: 'Maya', time: '11:48 pm' }, 'that was so fun. want to stay in touch?')),
+    h('div', { className: 'col-s' },
+      h('div', { className: 'ml-row', style: { gap: '8px' } }, h(M.ConnectorButton, { kind: 'instagram' }), h(M.ConnectorButton, { kind: 'phone' }), h(M.Button, { variant: 'quiet' }, 'Not now')),
+      h('label', { htmlFor: 'chat-input', className: 'ml-sr' }, 'Message Maya'),
+      h('input', { id: 'chat-input', className: 'ml-input', placeholder: 'Message Maya', style: { borderRadius: '999px', background: 'var(--backdrop-vignette)' } }))),
+  h(Screen, { key: 9, id: 'empty', object: 'radio', caption: 'Empty week · radio' },
+    h('div', { className: 'col' }, h(Top, { menu: true }), h('h2', { className: 'h-title' }, 'Your week')),
+    h('div', { className: 'col', style: { gap: '12px' } },
+      h('h3', { className: 'h-title' }, 'Nothing this week yet'),
+      h('p', { className: 'lead' }, 'New events land every Monday. We will let you know when something sounds like you.'),
+      h(M.Button, { variant: 'secondary', block: true }, 'See local artists')))
+];
+ReactDOM.createRoot(document.getElementById('root')).render(h(React.Fragment, null, screens));
+</script>
+</body>
+</html>

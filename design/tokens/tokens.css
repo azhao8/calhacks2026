@@ -1,0 +1,111 @@
+/* Melos tokens. Generated from tokens.json; edit that file, then regenerate. */
+:root, [data-theme="berkeley"] {
+  --canvas: #060a16;
+  --canvas-glow-a: #003262;
+  --canvas-glow-b: #3b7ea1;
+  --canvas-glow-c: #c4820e;
+  --surface: #0d1830;
+  --surface-raised: #16284a;
+  --surface-brand: #003262;
+  --line: #ffffff24;
+  --line-strong: #ffffff7a;
+  --ink: #ffffff;
+  --ink-muted: #c3cce0;
+  --ink-faint: #97a3bd;
+  --accent: #fdb515;
+  --accent-strong: #ffc94d;
+  --on-accent: #0a0f1e;
+  --accent-soft: #fdb51524;
+  --focus: #ffffff;
+  --success: #6fd3ea;
+  --danger: #ff9e80;
+  --spotify: #1ed760;
+  --on-spotify: #000000;
+  --scrim: #060a16b8;
+  --backdrop-sky: #2337e6;
+  --backdrop-sky-2: #2440da;
+  --backdrop-horizon: #2a5fc4;
+  --backdrop-lake: #3f7ea6;
+  --backdrop-ground: #3d6886;
+  --backdrop-deep: #1c2f47;
+  --backdrop-bloom: #4b2fe8;
+  --streak-warm: #fdb515;
+  --streak-warm-2: #ffd34d;
+  --streak-cool: #3fd6f2;
+  --streak-cool-2: #00b0da;
+  --streak-core-hot: #fff4c2;
+  --streak-core-cool: #9ef0ff;
+  --backdrop-floor: #3b7ea133;
+  --backdrop-cast: #3a1fd0;
+  --backdrop-vignette: #0f1d33cc;
+  --thermal-white: #fffef2;
+  --thermal-yellow: #fff27a;
+  --thermal-amber: #ffb02e;
+  --thermal-orange: #ff7a1a;
+  --thermal-red: #e8231c;
+  --thermal-green: #0e8a3e;
+  --thermal-deep: #06301f;
+  --shadow-card: 0 12px 32px #00000059;
+  --shadow-glow: 0 0 0 1px #fdb51540, 0 8px 28px #fdb51533;
+}
+[data-theme="base"] {
+  --canvas: #0a0912;
+  --canvas-glow-a: #2b27c9;
+  --canvas-glow-b: #1b9cc0;
+  --canvas-glow-c: #d9b43a;
+  --surface: #141327;
+  --surface-raised: #1f1d3a;
+  --surface-brand: #2a26a8;
+  --ink-muted: #c6c3dc;
+  --ink-faint: #9a97b5;
+  --accent: #b9aeff;
+  --accent-strong: #cfc7ff;
+  --on-accent: #100c2c;
+  --accent-soft: #b9aeff26;
+  --scrim: #0a0912b8;
+  --backdrop-sky: #3a27e8;
+  --backdrop-sky-2: #3532e2;
+  --backdrop-horizon: #3b54d0;
+  --backdrop-lake: #4a6fa8;
+  --backdrop-ground: #46607e;
+  --backdrop-deep: #262e48;
+  --backdrop-bloom: #6a35f2;
+  --streak-warm: #f4e445;
+  --streak-warm-2: #f4e445;
+  --streak-cool: #40e0f0;
+  --streak-cool-2: #2fb7e8;
+  --streak-core-hot: #fffbd0;
+  --streak-core-cool: #8ff0ff;
+  --backdrop-floor: #4d6a9a33;
+  --backdrop-cast: #4a1fd0;
+  --backdrop-vignette: #1a2038cc;
+  --shadow-glow: 0 0 0 1px #b9aeff40, 0 8px 28px #b9aeff33;
+}
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+  --grain-opacity: 0.14;
+  --pattern-opacity: 0.22;
+  --object-blur: 7px;
+  --font-display: "Bricolage Grotesque", "Figtree", system-ui, sans-serif;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.number { font-family: var(--font-display); font-size: 72px; line-height: 72px; font-weight: 800; letter-spacing: -0.02em; }
+.display { font-family: var(--font-display); font-size: 40px; line-height: 44px; font-weight: 700; letter-spacing: -0.02em; }
+.title { font-family: var(--font-display); font-size: 28px; line-height: 34px; font-weight: 700; letter-spacing: -0.01em; }
+.wordmark { font-family: var(--font-display); font-size: 24px; line-height: 28px; font-weight: 800; letter-spacing: -0.03em; }
+.headline { font-family: var(--font-body); font-size: 20px; line-height: 26px; font-weight: 600; }
+.body { font-family: var(--font-body); font-size: 17px; line-height: 24px; font-weight: 400; }
+.body-strong { font-family: var(--font-body); font-size: 17px; line-height: 24px; font-weight: 600; }
+.small { font-family: var(--font-body); font-size: 15px; line-height: 22px; font-weight: 400; }
+.caption { font-family: var(--font-body); font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: 0.01em; }
