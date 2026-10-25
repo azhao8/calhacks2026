@@ -168,4 +168,4 @@ const contacts = {
   })),
 };
 
-module.exports = { HOUR, LONG, schools, me, access, preferencesCustom, preferencesSurprise, taste, card, week3, weekMany, weekLong, plans, contacts };
+module.exports = { plan, HOUR, LONG, schools, me, access, preferencesCustom, preferencesSurprise, taste, card, week3, weekMany, weekLong, plans, contacts };

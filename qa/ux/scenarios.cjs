@@ -20,6 +20,8 @@ const ready = (over = {}) => ({
   "taste:profile": { ...F.taste, confirmed: true },
   "contacts:list": F.contacts.one,
   "contacts:myShares": { phone: null, instagram: null },
+  "contacts:mine": [{ meetupId: "meetup_1", partnerFirstName: "Maya", kind: "phone", value: "+15105550123" }],
+  "contacts:shareable": [],
   ...over,
 });
 const onboarding = (state, over = {}) => ({ ...ready(), "me:get": F.me(state), "plans:current": null, ...over });
@@ -137,6 +139,12 @@ const scenarios = [
   // Privacy
   { id: "privacy", screen: "Privacy", path: "/privacy", data: ready(), variants: ALL, fullPage: true },
   { id: "privacy-visitor", screen: "Privacy", path: "/privacy", data: visitor() },
+  // Issue #17 re-checks
+  { id: "x17-35-not-found", screen: "404", path: "/no-such-page", data: ready() },
+  { id: "x17-35-not-found-visitor", screen: "404", path: "/no-such-page", data: visitor() },
+  { id: "x17-19-about-you-saved", screen: "S04 About you", path: "/about-you", data: onboarding("needs_preferences", { "onboarding:access": { ...F.access.requested, spotifyEmail: "sam.spotify@gmail.com" } }) },
+  { id: "x17-9-refill-offer-newcomer", screen: "S11 Offer", path: "/plan", data: ready({ "plans:current": F.plan("offer", { me: { seat: "offered", ticket: "none", offerExpiresAt: Date.now() + 3600000, left: false }, partner: { firstName: "Maya", seat: "in", ticket: "none", left: false }, notice: "partner_replaced", previousPartnerFirstName: "Alex" }) }) },
+  { id: "x17-31-offer-partner-dropped", screen: "S11 Offer", path: "/plan", data: ready({ "plans:current": F.plan("offer", { partner: null, notice: "partner_dropped", previousPartnerFirstName: "Maya" }) }) },
 ];
 
 module.exports = { scenarios, ready, onboarding, visitor };

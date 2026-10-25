@@ -71,7 +71,7 @@ const flows = {
     await page.screenshot({ path: `${SHOTS}/privacy-from-menu.png` });
     const onPrivacy = at(page);
     const controls = await page.locator("a[href], button").evaluateAll((els) => els.map((e) => `${e.getAttribute("aria-label") || e.innerText.trim()} → ${e.getAttribute("href") || "button"}`));
-    await page.locator('a[aria-label="Melos home"]').click();
+    await page.locator('a[aria-label="Melos home"]:visible').first().click();
     await wait(page, 1200);
     const wordmarkGoes = at(page);
     await context.close();
@@ -268,6 +268,19 @@ const flows = {
       out.tasteRevised = (await text(page)).slice(0, 300);
       await context.close();
     }
+    return out;
+  },
+
+  // Issue #17 item 34: an offer runs out unanswered while the student watches.
+  async "state-offer-runs-out"(browser) {
+    const { context, page, mock } = await open(browser, ready({ "plans:current": F.plans.offer }));
+    await page.goto(BASE + "/plan");
+    await wait(page);
+    mock.set("plans:current", null);
+    await wait(page, 1500);
+    await page.screenshot({ path: `${SHOTS}/offer-runs-out.png` });
+    const out = { at: at(page), text: (await text(page)).slice(0, 250) };
+    await context.close();
     return out;
   },
 
