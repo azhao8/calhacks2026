@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { PlanView } from "@/convex/lib/views";
+import type { Id } from "@/convex/_generated/dataModel";
 import { Button, buttonClasses } from "@/components/Button";
 import { InlineError } from "@/components/Card";
 import { ConnectorButton } from "@/components/ConnectorButton";
@@ -13,7 +14,8 @@ import { TextField } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
-import { useMyShares } from "@/app/_lib/views";
+import { useMyShares, useShareable } from "@/app/_lib/views";
+import { Optional } from "@/app/_components/Optional";
 import { checkInstagram, checkPhone, formatPhone, instagramDisplay } from "@/app/_lib/validate";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
@@ -21,32 +23,58 @@ type Kind = "phone" | "instagram";
 
 // S14 Stay in touch (component ConnectorButton). Opt in per plan, nothing pre-checked. A value
 // shows as shared only after the server saved it. Every choice continues to Contacts.
+// /stay-in-touch?meetupId= picks a recent plan from stream C's shareable list, so sharing stays
+// possible after a newer offer arrives; without it, the current plan is used.
 export default function StayInTouchPage() {
-  const gate = useGate(ROUTES.stayInTouch);
-  if (gate.status === "loading" || gate.plan === undefined) return <LoadingScreen object="mic" />;
-  const plan = gate.plan;
-  if (plan === null || !plan.canShare) {
-    return (
-      <Screen object="mic" menu>
-        <StateView
-          kind="empty"
-          icon="phone"
-          title="Nothing to share yet"
-          body="Stay in touch opens at the meeting time of a plan."
-          action={null}
-          className="rounded-lg bg-backdrop-vignette"
-        />
-        <Link href={ROUTES.contacts} className={buttonClasses({ variant: "secondary", block: true })}>
-          Recent connections
-        </Link>
-      </Screen>
-    );
-  }
-  return <Share plan={plan} />;
+  return (
+    <Suspense fallback={<LoadingScreen object="mic" />}>
+      <StayInTouch />
+    </Suspense>
+  );
 }
 
-function Share({ plan }: { plan: PlanView }) {
-  const shares = useMyShares(plan.meetupId);
+function StayInTouch() {
+  const gate = useGate(ROUTES.stayInTouch);
+  const meetupId = useSearchParams().get("meetupId");
+  if (gate.status === "loading" || gate.plan === undefined) return <LoadingScreen object="mic" />;
+  const plan = gate.plan;
+  const current = plan !== null && plan.canShare ? { meetupId: plan.meetupId, partnerName: plan.partner?.firstName ?? null } : null;
+  if (current && (meetupId === null || meetupId === current.meetupId)) return <Share {...current} />;
+  return (
+    <Optional fallback={current ? <Share {...current} /> : <NothingToShare />}>
+      <FromShareable meetupId={meetupId} />
+    </Optional>
+  );
+}
+
+function FromShareable({ meetupId }: { meetupId: string | null }) {
+  const shareable = useShareable();
+  if (shareable === undefined) return <LoadingScreen object="mic" />;
+  const pick = meetupId === null ? shareable[0] : shareable.find((s) => s.meetupId === meetupId);
+  if (!pick) return <NothingToShare />;
+  return <Share meetupId={pick.meetupId} partnerName={pick.partnerFirstName} />;
+}
+
+function NothingToShare() {
+  return (
+    <Screen object="mic" menu>
+      <StateView
+        kind="empty"
+        icon="phone"
+        title="Nothing to share yet"
+        body="Stay in touch opens at the meeting time of a plan."
+        action={null}
+        className="rounded-lg bg-backdrop-vignette"
+      />
+      <Link href={ROUTES.contacts} className={buttonClasses({ variant: "secondary", block: true })}>
+        Recent connections
+      </Link>
+    </Screen>
+  );
+}
+
+function Share({ meetupId, partnerName }: { meetupId: Id<"meetups">; partnerName: string | null }) {
+  const shares = useMyShares(meetupId);
   const share = useMutation(api.contacts.share);
   const stopSharing = useMutation(api.contacts.stopSharing);
   const online = useOnline();
@@ -55,7 +83,7 @@ function Share({ plan }: { plan: PlanView }) {
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const name = plan.partner?.firstName ?? null;
+  const name = partnerName;
 
   if (shares === undefined) return <LoadingScreen object="mic" />;
 
@@ -71,7 +99,7 @@ function Share({ plan }: { plan: PlanView }) {
     setBusy("save");
     setError(null);
     try {
-      await share({ meetupId: plan.meetupId, kind: open, value: checked.value });
+      await share({ meetupId: meetupId, kind: open, value: checked.value });
       setOpen(null);
       setValue("");
     } catch (e) {
@@ -85,7 +113,7 @@ function Share({ plan }: { plan: PlanView }) {
     setBusy(`stop-${kind}`);
     setError(null);
     try {
-      await stopSharing({ meetupId: plan.meetupId, kind });
+      await stopSharing({ meetupId: meetupId, kind });
     } catch (e) {
       setError(errorCopy(e));
     } finally {

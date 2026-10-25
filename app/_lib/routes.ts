@@ -68,7 +68,7 @@ const ORDER: Onboarding[] = [
   "ready",
 ];
 
-const atLeast = (state: Onboarding, min: Onboarding) => ORDER.indexOf(state) >= ORDER.indexOf(min);
+export const atLeast = (state: Onboarding, min: Onboarding) => ORDER.indexOf(state) >= ORDER.indexOf(min);
 
 // Which onboarding states may open each screen. Back navigation keeps completed work reachable
 // (About you while on Preferences); the menu reaches Preferences and Taste after onboarding.
@@ -81,8 +81,9 @@ const SIGNED_IN_SCREENS: Partial<Record<Route, (state: Onboarding) => boolean>> 
   [ROUTES.taste]: (s) => s === "needs_review" || s === "ready",
   [ROUTES.week]: (s) => s === "ready",
   [ROUTES.plan]: (s) => s === "ready",
-  [ROUTES.stayInTouch]: (s) => s === "ready",
-  [ROUTES.contacts]: (s) => s === "ready",
+  // Sharing and contacts outlive a Spotify disconnect, which sends onboarding back to Connect.
+  [ROUTES.stayInTouch]: (s) => atLeast(s, "needs_spotify_connect"),
+  [ROUTES.contacts]: (s) => atLeast(s, "needs_spotify_connect"),
 };
 
 const PUBLIC_SCREENS: Route[] = [ROUTES.welcome, ROUTES.school, ROUTES.signIn, ROUTES.privacy];

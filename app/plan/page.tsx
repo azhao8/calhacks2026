@@ -15,7 +15,9 @@ import { isActivePlan, ROUTES } from "@/app/_lib/routes";
 import { afterLeavingText, cantMakeItDetail, couldntGetOneDetail, partnerNoticeText, type Ended } from "@/app/_lib/planCopy";
 import { offerExpiryText } from "@/app/_lib/time";
 import { Confirm } from "@/app/_components/Confirm";
+import { Optional } from "@/app/_components/Optional";
 import { SafetyNote } from "@/app/_components/Safety";
+import { ShareablePrompt } from "@/app/_components/ShareablePrompt";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 type Plan = PlanView;
@@ -90,6 +92,9 @@ function Offer({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void }) {
   return (
     <Screen object="records" menu>
       <PartnerNotice plan={plan} />
+      <Optional>
+        <ShareablePrompt exclude={plan.meetupId} />
+      </Optional>
       <MatchCard stage="invite" title={name ? `${name} can make it too.` : "A seat is open for you."} when={when(plan)} price={plan.event.priceLabel}>
         <p className="text-headline">{eventLine(plan)}</p>
         <SharedLine>{plan.hook}</SharedLine>
@@ -156,9 +161,12 @@ function TicketBlock({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => voi
           <Button block icon="check" loading={busy === "got"} disabled={!online} onClick={() => run("got", () => setTicket({ seatId: plan.seatId, ticket: "got" }))}>
             Got my ticket
           </Button>
-          <Button variant="secondary" block onClick={() => setConfirming(true)}>
-            I couldn&apos;t get one
-          </Button>
+          {/* From the meeting time on, giving up the seat goes through "I need to leave" instead. */}
+          {plan.canCantMakeIt ? (
+            <Button variant="secondary" block onClick={() => setConfirming(true)}>
+              I couldn&apos;t get one
+            </Button>
+          ) : null}
         </div>
       )}
       {error ? <InlineError>{error}</InlineError> : null}
@@ -228,10 +236,13 @@ function PlanSet({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void })
   return (
     <Screen object="records" menu>
       <PartnerNotice plan={plan} />
+      <Optional>
+        <ShareablePrompt exclude={plan.meetupId} />
+      </Optional>
       <MatchCard stage={waiting ? "invite" : "confirmed"} eyebrow={waiting ? "Your plan" : undefined} title={title} when={when(plan)} price={plan.event.priceLabel}>
         <p className="text-headline">{eventLine(plan)}</p>
         <SharedLine>{plan.hook}</SharedLine>
-        {waiting ? <p className="text-small text-ink-muted">The meeting spot shows here once you&apos;re both in.</p> : null}
+        {waiting && plan.meeting === null ? <p className="text-small text-ink-muted">The meeting spot shows here once you&apos;re both in.</p> : null}
         <MeetingSpot plan={plan} />
         {plan.meeting ? <TicketBlock plan={plan} onEnded={onEnded} /> : null}
       </MatchCard>
@@ -253,6 +264,9 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
       top={<ScreenTitle eyebrow={`Today, ${plan.event.timeLabel}`} display>{name ? `Look for ${name}.` : "Today's the day."}</ScreenTitle>}
     >
       <PartnerNotice plan={plan} />
+      <Optional>
+        <ShareablePrompt exclude={plan.meetupId} />
+      </Optional>
       <MatchCard stage="dayof" eyebrow="Your plan" title={eventLine(plan)} when={when(plan)} price={plan.event.priceLabel}>
         {plan.marker !== null ? <MelosNumber value={plan.marker} /> : null}
         {plan.meeting ? (
@@ -275,7 +289,7 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
             <p>{plan.icebreaker}</p>
           </div>
         ) : null}
-        {plan.meeting && plan.me.ticket !== "got" ? <TicketBlock plan={plan} onEnded={onEnded} /> : null}
+        {plan.meeting ? <TicketBlock plan={plan} onEnded={onEnded} /> : null}
       </MatchCard>
       {plan.me.left ? (
         <Panel>

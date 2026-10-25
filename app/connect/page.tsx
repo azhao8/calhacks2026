@@ -8,7 +8,7 @@ import { InlineError } from "@/components/Card";
 import { SpotifyConnectButton } from "@/components/SpotifyConnectButton";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
-import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
+import { ROUTES } from "@/app/_lib/routes";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S07 Connect Spotify (mockup spotify.png). Says exactly what we read and why, then sends the
@@ -35,7 +35,7 @@ export default function ConnectPage() {
   }
 
   return (
-    <Screen object="cassette" step={ONBOARDING_STEP[ROUTES.connect]}>
+    <Screen object="cassette" menu>
       <ScreenTitle lead="We use your top artists, top tracks and liked songs to write a short read on your taste. You get to correct it.">
         Let us hear what you play
       </ScreenTitle>
