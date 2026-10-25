@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { TIMING } from "../lib/config";
 import { directionsUrl, metersBetween } from "../lib/format";
 import { CATALOG, VENUE_NOT_FOUND } from "./config";
-import { areaFor, distanceFromCampus, looksLikeAddress, normalizeName } from "./checks";
+import { areaFor, distanceFromCampus, looksLikeAddress, normalizeName, sameShowTitles } from "./checks";
 
 // Venues and meeting spots (CLAUDE.md §6.1). One venue per OpenStreetMap ID; one meeting spot per venue.
 
@@ -196,10 +196,23 @@ export const resolve = internalMutation({
     v.object({ ok: v.literal(false), reason: v.string() }),
   ),
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("venues")
-      .withIndex("by_osmId", (q) => q.eq("osmId", args.osmId))
-      .unique();
+    // One venue can sit under two OSM IDs (a building way and an amenity node a few meters apart): a venue within
+    // about 150 m whose name or aliases match is the same venue. The table is small, so a scan is fine.
+    const existing =
+      (await ctx.db
+        .query("venues")
+        .withIndex("by_osmId", (q) => q.eq("osmId", args.osmId))
+        .unique()) ??
+      (await ctx.db.query("venues").collect()).find(
+        (venue) =>
+          metersBetween(venue, args) <= CATALOG.sameVenueMeters &&
+          [venue.name, ...venue.aliases].some((known) =>
+            [args.name, args.alias ?? ""].some(
+              (name) => name.length > 0 && sameShowTitles(normalizeName(known), normalizeName(name)),
+            ),
+          ),
+      ) ??
+      null;
     let venue: Doc<"venues">;
     let created = false;
     // Students see "{title} at {venue}", so the display name is a real name whenever we have one; a street

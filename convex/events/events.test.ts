@@ -468,6 +468,70 @@ describe("admin list and edit", () => {
   });
 });
 
+describe("audit items 4 to 7", () => {
+  test("a 21+ rejection the team restores stays published on the next import", async () => {
+    const t = await setup();
+    const adult = scoutItem({ title: "Late set", ageLimit: 21, sourceUrl: "https://theuctheatre.org/late" });
+    await importRun(t, "c1", [adult]);
+    const [row] = await t.query(internal.events.admin.list, { status: "rejected" });
+    await t.mutation(internal.events.admin.restore, { eventId: row.eventId });
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "c2", [adult]);
+    const [after] = await t.query(internal.events.admin.list, {});
+    expect(after).toMatchObject({ status: "published", ageLimit: null, rejectReason: null });
+    expect(after.teamFields).toContain("ageLimit");
+  });
+
+  test("a cleared 21+ listing still fails its other checks", async () => {
+    const t = await setup();
+    await importRun(t, "c3", [scoutItem({ title: "Late set", ageLimit: 21, sourceUrl: "https://theuctheatre.org/late" })]);
+    const [row] = await t.query(internal.events.admin.list, { status: "rejected" });
+    await t.mutation(internal.events.admin.restore, { eventId: row.eventId });
+    vi.setSystemTime(Date.now() + 60_000);
+    // Same show, now with no ticket link: a softer check never unpublishes a published event.
+    await importRun(t, "c4", [scoutItem({ title: "Late set", ageLimit: 21, ticketUrl: null, sourceUrl: "https://theuctheatre.org/late" })]);
+    expect((await t.query(internal.events.admin.list, {}))[0].status).toBe("published");
+  });
+
+  test("rejected events with no start time appear on the rejected list, most recent first", async () => {
+    const t = await setup();
+    await importRun(t, "n1", [scoutItem({ title: "Someday", startsAt: null, sourceUrl: "https://x.test/someday" })]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "n2", [scoutItem({ title: "Mystery", ticketUrl: null, sourceUrl: "https://x.test/mystery" })]);
+    const rejected = await t.query(internal.events.admin.list, { status: "rejected" });
+    expect(rejected.map((r) => [r.title, r.rejectReason])).toEqual([
+      ["Mystery", "No official ticket or RSVP link and no free entry note"],
+      ["Someday", "No date"],
+    ]);
+  });
+
+  test("one venue under two nearby OSM IDs stays one venue with one event", async () => {
+    const t = await setup();
+    await importRun(t, "v1", [
+      scoutItem(),
+      scoutItem({
+        sourceName: "uc_berkeley_events",
+        sourceUrl: "https://events.berkeley.edu/big-thief",
+        venue: { name: "The UC Theatre Taube Family Music Hall", address: "2036 University Ave, Berkeley", osmId: "node/999", lat: 37.87166, lng: -122.27061 },
+      }),
+    ]);
+    const venues = await t.run((ctx) => ctx.db.query("venues").collect());
+    expect(venues).toHaveLength(1);
+    expect(await t.query(internal.events.admin.list, {})).toHaveLength(1);
+  });
+
+  test("a more official source with no price keeps the price another source found", async () => {
+    const t = await setup();
+    await importRun(t, "pr1", [
+      scoutItem({ sourceName: "eventbrite", sourceKind: "listing", sourceUrl: "https://eventbrite.com/e/1", price: { min: 30, max: 30, source: "listing", sourceUrl: null } }),
+    ]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "pr2", [scoutItem({ price: { min: null, max: null, source: "not_found", checked: ["listing", "ticket_page", "search"] } })]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    expect(event).toMatchObject({ sourceName: "venue_site:uc_theatre", priceMin: 30, priceMax: 30 });
+  });
+});
+
 describe("venues and meeting spots", () => {
   async function resolve(t: Awaited<ReturnType<typeof setup>>, args: Record<string, unknown>) {
     return await t.mutation(internal.events.venues.resolve, {

@@ -7,7 +7,7 @@ import { directionsUrl, metersBetween } from "../lib/format";
 import { fail } from "../lib/errors";
 import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
-import { CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
+import { ADULT_REASON, CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
 import { cleanNote, isHttpUrl } from "./checks";
 import { moveVenueSpot } from "./venues";
 
@@ -79,6 +79,7 @@ const vListedEvent = v.object({
   venueId: v.union(v.id("venues"), v.null()),
   // True when the team can undo the rejection with `restore` (pulled, 21+, or a merged duplicate).
   restorable: v.boolean(),
+  lastSeenAt: v.number(),
 });
 
 // Published, rejected (with reasons), and flagged-missing events, soonest first.
@@ -95,10 +96,22 @@ export const list = internalQuery({
     const statuses = status ? [status] : (["published", "rejected", "scraped"] as const);
     const out = [];
     for (const s of statuses) {
-      const rows = await ctx.db
-        .query("events")
-        .withIndex("by_status_startsAt", (q) => (includePast ? q.eq("status", s) : q.eq("status", s).gt("startsAt", now)))
-        .take(500);
+      // Rejected rows are listed by when a run last saw them, including ones with no start time (startsAt 0).
+      const rows =
+        s === "rejected"
+          ? (
+              await ctx.db
+                .query("events")
+                .withIndex("by_status_startsAt", (q) => q.eq("status", s))
+                .collect()
+            )
+              .filter((e) => includePast || e.startsAt > now || e.startsAt === 0)
+              .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+              .slice(0, 500)
+          : await ctx.db
+              .query("events")
+              .withIndex("by_status_startsAt", (q) => (includePast ? q.eq("status", s) : q.eq("status", s).gt("startsAt", now)))
+              .take(500);
       for (const event of rows) {
         // Missing from two runs in a row where its source ran.
         const flagged = event.status === "published" && (event.missedRuns ?? 0) >= CATALOG.missingRunsToFlag;
@@ -136,10 +149,13 @@ export const list = internalQuery({
           teamFields: event.teamFields ?? [],
           venueId: event.venueId ?? null,
           restorable: event.rejectReason !== undefined && STICKY_REASONS.has(event.rejectReason),
+          lastSeenAt: event.lastSeenAt,
         });
       }
     }
-    out.sort((a, b) => a.startsAt - b.startsAt);
+    // Rejected alone: most recently seen first. Otherwise: soonest first.
+    if (status === "rejected") out.sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    else out.sort((a, b) => a.startsAt - b.startsAt);
     return out.slice(0, Math.min(limit ?? 200, 500));
   },
 });
@@ -202,7 +218,15 @@ export const restore = internalMutation({
     if (event.rejectReason === undefined || !STICKY_REASONS.has(event.rejectReason)) {
       fail("validation_failed", "Only a pulled or 21+ event can be restored");
     }
-    await ctx.db.patch(eventId, { status: "published", rejectReason: undefined });
+    // Clearing a 21+ rejection locks ageLimit, so the next import can't re-reject it.
+    const clearsAdult = event.rejectReason === ADULT_REASON;
+    await ctx.db.patch(eventId, {
+      status: "published",
+      rejectReason: undefined,
+      ...(clearsAdult ? { ageLimit: null, teamFields: [...new Set([...(event.teamFields ?? []), "ageLimit"])] } : {}),
+    });
+    if (event.embedding === undefined) await ctx.scheduler.runAfter(0, internal.events.admin.reembed, { eventId });
+    await ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
     return null;
   },
 });
