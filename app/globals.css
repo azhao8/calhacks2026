@@ -1,0 +1,43 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+/* design/ is a read-only reference the app never loads, so its files are not scanned for classes. */
+@source not "../design";
+
+@layer base {
+  html {
+    /* Melos is always dark, so native controls and scrollbars should be too. */
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-canvas font-body text-body text-ink antialiased;
+  }
+
+  /* 2px solid focus ring with a 2px offset on anything that takes keyboard focus. */
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /*
+    Reduced motion: transitions and animations finish at once, so nothing moves (Backdrop
+    included) while transitionend and animationend still fire. A press scale is a plain transform
+    and would still jump, so components gate it with motion-safe:.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/*
+  Tabular figures for times, prices and the Melos number: Tailwind's built-in tabular-nums.
+  Both fonts ship the tnum feature.
+*/
