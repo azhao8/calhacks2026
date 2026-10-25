@@ -115,3 +115,9 @@ Entry format:
 - Why: Spotify apps can be created now, before any Convex deployment exists, and never need editing when deployments change; parallel sessions must not overwrite each other's functions.
 - Replaces: BASELINE — the callback on the deployment's `.convex.site` address (§8.9).
 - Affects: S07; `CLAUDE.md` §8.1, §8.2, §8.9; `docs/setup.md` (already uses these addresses).
+
+## 2026-10-24 19:02 PT · azhao8 · Cloud sessions test in memory; production builds only from main
+- Changed: Stage 1 runs as Claude Code cloud sessions, which can't download Convex's local backend. Instead of a local Convex deployment per worktree, each stream session tests its functions in memory with convex-test and regenerates types with `npx convex codegen` against the shared dev deployment; codegen uploads code for analysis only and never makes it live. Only the coordinator pushes to dev or production. The cloud environment allows the Convex, Apify, and OpenStreetMap hosts and holds `MELOS_DEV_DEPLOY_KEY`, `APIFY_TOKEN`, `MELOS_ANTHROPIC_API_KEY`, and later `MELOS_PROD_DEPLOY_KEY` (prefixed so neither the Convex CLI nor Claude Code picks them up by default). Vercel builds only production: `vercel.json` runs `npx convex deploy --cmd 'npm run build'`, then the idempotent seed, and skips every other build, so branch builds never touch production. Cross-stream function names are fixed in `docs/stage1-briefs.md`, and calls between streams are wired by the coordinator after merge.
+- Why: isolated local backends are blocked in cloud sessions, the owner works from a phone, and a branch build must never push branch code to the production deployment.
+- Replaces: BASELINE — one local Convex deployment per worktree (the 17:05 PT entry). Implements `CLAUDE.md` §8.1 "Preview deploys are off".
+- Affects: `README.md`, `docs/setup.md`, `docs/stage1-briefs.md`, `vercel.json`; no screens or data contracts.
