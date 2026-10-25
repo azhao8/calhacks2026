@@ -9,6 +9,7 @@ import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
 import { CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
 import { cleanNote, isHttpUrl } from "./checks";
+import { moveVenueSpot } from "./venues";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
 
@@ -75,6 +76,9 @@ const vListedEvent = v.object({
   flaggedMissing: v.boolean(),
   pulled: v.boolean(),
   teamFields: v.array(v.string()),
+  venueId: v.union(v.id("venues"), v.null()),
+  // True when the team can undo the rejection with `restore` (pulled, 21+, or a merged duplicate).
+  restorable: v.boolean(),
 });
 
 // Published, rejected (with reasons), and flagged-missing events, soonest first.
@@ -130,6 +134,8 @@ export const list = internalQuery({
           flaggedMissing: flagged,
           pulled: event.rejectReason === PULLED_REASON,
           teamFields: event.teamFields ?? [],
+          venueId: event.venueId ?? null,
+          restorable: event.rejectReason !== undefined && STICKY_REASONS.has(event.rejectReason),
         });
       }
     }
@@ -235,6 +241,12 @@ export const edit = internalMutation({
   handler: async (ctx, { eventId, patch, editedBy }) => {
     const event = await ctx.db.get(eventId);
     if (event === null) fail("validation_failed", "No such event");
+    for (const price of [patch.priceMin, patch.priceMax]) {
+      // A typed "$15" arrives as NaN; only null or a finite amount of at least 0 is a price.
+      if (price !== undefined && price !== null && !(Number.isFinite(price) && price >= 0)) {
+        fail("validation_failed", "A price must be a number of dollars, 0 or more, or empty");
+      }
+    }
     const { ticketUrl, freeEntryNote, ...rest } = patch;
     if (ticketUrl && !isHttpUrl(ticketUrl)) fail("validation_failed", "The ticket link must be an http or https URL");
     const next = { ...rest } as Record<string, unknown>;
@@ -303,13 +315,8 @@ export const overrideSpot = internalMutation({
       verifiedAt: Date.now(),
     });
     const meetOffsetMinutes = args.meetOffsetMinutes ?? venue.meetOffsetMinutes ?? TIMING.meetOffsetMinutes;
-    await ctx.db.patch(venue._id, { meetingSpotId: spotId, meetOffsetMinutes, updatedAt: Date.now() });
-    for (const event of await ctx.db
-      .query("events")
-      .withIndex("by_venue", (q) => q.eq("venueId", venue._id))
-      .collect()) {
-      await ctx.db.patch(event._id, { meetingSpotId: spotId, meetOffsetMinutes });
-    }
+    // Every show at the venue, and every forming or set plan for them, moves to the team's spot.
+    await moveVenueSpot(ctx, venue, spotId, meetOffsetMinutes, { now: Date.now() });
     return spotId;
   },
 });
