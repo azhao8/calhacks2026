@@ -121,3 +121,15 @@ Entry format:
 - Why: isolated local backends are blocked in cloud sessions, the owner works from a phone, and a branch build must never push branch code to the production deployment.
 - Replaces: BASELINE — one local Convex deployment per worktree (the 17:05 PT entry). Implements `CLAUDE.md` §8.1 "Preview deploys are off".
 - Affects: `README.md`, `docs/setup.md`, `docs/stage1-briefs.md`, `vercel.json`; no screens or data contracts.
+
+## 2026-10-24 19:18 PT · azhao8 · Spotify redirect addresses come from config; shared pools and guard
+- Changed: `spotifyApps` doesn't store a `redirectUri`. Every app registers the same two addresses (§8.9), so the server builds them from config (`SITE` plus `SPOTIFY.callbackPath`) and accepts only those two, bound into the signed OAuth state. Every stream uses one Workpool client per pool from `convex/lib/pools.ts` (the email pool runs 2 at a time for Resend's free-plan rate) and the shared `requireVerifiedUser` guard in `convex/lib/access.ts`. The `.edu` check normalizes Unicode (NFKC) first and accepts printable ASCII only, so the address that passes is exactly the one stored and sent to.
+- Why: one source for the redirect addresses; two clients for the same pool would fight over its settings; and `@auth/core` below 0.41.3 had a critical advisory about validating email before Unicode normalization.
+- Replaces: BASELINE — `spotifyApps.redirectUri` in §8.5.
+- Affects: S03, S07; `CLAUDE.md` §8.5 `spotifyApps`, §8.9; `convex/lib/`.
+
+## 2026-10-24 19:35 PT · azhao8 · Each matcher run is one mutation per event
+- Changed: a matcher run for an event is a single internal mutation that loads the pool, scores every pair, refills seats, runs blossom matching, and fills gaps with demo students, instead of an action that scores and then commits through mutations. Hooks and icebreakers still go through the AI pool after the commit, so no Claude or Voyage call ever runs inside the matcher.
+- Why: a mutation is serialized and re-reads current state by construction, so "one run per event at a time" and "re-check before committing" hold without extra locking; a pool of a few dozen students scores well within a mutation's limits.
+- Replaces: BASELINE — the matching flow in §8.2 ("the matcher action loads the pool ... a mutation commits each seat").
+- Affects: `CLAUDE.md` §6.4, §8.2 Matching; no screens or data contracts.

@@ -141,6 +141,7 @@ export const vPlanView = v.object({
     v.literal("partner_replaced"),
     v.literal("partner_left"),
     v.literal("nobody_by_cutoff"),
+    v.literal("event_pulled"), // the team took the event off Melos; the plan is called off
   ),
   // The first name of the partner who gave up the seat, for "{Name} can't make it." Set with
   // partner_dropped and partner_replaced; this student already saw the name in the offer.
