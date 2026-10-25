@@ -122,16 +122,26 @@ const flows = {
       await btn(page, "Back", true).click();
       await wait(page);
       out.signInBackTo = at(page);
+      // Forward again from School: the register page kept the typed email.
+      await btn(page, "Continue").click();
+      await wait(page);
+      out.emailKeptAfterRoundTrip = await page.getByLabel("School email").inputValue().catch(() => null);
+      out.registerPage = at(page);
+      await btn(page, "Back", true).click();
+      await wait(page);
       await btn(page, "Back", true).click();
       await wait(page);
       out.schoolBackTo = at(page);
-      await link(page, "I already have an account").click();
-      await wait(page);
-      out.emailKeptAfterRoundTrip = await page.getByLabel("School email").inputValue().catch(() => null);
       await context.close();
     }
     {
       const { context, page } = await open(browser, visitor());
+      await page.goto("about:blank");
+      await page.goto(BASE + "/sign-up");
+      await wait(page);
+      await btn(page, "Back", true).click();
+      await wait(page);
+      out.deepLinkSignUpBackTo = at(page);
       await page.goto("about:blank");
       await page.goto(BASE + "/sign-in");
       await wait(page);
@@ -161,7 +171,96 @@ const flows = {
       await context.close();
     }
     out.pass =
-      out.signInBackTo === "/school" && out.schoolBackTo === "/" && out.deepLinkSignInBackTo === "/school" && out.aboutYouBackTo === "/school" && out.prefsQ1BackTo === "/about-you" && out.aboutYouPrefill === "sam.spotify@gmail.com";
+      out.registerPage === "/sign-up" && out.emailKeptAfterRoundTrip === "sam@berkeley.edu" && out.signInBackTo === "/school" && out.schoolBackTo === "/" && out.deepLinkSignUpBackTo === "/school" && out.deepLinkSignInBackTo === "/" && out.aboutYouBackTo === "/school" && out.prefsQ1BackTo === "/about-you" && out.aboutYouPrefill === "sam.spotify@gmail.com";
+    return out;
+  },
+
+  // The onboarding progress bar: six steps through the register flow, none when signing in, the
+  // mode kept in the route across a reload, and signed in, the step from the server's state.
+  async "nav-onboarding-progress"(browser) {
+    const progress = (page) =>
+      page.evaluate(() => {
+        const bar = [...document.querySelectorAll('[role="progressbar"]')].find((el) => el.offsetParent !== null);
+        return bar ? `${bar.getAttribute("aria-valuenow")}/${bar.getAttribute("aria-valuemax")}` : null;
+      });
+    const out = {};
+    {
+      const { context, page, mock } = await open(browser, visitor());
+      mock.handlers["auth:signIn"] = () => ({ started: true });
+      await page.goto(BASE + "/");
+      await wait(page);
+      out.welcome = await progress(page);
+      await link(page, "Get started").click();
+      await wait(page);
+      out.school = await progress(page);
+      await btn(page, "Continue").click();
+      await wait(page);
+      out.signUpEmail = { at: at(page), step: await progress(page) };
+      await page.getByLabel("School email").fill("sam@berkeley.edu");
+      await btn(page, "Continue").click();
+      await wait(page, 800);
+      out.signUpCode = { step: await progress(page), code: /Check your school email/.test(await text(page)) };
+      await page.reload();
+      await wait(page, 1200);
+      out.signUpCodeAfterReload = { at: at(page), step: await progress(page), code: /Check your school email/.test(await text(page)) };
+      await page.screenshot({ path: `${SHOTS}/progress-sign-up-reloaded.png` });
+      await context.close();
+    }
+    {
+      const { context, page, mock } = await open(browser, visitor());
+      mock.handlers["auth:signIn"] = () => ({ started: true });
+      await page.goto(BASE + "/");
+      await wait(page);
+      await link(page, "I already have an account").click();
+      await wait(page);
+      out.signIn = { at: at(page), step: await progress(page) };
+      await page.getByLabel("School email").fill("sam@berkeley.edu");
+      await btn(page, "Continue").click();
+      await wait(page, 800);
+      out.signInCode = await progress(page);
+      await page.reload();
+      await wait(page, 1200);
+      out.signInAfterReload = { at: at(page), step: await progress(page), code: /Check your school email/.test(await text(page)) };
+      await page.screenshot({ path: `${SHOTS}/progress-sign-in.png` });
+      await context.close();
+    }
+    out.signedIn = {};
+    for (const [label, state, path, extra] of [
+      ["school", "needs_about_you", "/school", {}],
+      ["about you", "needs_about_you", "/about-you", {}],
+      ["preferences", "needs_preferences", "/preferences", { "onboarding:preferences": null }],
+      ["waiting", "waiting_for_spotify", "/waiting", { "onboarding:access": F.access.requested }],
+      ["connect", "needs_spotify_connect", "/connect", {}],
+      ["analyzing", "analyzing", "/analyzing", { "taste:analysis": { status: "fetching", error: null, failure: null } }],
+      ["taste", "needs_review", "/taste", { "taste:profile": F.taste }],
+      ["preferences after onboarding", "ready", "/preferences", {}],
+      ["taste after onboarding", "ready", "/taste", {}],
+      ["week", "ready", "/week", {}],
+    ]) {
+      const { context, page } = await open(browser, onboarding(state, extra));
+      await page.goto(BASE + path);
+      await wait(page, 1000);
+      out.signedIn[label] = await progress(page);
+      if (label === "preferences") {
+        // The whole questionnaire is one step: question 2 still shows step 4.
+        await page.getByRole("radio", { name: "Up to $25" }).click();
+        await btn(page, "Continue").click();
+        await wait(page, 300);
+        out.signedIn["preferences, question 2"] = await progress(page);
+        await page.screenshot({ path: `${SHOTS}/progress-preferences-q2.png` });
+      }
+      await context.close();
+    }
+    const expect = { school: "1/6", "about you": "3/6", preferences: "4/6", "preferences, question 2": "4/6", waiting: "5/6", connect: "5/6", analyzing: "5/6", taste: "6/6", "preferences after onboarding": null, "taste after onboarding": null, week: null };
+    out.pass =
+      out.welcome === null &&
+      out.school === "1/6" &&
+      out.signUpEmail.at === "/sign-up" && out.signUpEmail.step === "2/6" &&
+      out.signUpCode.step === "2/6" && out.signUpCode.code &&
+      out.signUpCodeAfterReload.at === "/sign-up" && out.signUpCodeAfterReload.step === "2/6" && out.signUpCodeAfterReload.code &&
+      out.signIn.at === "/sign-in" && out.signIn.step === null && out.signInCode === null &&
+      out.signInAfterReload.at === "/sign-in" && out.signInAfterReload.step === null && out.signInAfterReload.code &&
+      Object.entries(expect).every(([k, v]) => out.signedIn[k] === v);
     return out;
   },
 

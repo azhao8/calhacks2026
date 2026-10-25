@@ -8,7 +8,7 @@ import { InlineError } from "@/components/Card";
 import { SpotifyConnectButton } from "@/components/SpotifyConnectButton";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
-import { ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { useAccess } from "@/app/_lib/views";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 import { SpotifyAccount } from "@/app/_components/SpotifyAccount";
@@ -38,7 +38,7 @@ export default function ConnectPage() {
   }
 
   return (
-    <Screen object="cassette" menu>
+    <Screen object="cassette" menu step={onboardingStep(ROUTES.connect, gate.me) ?? undefined}>
       <ScreenTitle lead="We use your top artists, top tracks and liked songs to write a short read on your taste. You get to correct it.">
         Let us hear what you play
       </ScreenTitle>

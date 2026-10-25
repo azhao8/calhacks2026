@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { MeView, PlanView } from "@/convex/lib/views";
 import type { Onboarding } from "@/convex/lib/validators";
 import type { Id } from "@/convex/_generated/dataModel";
-import { homeRoute, isActivePlan, redirectFor, ROUTES } from "./routes";
+import { homeRoute, isActivePlan, onboardingStep, redirectFor, ROUTES } from "./routes";
 
 const me = (onboarding: Onboarding, school: { name: string; themeId: string } | null = { name: "UC Berkeley", themeId: "berkeley" }) =>
   ({
@@ -99,5 +99,41 @@ describe("redirectFor", () => {
   test("waiting moves on live when the account is added", () => {
     expect(redirectFor(ROUTES.waiting, me("waiting_for_spotify"))).toBeNull();
     expect(redirectFor(ROUTES.waiting, me("needs_spotify_connect"))).toBe(ROUTES.welcome);
+  });
+});
+
+describe("onboardingStep", () => {
+  test("signed out, only the register pages count", () => {
+    expect(onboardingStep(ROUTES.school, null)).toBe(1);
+    expect(onboardingStep(ROUTES.signUp, null)).toBe(2);
+    expect(onboardingStep(ROUTES.signIn, null)).toBeNull();
+    expect(onboardingStep(ROUTES.welcome, null)).toBeNull();
+  });
+
+  test("signed in, each screen shows the step the server says", () => {
+    expect(onboardingStep(ROUTES.school, me("needs_about_you", null))).toBe(1);
+    expect(onboardingStep(ROUTES.school, me("needs_about_you"))).toBe(1);
+    expect(onboardingStep(ROUTES.aboutYou, me("needs_about_you"))).toBe(3);
+    expect(onboardingStep(ROUTES.aboutYou, me("needs_preferences"))).toBe(3);
+    expect(onboardingStep(ROUTES.preferences, me("needs_preferences"))).toBe(4);
+    for (const route of [ROUTES.waiting, ROUTES.connect, ROUTES.analyzing]) {
+      expect(onboardingStep(route, me("waiting_for_spotify"))).toBe(5);
+      expect(onboardingStep(route, me("needs_spotify_connect"))).toBe(5);
+      expect(onboardingStep(route, me("analyzing"))).toBe(5);
+    }
+    expect(onboardingStep(ROUTES.taste, me("needs_review"))).toBe(6);
+  });
+
+  test("screens opened again after their step show no bar", () => {
+    expect(onboardingStep(ROUTES.school, me("ready"))).toBeNull();
+    expect(onboardingStep(ROUTES.aboutYou, me("waiting_for_spotify"))).toBeNull();
+    expect(onboardingStep(ROUTES.preferences, me("waiting_for_spotify"))).toBeNull();
+    expect(onboardingStep(ROUTES.preferences, me("ready"))).toBeNull();
+    expect(onboardingStep(ROUTES.taste, me("ready"))).toBeNull();
+  });
+
+  test("sign up is public and sends a signed-in student home itself", () => {
+    expect(redirectFor(ROUTES.signUp, null)).toBeNull();
+    expect(redirectFor(ROUTES.signUp, me("ready"))).toBeNull();
   });
 });

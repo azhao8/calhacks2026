@@ -39,11 +39,13 @@ const scenarios = [
   { id: "s02-school-offline", screen: "S02 School", path: "/school", data: visitor(), variants: ["offline"] },
   { id: "s02-school-signed-in", screen: "S02 School", path: "/school", data: onboarding("needs_about_you", { "me:get": F.me("needs_about_you", { school: null }) }) },
   // S03 Verify email
-  { id: "s03-email", screen: "S03 Verify email", path: "/sign-in", data: visitor(), variants: [...ALL, "offline"] },
-  { id: "s03-email-invalid", screen: "S03 Verify email", path: "/sign-in", data: visitor(), script: "signInBadEmail" },
-  { id: "s03-code", screen: "S03 Verify email", path: "/sign-in", data: visitor(), script: "signInCode", variants: ALL },
-  { id: "s03-code-long-email", screen: "S03 Verify email", path: "/sign-in", data: visitor(), script: "signInCodeLong" },
-  { id: "s03-code-wrong", screen: "S03 Verify email", path: "/sign-in", data: visitor(), script: "signInWrongCode" },
+  { id: "s03-email", screen: "S03 Verify email", path: "/sign-up", data: visitor(), variants: [...ALL, "offline"] },
+  { id: "s03-sign-in", screen: "S03 Sign in", path: "/sign-in", data: visitor() },
+  { id: "s03-sign-in-code", screen: "S03 Sign in", path: "/sign-in", data: visitor(), script: "signInCode" },
+  { id: "s03-email-invalid", screen: "S03 Verify email", path: "/sign-up", data: visitor(), script: "signInBadEmail" },
+  { id: "s03-code", screen: "S03 Verify email", path: "/sign-up", data: visitor(), script: "signInCode", variants: ALL },
+  { id: "s03-code-long-email", screen: "S03 Verify email", path: "/sign-up", data: visitor(), script: "signInCodeLong" },
+  { id: "s03-code-wrong", screen: "S03 Verify email", path: "/sign-up", data: visitor(), script: "signInWrongCode" },
   // S04 About you
   { id: "s04-about-you", screen: "S04 About you", path: "/about-you", data: onboarding("needs_about_you", { "me:get": F.me("needs_about_you", { firstName: null }) }), variants: ALL },
   { id: "s04-about-you-long", screen: "S04 About you", path: "/about-you", data: onboarding("needs_about_you", { "me:get": F.me("needs_about_you", { firstName: F.LONG.firstName, email: F.LONG.email }) }) },

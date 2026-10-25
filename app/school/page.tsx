@@ -12,7 +12,7 @@ import { StateView } from "@/components/StateView";
 import { setDeviceSchool } from "@/app/_lib/device";
 import { errorCopy } from "@/app/_lib/errors";
 import { useDeviceSchool, useGate, useOnline } from "@/app/_lib/hooks";
-import { ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { BackLink, BackTo } from "@/app/_components/BackLink";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
@@ -49,7 +49,7 @@ export default function SchoolPage() {
       // A preselected school wasn't tapped, so keep it on the device here, as pick() would.
       const school = schools?.find((s) => s._id === value);
       if (school && device?.id !== value) setDeviceSchool({ id: value, themeId: school.themeId });
-      router.push(ROUTES.signIn);
+      router.push(ROUTES.signUp);
       return;
     }
     setSaving(true);
@@ -67,6 +67,7 @@ export default function SchoolPage() {
   return (
     <Screen
       object="speaker"
+      step={onboardingStep(ROUTES.school, me) ?? undefined}
       top={
         <div className="flex flex-col gap-2">
           {/* Signed in, School is a setting, so Back always leads home rather than into sign in. */}

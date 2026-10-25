@@ -6,7 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { StateView } from "@/components/StateView";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate } from "@/app/_lib/hooks";
-import { ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { useAnalysis } from "@/app/_lib/views";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
@@ -57,7 +57,7 @@ export default function AnalyzingPage() {
   // A failed job stays failed until the student retries, so both failure states keep a way forward:
   // "Try again" fetches fresh listening data (the thin snapshot was dropped), and the menu stays reachable.
   return (
-    <Screen object="cassette" menu={failed} top={<ScreenTitle>Getting to know your music</ScreenTitle>}>
+    <Screen object="cassette" menu={failed} step={onboardingStep(ROUTES.analyzing, gate.me) ?? undefined} top={<ScreenTitle>Getting to know your music</ScreenTitle>}>
       {tooLittle ? (
         <StateView
           kind="empty"
