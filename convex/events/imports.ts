@@ -282,8 +282,8 @@ export const upsertEvent = internalMutation({
       ...(textChanged ? { embedding: undefined } : {}),
     });
     if (timeChanged && !wasRejected) {
-      // INTEGRATION: stream C recomputes meetAt and cutoffAt for plans on this event, e.g.
-      // ctx.scheduler.runAfter(0, internal.plans.reconcile.eventChanged, { eventId: existing._id })
+      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
+      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId: existing._id })
     }
     const outcome = wasRejected ? "published" : priceChanged || timeChanged ? "updated" : "duplicate";
     return {

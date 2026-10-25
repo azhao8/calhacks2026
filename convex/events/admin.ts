@@ -146,8 +146,8 @@ export const pull = internalMutation({
     const event = await ctx.db.get(eventId);
     if (event === null) fail("validation_failed", "No such event");
     await ctx.db.patch(eventId, { status: "rejected", rejectReason: PULLED_REASON, featured: false });
-    // INTEGRATION: stream C closes open asks for this event with closedReason "event_pulled"
-    // and releases its plans, e.g. ctx.scheduler.runAfter(0, internal.asks.picker.eventPulled, { eventId })
+    // INTEGRATION: close asks and release plans for the pulled event (idempotent):
+    // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId })
     return null;
   },
 });
@@ -222,7 +222,8 @@ export const edit = internalMutation({
       await ctx.scheduler.runAfter(0, internal.events.admin.reembed, { eventId });
     }
     if (patch.startsAt !== undefined || patch.meetOffsetMinutes !== undefined) {
-      // INTEGRATION: stream C recomputes meetAt and cutoffAt for plans on this event.
+      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
+      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId })
     }
     return null;
   },
