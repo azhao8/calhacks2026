@@ -3,9 +3,9 @@ import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { TIMING } from "../lib/config";
 import { vEventKind, vEventStatus, vImportStatus } from "../lib/validators";
-import { directionsUrl, metersBetween } from "../lib/format";
+import { directionsUrl, metersBetween, timeLabel } from "../lib/format";
 import { fail } from "../lib/errors";
-import { scoutActorId, startRun } from "../services/apify";
+import { activeRuns, isBusyRefusal, scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
 import { ADULT_REASON, CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
 import { cleanNote, isHttpUrl } from "./checks";
@@ -345,12 +345,32 @@ export const overrideSpot = internalMutation({
   },
 });
 
-// "Find events now": starts a scout run; its webhook brings the results back.
+// "Find events now": starts a scout run unless one is already going; its webhook brings the results back.
+// A full Apify plan is an answer, not an error. Copy follows CLAUDE.md §3 (Pacific time, no exclamation marks).
 export const findNow = internalAction({
   args: { sources: v.optional(v.array(v.string())) },
-  returns: v.object({ apifyRunId: v.string() }),
+  returns: v.union(
+    v.object({ status: v.literal("started"), apifyRunId: v.string(), message: v.string() }),
+    v.object({ status: v.literal("running"), runningSince: v.number(), message: v.string() }),
+    v.object({ status: v.literal("busy"), message: v.string() }),
+  ),
   handler: async (_ctx, { sources }) => {
-    const run = await startRun(scoutActorId(), sources ? { sources } : {});
-    return { apifyRunId: run.id };
+    const actorId = scoutActorId();
+    const busy = { status: "busy" as const, message: "Apify is busy with another run. Try again in a few minutes." };
+    try {
+      const [running] = await activeRuns(actorId);
+      if (running !== undefined) {
+        return {
+          status: "running" as const,
+          runningSince: running.startedAt,
+          message: `A search is already running, started ${timeLabel(running.startedAt)}. New events land when it finishes, usually in about 8 minutes.`,
+        };
+      }
+      const run = await startRun(actorId, sources ? { sources } : {});
+      return { status: "started" as const, apifyRunId: run.id, message: "Started. New events land in about 8 minutes." };
+    } catch (error) {
+      if (isBusyRefusal(error)) return busy;
+      throw error;
+    }
   },
 });
