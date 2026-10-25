@@ -243,6 +243,18 @@ export default defineSchema({
     teamFields: v.optional(v.array(v.string())),
     // Consecutive runs that covered this event's source without seeing it; flagged at 2, reset on sight (§6.1).
     missedRuns: v.optional(v.number()),
+    // Written by the Drops release (#52). Kept declared after rolling back so events that already carry
+    // them still pass schema validation on deploy; nothing in this code reads them.
+    audienceProfile: v.optional(
+      v.object({
+        audience: v.string(),
+        labels: v.array(v.string()),
+        energy: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+        sourceKey: v.string(),
+        writtenAt: v.number(),
+      }),
+    ),
+    audienceEmbedding: v.optional(v.array(v.float64())),
   })
     .index("by_status_startsAt", ["status", "startsAt"])
     .index("by_dedupeKey", ["dedupeKey"])
