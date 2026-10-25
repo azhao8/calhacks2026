@@ -1,0 +1,1619 @@
+diff --git a/app/admin/page.tsx b/app/admin/page.tsx
+index 23383c1..29bfa19 100644
+--- a/app/admin/page.tsx
++++ b/app/admin/page.tsx
+@@ -1,21 +1,19 @@
+ "use client";
+ 
+-import { useState, type ReactNode } from "react";
+-import { useMutation, useQuery } from "convex/react";
++import { useState, type FormEvent, type ReactNode } from "react";
++import { useAction, useMutation, useQuery } from "convex/react";
+ import { api } from "@/convex/_generated/api";
+-import type { Id } from "@/convex/_generated/dataModel";
+-import { dayLabel, timeLabel } from "@/convex/lib/format";
++import type { FunctionReturnType } from "convex/server";
++import { dayLabel, priceLabel, timeLabel } from "@/convex/lib/format";
+ 
+-// S17 admin and demo (stream E). The server checks ADMIN_EMAILS on every admin function; this gate is only for display.
++// S17 admin and demo (team only). The server checks ADMIN_EMAILS on every admin function; this gate is only for display.
+ export default function AdminPage() {
+   const who = useQuery(api.admin.whoami);
+ 
+   if (who === undefined) {
+     return (
+       <Shell>
+-        <p role="status" className="text-body text-ink-muted">
+-          Loading
+-        </p>
++        <Loading />
+       </Shell>
+     );
+   }
+@@ -33,39 +31,52 @@ export default function AdminPage() {
+     <Shell>
+       <h1 className="font-display text-title text-ink">Admin</h1>
+       <Funnel />
++      <AllowList />
++      <Events />
++      <Matching />
+       <HelpNotes />
+-      <Section title="Allow-list queue">
+-        <Pending>Arrives with the onboarding backend.</Pending>
+-      </Section>
+-      <Section title="Events">
+-        <Pending>Arrives with the event agent.</Pending>
+-      </Section>
+-      <Section title="Matching">
+-        <Pending>Arrives with the matcher.</Pending>
+-      </Section>
+-      <Section title="Demo controls">
+-        <Pending>Arrives with the matcher.</Pending>
+-      </Section>
++      <Demo />
+     </Shell>
+   );
+ }
+ 
++const when = (ms: number) => `${dayLabel(ms)} · ${timeLabel(ms)}`;
++
++// Runs one server call at a time per control, keeps the button width stable, and shows failures in words.
++function useRun() {
++  const [busy, setBusy] = useState<string | null>(null);
++  const [error, setError] = useState<string | null>(null);
++  const [done, setDone] = useState<string | null>(null);
++  async function run(name: string, call: () => Promise<unknown>, doneText?: string) {
++    setBusy(name);
++    setError(null);
++    setDone(null);
++    try {
++      await call();
++      if (doneText) setDone(doneText);
++    } catch (e) {
++      setError(e instanceof Error ? e.message : "That didn't work. Try again.");
++    } finally {
++      setBusy(null);
++    }
++  }
++  return { busy, error, done, run };
++}
++
+ function Funnel() {
+   const funnel = useQuery(api.admin.funnel);
+   return (
+     <Section title="Funnel">
+-      <p className="text-small text-ink-muted">Real students only. Demo students and team accounts are left out.</p>
++      <Muted>Real students only. Demo students and team accounts are left out.</Muted>
+       {funnel === undefined ? (
+-        <p role="status" className="text-body text-ink-muted">
+-          Loading
+-        </p>
++        <Loading />
+       ) : (
+         <ol className="flex flex-col">
+           {funnel.map(({ stage, count }) => (
+-            <li key={stage} className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">
++            <Row key={stage}>
+               <span className="text-body text-ink">{stage}</span>
+               <span className="text-body-strong text-ink tabular-nums">{count}</span>
+-            </li>
++            </Row>
+           ))}
+         </ol>
+       )}
+@@ -73,70 +84,427 @@ function Funnel() {
+   );
+ }
+ 
++function AllowList() {
++  const queue = useQuery(api.admin.queue.list);
++  const markAdded = useMutation(api.admin.queue.markAdded);
++  const { busy, error, run } = useRun();
++  return (
++    <Section title="Allow-list queue">
++      {queue === undefined ? (
++        <Loading />
++      ) : (
++        <>
++          <div className="flex flex-col gap-1">
++            <p className="text-body-strong text-ink">Spotify apps</p>
++            {queue.apps.length === 0 ? <Muted>No apps yet. Add one below.</Muted> : null}
++            {queue.apps.map((app) => (
++              <Row key={app.appId}>
++                <span className="text-body text-ink">
++                  {app.label} · {app.ownerName}
++                  {app.active ? "" : " · inactive"}
++                </span>
++                <span className="text-body-strong text-ink tabular-nums">
++                  {app.used}/{app.capacity}
++                </span>
++              </Row>
++            ))}
++            {queue.flags.noCapacity > 0 ? (
++              <p className="text-small text-danger">
++                {queue.flags.noCapacity} waiting with no free app slot. Add an app or free a slot.
++              </p>
++            ) : null}
++            {queue.flags.refused > 0 ? (
++              <p className="text-small text-danger">
++                {queue.flags.refused} refused by Spotify at connect. Check the email on the app&apos;s allow-list.
++              </p>
++            ) : null}
++          </div>
++          <ul className="flex flex-col gap-3">
++            {queue.rows.length === 0 ? <Muted>Nobody has asked for access yet.</Muted> : null}
++            {queue.rows.map((row) => (
++              <li key={row.accessId} className="flex flex-col gap-2 rounded-md border border-line p-3">
++                <p className="text-body-strong text-ink">
++                  {row.firstName ?? "No name yet"} · <span className="break-all">{row.spotifyEmail}</span>
++                </p>
++                <p className="text-small text-ink-muted tabular-nums">
++                  {row.appLabel ? `${row.appLabel} (${row.appOwner})` : "No app assigned"} · asked {when(row.requestedAt)} ·{" "}
++                  {row.status}
++                  {row.refused ? " · Spotify refused" : ""}
++                </p>
++                {row.status === "requested" && row.appLabel ? (
++                  <Button
++                    busy={busy === row.accessId}
++                    onClick={() => run(row.accessId, () => markAdded({ accessId: row.accessId }))}
++                  >
++                    Mark added
++                  </Button>
++                ) : null}
++              </li>
++            ))}
++          </ul>
++          <Failure error={error} />
++          <AddSpotifyApp />
++        </>
++      )}
++    </Section>
++  );
++}
++
++function AddSpotifyApp() {
++  const upsert = useMutation(api.admin.queue.upsertSpotifyApp);
++  const { busy, error, done, run } = useRun();
++  const [label, setLabel] = useState("");
++  const [ownerName, setOwnerName] = useState("");
++  const [clientId, setClientId] = useState("");
++  return (
++    <form
++      className="flex flex-col gap-2 border-t border-line pt-3"
++      onSubmit={(event: FormEvent) => {
++        event.preventDefault();
++        void run("app", () => upsert({ label, ownerName, clientId }), "Saved. Set its client secret in Convex before anyone connects.");
++      }}
++    >
++      <p className="text-body-strong text-ink">Add or update a Spotify app</p>
++      <Field label="Label (for example melos-alex)" value={label} onChange={setLabel} />
++      <Field label="Owner's name" value={ownerName} onChange={setOwnerName} />
++      <Field label="Client ID" value={clientId} onChange={setClientId} />
++      <Button type="submit" busy={busy === "app"}>
++        Save app
++      </Button>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++    </form>
++  );
++}
++
++function Events() {
++  const [filter, setFilter] = useState<"published" | "rejected" | "flagged">("published");
++  const imports = useQuery(api.admin.events.imports, { limit: 5 });
++  const events = useQuery(
++    api.admin.events.list,
++    filter === "flagged" ? { flaggedOnly: true, limit: 100 } : { status: filter, limit: 100 },
++  );
++  const findNow = useAction(api.admin.events.findNow);
++  const { busy, error, done, run } = useRun();
++  return (
++    <Section title="Events">
++      <Button busy={busy === "find"} onClick={() => run("find", () => findNow({}), "Started an event scout run. New events arrive when it finishes.")}>
++        Find events now
++      </Button>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++
++      <p className="text-body-strong text-ink">Recent imports</p>
++      {imports === undefined ? (
++        <Loading />
++      ) : imports.length === 0 ? (
++        <Muted>No imports yet.</Muted>
++      ) : (
++        <ul className="flex flex-col gap-2">
++          {imports.map((row) => (
++            <li key={row.importId} className="text-small text-ink tabular-nums">
++              {when(row.receivedAt)} · {row.status} · {row.counts.received} received, {row.counts.published} published,{" "}
++              {row.counts.updated} updated, {row.counts.rejected} rejected, {row.counts.duplicates} duplicates
++              {row.errors.length > 0 ? <span className="block text-danger">{row.errors.slice(0, 3).join(" · ")}</span> : null}
++            </li>
++          ))}
++        </ul>
++      )}
++
++      <div className="flex flex-wrap gap-2" role="group" aria-label="Which events">
++        {(["published", "rejected", "flagged"] as const).map((option) => (
++          <button
++            key={option}
++            type="button"
++            aria-pressed={filter === option}
++            onClick={() => setFilter(option)}
++            className="min-h-12 rounded-pill border border-line-strong px-4 text-body text-ink aria-pressed:bg-accent aria-pressed:text-on-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
++          >
++            {option === "flagged" ? "Missing from runs" : option === "published" ? "Published" : "Rejected"}
++          </button>
++        ))}
++      </div>
++      {events === undefined ? (
++        <Loading />
++      ) : events.length === 0 ? (
++        <Muted>Nothing here.</Muted>
++      ) : (
++        <ul className="flex flex-col gap-3">
++          {events.map((event) => (
++            <EventRow key={event.eventId} event={event} />
++          ))}
++        </ul>
++      )}
++    </Section>
++  );
++}
++
++type ListedEvent = FunctionReturnType<typeof api.admin.events.list>[number];
++
++function EventRow({ event }: { event: ListedEvent }) {
++  const pull = useMutation(api.admin.events.pull);
++  const restore = useMutation(api.admin.events.restore);
++  const feature = useMutation(api.admin.events.feature);
++  const edit = useMutation(api.admin.events.edit);
++  const { busy, error, run } = useRun();
++  const [editing, setEditing] = useState(false);
++  const [min, setMin] = useState(event.priceMin === null ? "" : String(event.priceMin));
++  const [max, setMax] = useState(event.priceMax === null ? "" : String(event.priceMax));
++  const id = event.eventId;
++  const toPrice = (text: string) => (text.trim() === "" ? null : Number(text));
++
++  return (
++    <li className="flex flex-col gap-2 rounded-md border border-line p-3">
++      <p className="text-body-strong text-ink">
++        {event.title}
++        {event.featured ? " · featured" : ""}
++      </p>
++      <p className="text-small text-ink-muted tabular-nums">
++        {when(event.startsAt)} · {event.venueName ?? "No venue"} · {priceLabel(event.priceMin, event.priceMax)}
++        {event.priceSource ? ` (${event.priceSource})` : ""} · {event.status}
++        {event.rejectReason ? ` · ${event.rejectReason}` : ""}
++        {event.flaggedMissing ? " · missing from the last two runs" : ""}
++      </p>
++      <p className="text-small text-ink-muted">
++        {event.meetingSpot ? `Meet: ${event.meetingSpot.name} (${event.meetingSpot.chosenBy})` : "No meeting spot"} ·{" "}
++        <a href={event.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-accent underline">
++          {event.sourceName}
++        </a>
++      </p>
++      <div className="flex flex-wrap gap-2">
++        {event.pulled || event.status === "rejected" ? (
++          <Button busy={busy === "restore"} onClick={() => run("restore", () => restore({ eventId: id }))}>
++            Restore
++          </Button>
++        ) : (
++          <Button busy={busy === "pull"} onClick={() => run("pull", () => pull({ eventId: id }))}>
++            Pull
++          </Button>
++        )}
++        <Button busy={busy === "feature"} onClick={() => run("feature", () => feature({ eventId: id, featured: !event.featured }))}>
++          {event.featured ? "Unfeature" : "Feature"}
++        </Button>
++        <Button onClick={() => setEditing(!editing)}>{editing ? "Close" : "Edit price"}</Button>
++      </div>
++      {editing ? (
++        <form
++          className="flex flex-col gap-2"
++          onSubmit={(e: FormEvent) => {
++            e.preventDefault();
++            void run("edit", () => edit({ eventId: id, patch: { priceMin: toPrice(min), priceMax: toPrice(max) } }));
++          }}
++        >
++          <Field label="Lowest price in dollars (empty if not listed)" value={min} onChange={setMin} inputMode="decimal" />
++          <Field label="Highest price in dollars (empty if not listed)" value={max} onChange={setMax} inputMode="decimal" />
++          <Button type="submit" busy={busy === "edit"}>
++            Save price
++          </Button>
++        </form>
++      ) : null}
++      <Failure error={error} />
++    </li>
++  );
++}
++
++function Matching() {
++  const runs = useQuery(api.admin.matching.runs, { limit: 10 });
++  const runNow = useMutation(api.admin.matching.runNow);
++  const { busy, error, done, run } = useRun();
++  return (
++    <Section title="Matching">
++      <Button
++        busy={busy === "run"}
++        onClick={() => run("run", () => runNow({}), "Matching ran for every event with yeses.")}
++      >
++        Run matching now
++      </Button>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++      {runs === undefined ? (
++        <Loading />
++      ) : runs.length === 0 ? (
++        <Muted>No matcher runs yet.</Muted>
++      ) : (
++        <ul className="flex flex-col gap-3">
++          {runs.map((r) => (
++            <li key={r._id} className="flex flex-col gap-1 rounded-md border border-line p-3">
++              <p className="text-body-strong text-ink">{r.eventTitle}</p>
++              <p className="text-small text-ink-muted tabular-nums">
++                {when(r.startedAt)} · {r.trigger} · {r.pairsCreated} pairs, {r.seatsRefilled} refills, {r.demoFills} demo fills
++              </p>
++              {r.decisions.map((d, i) => (
++                <div key={i} className="flex flex-col gap-0.5 border-t border-line pt-2 text-small text-ink">
++                  <p className="tabular-nums">
++                    {d.aName}
++                    {d.aIsDemo ? " (demo)" : ""} and {d.bName}
++                    {d.bIsDemo ? " (demo)" : ""} · score {d.score.toFixed(3)} · similarity {d.similarity.toFixed(3)}
++                  </p>
++                  <p className="text-ink-muted">
++                    {d.shared.map((item) => `${item.name} (${item.kind}, ${item.weight.toFixed(2)})`).join(" · ") || "Nothing shared"}
++                  </p>
++                  <p className="text-ink-muted">{d.reason}</p>
++                </div>
++              ))}
++            </li>
++          ))}
++        </ul>
++      )}
++    </Section>
++  );
++}
++
+ function HelpNotes() {
+   const notes = useQuery(api.admin.helpNotes);
++  const markHandled = useMutation(api.admin.markHelpNoteHandled);
++  const { busy, error, run } = useRun();
+   return (
+     <Section title="Help notes">
++      <Muted>Read by the team. Not monitored around the clock, and not an emergency channel.</Muted>
+       {notes === undefined ? (
+-        <p role="status" className="text-body text-ink-muted">
+-          Loading
+-        </p>
++        <Loading />
+       ) : notes.length === 0 ? (
+-        <p className="text-body text-ink-muted">No notes yet.</p>
++        <Muted>No notes yet.</Muted>
+       ) : (
+         <ul className="flex flex-col gap-3">
+           {notes.map((note) => (
+             <li key={note._id} className="flex flex-col gap-2 rounded-md border border-line p-3">
+               <p className="text-caption text-ink-muted tabular-nums">
+-                {dayLabel(note.createdAt)} · {timeLabel(note.createdAt)} · {note.firstName ?? "No name yet"} ·{" "}
+-                {note.email ?? "No email"}
++                {when(note.createdAt)} · {note.firstName ?? "No name yet"} · {note.email ?? "No email"}
+                 {note.isDemo ? " · demo" : ""}
+               </p>
+               <p className="text-body whitespace-pre-wrap text-ink">{note.text}</p>
+               {note.handledAt === null ? (
+-                <MarkHandled noteId={note._id} />
++                <Button busy={busy === note._id} onClick={() => run(note._id, () => markHandled({ noteId: note._id }))}>
++                  Mark handled
++                </Button>
+               ) : (
+-                <p className="text-small text-ink-muted">Handled</p>
++                <Muted>Handled</Muted>
+               )}
+             </li>
+           ))}
+         </ul>
+       )}
++      <Failure error={error} />
+     </Section>
+   );
+ }
+ 
+-function MarkHandled({ noteId }: { noteId: Id<"helpNotes"> }) {
+-  const markHandled = useMutation(api.admin.markHelpNoteHandled);
+-  const [pending, setPending] = useState(false);
+-  const [failed, setFailed] = useState(false);
++const HOUR = 60 * 60 * 1000;
++
++function Demo() {
++  const overview = useQuery(api.admin.demo.overview);
++  const seed = useMutation(api.admin.demo.seed);
++  const reset = useMutation(api.admin.demo.reset);
++  const setClock = useMutation(api.admin.demo.setClockOffset);
++  const actAs = useMutation(api.admin.demo.actAs);
++  const { busy, error, done, run } = useRun();
++  const [confirmReset, setConfirmReset] = useState(false);
++  const [hours, setHours] = useState("");
++
+   return (
+-    <div className="flex flex-col items-start gap-1">
+-      <button
+-        type="button"
+-        disabled={pending}
+-        aria-busy={pending}
+-        onClick={async () => {
+-          setPending(true);
+-          setFailed(false);
+-          try {
+-            await markHandled({ noteId });
+-          } catch {
+-            setFailed(true);
+-          } finally {
+-            setPending(false);
+-          }
+-        }}
+-        className="min-h-12 min-w-40 rounded-pill border border-line-strong px-4 text-body-strong text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60"
+-      >
+-        Mark handled
+-      </button>
+-      {failed ? (
+-        <p role="alert" className="text-small text-danger">
+-          Couldn&apos;t save that. Try again.
++    <Section title="Demo controls">
++      <Muted>These touch only demo students and demo plans. Plans with a real student always keep real time.</Muted>
++      <div className="flex flex-wrap gap-2">
++        <Button busy={busy === "seed"} onClick={() => run("seed", () => seed({}), "Demo students seeded. Their taste summaries take a minute or two.")}>
++          Seed demo students
++        </Button>
++        {confirmReset ? (
++          <>
++            <Button
++              busy={busy === "reset"}
++              onClick={() =>
++                run("reset", async () => {
++                  await reset({});
++                  setConfirmReset(false);
++                }, "Demo reset. Seats demo students held next to real students reopened.")
++              }
++            >
++              Yes, reset demo
++            </Button>
++            <Button onClick={() => setConfirmReset(false)}>Keep it</Button>
++          </>
++        ) : (
++          <Button onClick={() => setConfirmReset(true)}>Reset demo</Button>
++        )}
++      </div>
++
++      <div className="flex flex-col gap-2 border-t border-line pt-3">
++        <p className="text-body-strong text-ink tabular-nums">
++          Demo clock: {overview === undefined ? "loading" : overview.clockOffsetMs === 0 ? "real time" : `${(overview.clockOffsetMs / HOUR).toFixed(1)} hours ahead`}
+         </p>
+-      ) : null}
+-    </div>
++        <div className="flex flex-wrap gap-2">
++          {[0, 1, 24].map((h) => (
++            <Button key={h} busy={busy === `clock-${h}`} onClick={() => run(`clock-${h}`, () => setClock({ offsetMs: h * HOUR }))}>
++              {h === 0 ? "Real time" : `${h} ${h === 1 ? "hour" : "hours"} ahead`}
++            </Button>
++          ))}
++        </div>
++        <form
++          className="flex flex-col gap-2"
++          onSubmit={(e: FormEvent) => {
++            e.preventDefault();
++            const value = Number(hours);
++            if (Number.isFinite(value)) void run("clock-custom", () => setClock({ offsetMs: value * HOUR }));
++          }}
++        >
++          <Field label="Hours ahead" value={hours} onChange={setHours} inputMode="decimal" />
++          <Button type="submit" busy={busy === "clock-custom"}>
++            Set demo clock
++          </Button>
++        </form>
++      </div>
++
++      <div className="flex flex-col gap-2 border-t border-line pt-3">
++        <p className="text-body-strong text-ink">Act as a demo student</p>
++        {overview === undefined ? (
++          <Loading />
++        ) : overview.students.length === 0 ? (
++          <Muted>No demo students yet. Seed them above.</Muted>
++        ) : (
++          <ul className="flex flex-col gap-3">
++            {overview.students.map((student) => (
++              <li key={student.userId} className="flex flex-col gap-2 rounded-md border border-line p-3">
++                <p className="text-body-strong text-ink">
++                  {student.firstName} · {student.onboarding ?? "no state"}
++                </p>
++                {student.seats.length === 0 ? <Muted>No seat right now.</Muted> : null}
++                {student.seats.map((seat) => (
++                  <div key={seat.seatId} className="flex flex-col gap-2">
++                    <p className="text-small text-ink-muted">
++                      {seat.eventTitle} · seat {seat.seat} · ticket {seat.ticket} · plan {seat.planStatus}
++                    </p>
++                    <div className="flex flex-wrap gap-2">
++                      {(
++                        [
++                          ["accept", "Accept"],
++                          ["next_time", "Next time"],
++                          ["cant_make_it", "Can't make it"],
++                          ["got_ticket", "Got ticket"],
++                        ] as const
++                      ).map(([action, label]) => (
++                        <Button
++                          key={action}
++                          busy={busy === `${seat.seatId}-${action}`}
++                          onClick={() =>
++                            run(`${seat.seatId}-${action}`, () =>
++                              actAs({ userId: student.userId, action, seatId: seat.seatId }),
++                            )
++                          }
++                        >
++                          {label}
++                        </Button>
++                      ))}
++                    </div>
++                  </div>
++                ))}
++              </li>
++            ))}
++          </ul>
++        )}
++      </div>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++    </Section>
+   );
+ }
+ 
+@@ -153,6 +521,75 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
+   );
+ }
+ 
+-function Pending({ children }: { children: ReactNode }) {
+-  return <p className="text-body text-ink-muted">{children}</p>;
++function Row({ children }: { children: ReactNode }) {
++  return <li className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">{children}</li>;
++}
++
++function Muted({ children }: { children: ReactNode }) {
++  return <p className="text-small text-ink-muted">{children}</p>;
++}
++
++function Loading() {
++  return (
++    <p role="status" className="text-body text-ink-muted">
++      Loading
++    </p>
++  );
++}
++
++function Failure({ error }: { error: string | null }) {
++  if (error === null) return null;
++  return (
++    <p role="alert" className="text-small text-danger">
++      {error}
++    </p>
++  );
++}
++
++function Button({
++  children,
++  onClick,
++  busy = false,
++  type = "button",
++}: {
++  children: ReactNode;
++  onClick?: () => void;
++  busy?: boolean;
++  type?: "button" | "submit";
++}) {
++  return (
++    <button
++      type={type}
++      onClick={onClick}
++      disabled={busy}
++      aria-busy={busy}
++      className="min-h-12 min-w-32 self-start rounded-pill border border-line-strong px-4 text-body-strong text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60"
++    >
++      {children}
++    </button>
++  );
++}
++
++function Field({
++  label,
++  value,
++  onChange,
++  inputMode,
++}: {
++  label: string;
++  value: string;
++  onChange: (value: string) => void;
++  inputMode?: "decimal" | "text";
++}) {
++  return (
++    <label className="flex flex-col gap-1 text-small text-ink">
++      {label}
++      <input
++        value={value}
++        inputMode={inputMode}
++        onChange={(e) => onChange(e.target.value)}
++        className="min-h-12 rounded-md border border-line-strong bg-canvas px-3 text-body text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
++      />
++    </label>
++  );
+ }
+diff --git a/convex/admin/demo.ts b/convex/admin/demo.ts
+new file mode 100644
+index 0000000..0f040b0
+--- /dev/null
++++ b/convex/admin/demo.ts
+@@ -0,0 +1,80 @@
++import { mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import { demoClockOffsetMs } from "../lib/clock";
++import { heldSeats } from "../plans/model";
++import type { actAs as actAsFn, reset as resetFn, seed as seedFn, setClockOffset as setClockOffsetFn } from "../demo/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 demo controls (§6.7). They touch only demo records; the internal functions enforce that too.
++// Team only: every function checks ADMIN_EMAILS on the server.
++
++// The demo students, what each holds right now (for "act as"), and the demo clock offset.
++export const overview = query({
++  args: {},
++  handler: async (ctx) => {
++    await requireAdmin(ctx);
++    const users = await ctx.db
++      .query("users")
++      .withIndex("by_demoKey", (q) => q.gt("demoKey", ""))
++      .collect();
++    const students = await Promise.all(
++      users
++        .filter((user) => user.isDemo === true)
++        .map(async (user) => {
++          const seats = await Promise.all(
++            (await heldSeats(ctx.db, user._id)).map(async ({ seat, plan }) => {
++              const event = await ctx.db.get(plan.eventId);
++              return {
++                seatId: seat._id,
++                seat: seat.seat,
++                ticket: seat.ticket,
++                planStatus: plan.status,
++                eventTitle: event?.title ?? "Unknown event",
++              };
++            }),
++          );
++          return { userId: user._id, firstName: user.firstName ?? "Demo", onboarding: user.onboarding ?? null, seats };
++        }),
++    );
++    return { students, clockOffsetMs: await demoClockOffsetMs(ctx.db) };
++  },
++});
++
++export const seed = mutation({
++  args: {},
++  handler: async (ctx): Promise<ReturnsOf<typeof seedFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.seed, {});
++  },
++});
++
++export const reset = mutation({
++  args: {},
++  handler: async (ctx): Promise<ReturnsOf<typeof resetFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.reset, {});
++  },
++});
++
++// Moves the demo clock for demo plans only; plans with a real student keep real time.
++export const setClockOffset = mutation({
++  args: { offsetMs: v.number() },
++  handler: async (ctx, { offsetMs }): Promise<ReturnsOf<typeof setClockOffsetFn>> => {
++    const admin = await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.setClockOffset, { offsetMs, updatedBy: admin.email ?? "team" });
++  },
++});
++
++export const actAs = mutation({
++  args: {
++    userId: v.id("users"),
++    action: v.union(v.literal("accept"), v.literal("next_time"), v.literal("cant_make_it"), v.literal("got_ticket")),
++    seatId: v.optional(v.id("meetupMembers")),
++  },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof actAsFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.actAs, args);
++  },
++});
+diff --git a/convex/admin/events.ts b/convex/admin/events.ts
+new file mode 100644
+index 0000000..35a12ca
+--- /dev/null
++++ b/convex/admin/events.ts
+@@ -0,0 +1,114 @@
++import { action, internalQuery, mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import { vEventKind, vEventStatus } from "../lib/validators";
++import type { edit as editFn, feature as featureFn, findNow as findNowFn, imports as importsFn, list as listFn, overrideSpot as overrideSpotFn, pull as pullFn, restore as restoreFn } from "../events/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 events: imports, the catalog, and the team's controls. Team only: every function checks
++// ADMIN_EMAILS on the server.
++
++export const imports = query({
++  args: { limit: v.optional(v.number()) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof importsFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.events.admin.imports, args);
++  },
++});
++
++export const list = query({
++  args: {
++    status: v.optional(vEventStatus),
++    flaggedOnly: v.optional(v.boolean()),
++    includePast: v.optional(v.boolean()),
++    limit: v.optional(v.number()),
++  },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof listFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.events.admin.list, args);
++  },
++});
++
++export const pull = mutation({
++  args: { eventId: v.id("events") },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof pullFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.pull, args);
++  },
++});
++
++export const restore = mutation({
++  args: { eventId: v.id("events") },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof restoreFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.restore, args);
++  },
++});
++
++export const feature = mutation({
++  args: { eventId: v.id("events"), featured: v.boolean() },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof featureFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.feature, args);
++  },
++});
++
++// Edit any field, such as filling in a price the agent couldn't find.
++export const edit = mutation({
++  args: {
++    eventId: v.id("events"),
++    patch: v.object({
++      title: v.optional(v.string()),
++      kind: v.optional(vEventKind),
++      startsAt: v.optional(v.number()),
++      priceMin: v.optional(v.union(v.number(), v.null())),
++      priceMax: v.optional(v.union(v.number(), v.null())),
++      ticketUrl: v.optional(v.union(v.string(), v.null())),
++      freeEntryNote: v.optional(v.union(v.string(), v.null())),
++      performers: v.optional(v.array(v.string())),
++      tags: v.optional(v.array(v.string())),
++      ageLimit: v.optional(v.union(v.number(), v.null())),
++      meetOffsetMinutes: v.optional(v.number()),
++    }),
++  },
++  handler: async (ctx, { eventId, patch }): Promise<ReturnsOf<typeof editFn>> => {
++    const admin = await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.edit, { eventId, patch, editedBy: admin.email ?? "team" });
++  },
++});
++
++// The team overrides a venue's meeting spot (§6.1).
++export const overrideSpot = mutation({
++  args: {
++    venueId: v.id("venues"),
++    name: v.string(),
++    howToFind: v.string(),
++    lat: v.number(),
++    lng: v.number(),
++    meetOffsetMinutes: v.optional(v.number()),
++  },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof overrideSpotFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.overrideSpot, args);
++  },
++});
++
++// Actions can't read the database, so the admin check runs as a query with the caller's identity.
++export const assertAdmin = internalQuery({
++  args: {},
++  returns: v.null(),
++  handler: async (ctx) => {
++    await requireAdmin(ctx);
++    return null;
++  },
++});
++
++// "Find events now": starts an event scout run on Apify. Its webhook brings the results back.
++export const findNow = action({
++  args: { sources: v.optional(v.array(v.string())) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof findNowFn>> => {
++    await ctx.runQuery(internal.admin.events.assertAdmin, {});
++    return await ctx.runAction(internal.events.admin.findNow, args);
++  },
++});
+diff --git a/convex/admin/matching.ts b/convex/admin/matching.ts
+new file mode 100644
+index 0000000..e0de0b6
+--- /dev/null
++++ b/convex/admin/matching.ts
+@@ -0,0 +1,26 @@
++import { mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import type { runNow as runNowFn, runs as runsFn } from "../matching/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 matching: "Run matching now" and the matching inspector. Team only: every function checks
++// ADMIN_EMAILS on the server.
++
++export const runNow = mutation({
++  args: { eventId: v.optional(v.id("events")) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof runNowFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.matching.admin.runNow, args);
++  },
++});
++
++// Recent runs with each pair's similarity, shared items and their rarity weights, and the reason.
++export const runs = query({
++  args: { eventId: v.optional(v.id("events")), limit: v.optional(v.number()) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof runsFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.matching.admin.runs, args);
++  },
++});
+diff --git a/convex/admin/queue.ts b/convex/admin/queue.ts
+new file mode 100644
+index 0000000..e5c2f88
+--- /dev/null
++++ b/convex/admin/queue.ts
+@@ -0,0 +1,34 @@
++import { mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import type { markAdded as markAddedFn, queue as queueFn, upsertSpotifyApp as upsertSpotifyAppFn } from "../onboarding/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 allow-list queue. Team only: every function checks ADMIN_EMAILS on the server.
++
++export const list = query({
++  args: {},
++  handler: async (ctx): Promise<ReturnsOf<typeof queueFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.onboarding.admin.queue, {});
++  },
++});
++
++// "Mark added": the app owner added this Spotify email to their app. Sends the ready email once.
++export const markAdded = mutation({
++  args: { accessId: v.id("spotifyAccess") },
++  handler: async (ctx, { accessId }): Promise<ReturnsOf<typeof markAddedFn>> => {
++    const admin = await requireAdmin(ctx);
++    return await ctx.runMutation(internal.onboarding.admin.markAdded, { accessId, adminEmail: admin.email ?? "team" });
++  },
++});
++
++// Registers or updates a teammate's Spotify app. Client IDs aren't secret; client secrets stay in Convex env vars.
++export const upsertSpotifyApp = mutation({
++  args: { label: v.string(), ownerName: v.string(), clientId: v.string(), active: v.optional(v.boolean()) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof upsertSpotifyAppFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.onboarding.admin.upsertSpotifyApp, args);
++  },
++});
+diff --git a/convex/admin/wrappers.test.ts b/convex/admin/wrappers.test.ts
+new file mode 100644
+index 0000000..ebe20af
+--- /dev/null
++++ b/convex/admin/wrappers.test.ts
+@@ -0,0 +1,94 @@
++/// <reference types="vite/client" />
++import { convexTest } from "convex-test";
++import { afterEach, beforeEach, expect, test, vi } from "vitest";
++import schema from "../schema";
++import { api } from "../_generated/api";
++import type { Id } from "../_generated/dataModel";
++
++const modules = import.meta.glob("/convex/**/*.ts");
++
++const TEAM_EMAIL = "team@berkeley.edu";
++
++beforeEach(() => {
++  vi.stubEnv("ADMIN_EMAILS", TEAM_EMAIL);
++});
++afterEach(() => {
++  vi.unstubAllEnvs();
++});
++
++async function users(t: ReturnType<typeof convexTest>) {
++  return t.run(async (ctx) => ({
++    team: await ctx.db.insert("users", { email: TEAM_EMAIL, verifiedAt: 1, onboarding: "ready" }),
++    student: await ctx.db.insert("users", { email: "student@berkeley.edu", verifiedAt: 1, onboarding: "ready" }),
++  }));
++}
++
++const as = (t: ReturnType<typeof convexTest>, userId: Id<"users">) => t.withIdentity({ subject: `${userId}|session` });
++
++test("every admin wrapper refuses a student who isn't on the team list", async () => {
++  const t = convexTest(schema, modules);
++  const { student } = await users(t);
++  const s = as(t, student);
++  // Real rows, so every call gets past argument validation to the admin check itself.
++  const { someEvent, someAccess } = await t.run(async (ctx) => ({
++    someAccess: await ctx.db.insert("spotifyAccess", {
++      userId: student,
++      spotifyEmail: "student@example.com",
++      status: "requested",
++      requestedAt: 1,
++    }),
++    someEvent: await ctx.db.insert("events", {
++      title: "Show",
++      kind: "concert",
++      startsAt: Date.now() + 86_400_000,
++      priceMin: null,
++      priceMax: null,
++      priceSource: null,
++      sourceName: "test",
++      sourceUrl: "https://example.com",
++      performers: [],
++      tags: [],
++      ageLimit: null,
++      meetOffsetMinutes: 30,
++      status: "published",
++      featured: false,
++      dedupeKey: "show",
++      scrapedAt: 1,
++      lastSeenAt: 1,
++    }),
++  }));
++
++  const calls: [string, () => Promise<unknown>][] = [
++    ["queue.list", () => s.query(api.admin.queue.list, {})],
++    ["queue.markAdded", () => s.mutation(api.admin.queue.markAdded, { accessId: someAccess })],
++    ["queue.upsertSpotifyApp", () => s.mutation(api.admin.queue.upsertSpotifyApp, { label: "x", ownerName: "x", clientId: "x" })],
++    ["events.imports", () => s.query(api.admin.events.imports, {})],
++    ["events.list", () => s.query(api.admin.events.list, {})],
++    ["events.pull", () => s.mutation(api.admin.events.pull, { eventId: someEvent })],
++    ["events.restore", () => s.mutation(api.admin.events.restore, { eventId: someEvent })],
++    ["events.feature", () => s.mutation(api.admin.events.feature, { eventId: someEvent, featured: true })],
++    ["events.edit", () => s.mutation(api.admin.events.edit, { eventId: someEvent, patch: {} })],
++    ["events.findNow", () => s.action(api.admin.events.findNow, {})],
++    ["matching.runNow", () => s.mutation(api.admin.matching.runNow, {})],
++    ["matching.runs", () => s.query(api.admin.matching.runs, {})],
++    ["demo.overview", () => s.query(api.admin.demo.overview, {})],
++    ["demo.seed", () => s.mutation(api.admin.demo.seed, {})],
++    ["demo.reset", () => s.mutation(api.admin.demo.reset, {})],
++    ["demo.setClockOffset", () => s.mutation(api.admin.demo.setClockOffset, { offsetMs: 0 })],
++    ["demo.actAs", () => s.mutation(api.admin.demo.actAs, { userId: student, action: "accept" })],
++  ];
++  for (const [name, call] of calls) {
++    await expect(call(), name).rejects.toThrow(/forbidden/);
++  }
++  await expect(t.query(api.admin.queue.list, {})).rejects.toThrow(/not_signed_in/);
++});
++
++test("team accounts can read the admin views", async () => {
++  const t = convexTest(schema, modules);
++  const { team } = await users(t);
++  const a = as(t, team);
++  expect(await a.query(api.admin.queue.list, {})).toMatchObject({ rows: [], apps: [] });
++  expect(await a.query(api.admin.events.list, {})).toEqual([]);
++  expect(await a.query(api.admin.matching.runs, {})).toEqual([]);
++  expect(await a.query(api.admin.demo.overview, {})).toEqual({ students: [], clockOffsetMs: 0 });
++});
+diff --git a/convex/demo.test.ts b/convex/demo.test.ts
+index 3430728..2e8dafb 100644
+--- a/convex/demo.test.ts
++++ b/convex/demo.test.ts
+@@ -24,6 +24,8 @@ describe("demo students", () => {
+   test("seeding creates six fictional students with .invalid emails and confirmed taste; it's idempotent", async () => {
+     const t = await setup();
+     expect(await t.mutation(internal.demo.admin.seed, {})).toEqual({ created: 6, updated: 0 });
++    // Claude is unavailable in this file, so the fixture summaries stand in after the fallback wait.
++    await advance(t, 3 * MINUTE);
+     expect(await t.mutation(internal.demo.admin.seed, {})).toEqual({ created: 0, updated: 6 });
+     const users = await demoUsers(t);
+     expect(users).toHaveLength(6);
+diff --git a/convex/demo/admin.ts b/convex/demo/admin.ts
+index 6d38d06..92d46b9 100644
+--- a/convex/demo/admin.ts
++++ b/convex/demo/admin.ts
+@@ -17,7 +17,8 @@ import {
+   setTicketGot,
+ } from "../plans/model";
+ import { reconcilePlan } from "../plans/reconcile";
+-import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoSnapshot } from "./fixtures";
++import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoListening } from "./fixtures";
++import { TIMING } from "../lib/config";
+ 
+ // Demo controls for S17 (§6.7). These touch only demo records. The admin page wraps them in
+ // server-checked ADMIN_EMAILS functions.
+@@ -81,40 +82,57 @@ async function seedDemoStudents(ctx: MutationCtx): Promise<{ created: number; up
+       if (existingPrefs) await ctx.db.patch(existingPrefs._id, prefs);
+       else await ctx.db.insert("preferences", prefs);
+ 
+-      // The generated data stands in for the Spotify fetch.
+-      const snapshot = { userId, source: "demo_fixture" as const, ...demoSnapshot(fixture), fetchedAt: now };
+-      const existingSnapshot = await ctx.db
+-        .query("tasteSnapshots")
+-        .withIndex("by_userId", (q) => q.eq("userId", userId))
+-        .first();
+-      if (existingSnapshot) await ctx.db.replace(existingSnapshot._id, snapshot);
+-      else await ctx.db.insert("tasteSnapshots", snapshot);
+-
+-      // INTEGRATION: once stream A's PR #9 is on main, replace this direct write with
+-      // internal.onboarding.analysis.analyzeFixture({ userId, listening }) and then
+-      // internal.onboarding.analysis.confirmForUser({ userId }) (Claude summary from the fixed label list,
+-      // then the Voyage vector). Until then demo students have no vector and match on exact items.
++      // The generated data stands in for the Spotify fetch: demo students go through the same pipeline as
++      // real ones (Claude summary from the fixed label list, then the Voyage vector), and onboarding confirms
++      // them when the summary is done, which makes them ready and picks their first asks.
+       const existingProfile = await ctx.db
+         .query("tasteProfiles")
+         .withIndex("by_userId", (q) => q.eq("userId", userId))
+         .unique();
+-      const profile = {
++      if (existingProfile?.confirmedAt !== undefined) {
++        await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
++        continue;
++      }
++      await ctx.db.patch(userId, { onboarding: "analyzing" });
++      await ctx.runMutation(internal.onboarding.analysis.analyzeFixture, { userId, listening: demoListening(fixture) });
++      // If Claude can't write the summary in time, the fixture's own summary stands in, so demo fill never waits on it.
++      await ctx.scheduler.runAfter(TIMING.demoProfileFallbackMs, internal.demo.admin.ensureProfile, {
++        userId,
++        key: fixture.key,
++      });
++    }
++    return { created, updated };
++  }
++}
++
++// The fallback for a demo student whose Claude summary didn't finish (for example while the Claude key is
++// missing): the fixture's summary and labels, in the same fingerprint onboarding builds, then the usual confirm.
++export const ensureProfile = internalMutation({
++  args: { userId: v.id("users"), key: v.string() },
++  returns: v.null(),
++  handler: async (ctx, { userId, key }) => {
++    const user = await ctx.db.get(userId);
++    const fixture = DEMO_FIXTURES.find((candidate) => candidate.key === key);
++    if (user === null || user.isDemo !== true || fixture === undefined) return null;
++    const profile = await ctx.db
++      .query("tasteProfiles")
++      .withIndex("by_userId", (q) => q.eq("userId", userId))
++      .unique();
++    if (profile?.confirmedAt !== undefined) return null;
++    if (profile === null) {
++      await ctx.db.insert("tasteProfiles", {
+         userId,
+         summary: fixture.summary,
+         labels: fixture.labels,
+         artists: fixture.topArtists.slice(0, 5),
+         revision: 0,
+-        confirmedAt: now,
+         fingerprint: demoFingerprint(fixture),
+-      };
+-      if (existingProfile) await ctx.db.patch(existingProfile._id, profile);
+-      else await ctx.db.insert("tasteProfiles", profile);
+-
+-      await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
++      });
+     }
+-    return { created, updated };
+-  }
+-}
++    await ctx.runMutation(internal.onboarding.analysis.confirmForUser, { userId });
++    return null;
++  },
++});
+ 
+ async function demoUsers(ctx: MutationCtx): Promise<Doc<"users">[]> {
+   const users = await ctx.db
+diff --git a/convex/demo/fixtures.ts b/convex/demo/fixtures.ts
+index c41c5b6..a5db931 100644
+--- a/convex/demo/fixtures.ts
++++ b/convex/demo/fixtures.ts
+@@ -1,5 +1,5 @@
+ import type { Doc } from "../_generated/dataModel";
+-import { normalizeName } from "../matching/taste";
++import { normalizeName, normalizeTrackKey } from "../lib/normalize";
+ 
+ // Six demo students with fictional first names and generated, Spotify-like listening data (§6.7).
+ // Their emails use the reserved .invalid domain, so nobody is ever emailed. They share only phone
+@@ -82,7 +82,7 @@ export const DEMO_FIXTURES: DemoFixture[] = [
+     gender: "prefer_not_to_say",
+     year: "second",
+     summary: "Reggaeton and Latin pop with a love for anything you can dance to.",
+-    labels: ["reggaeton", "latin pop", "urbano latino"],
++    labels: ["reggaeton", "latin pop", "latin trap"],
+     topArtists: ["Bad Bunny", "Karol G", "Rosalía", "Peso Pluma", "Rauw Alejandro", "J Balvin", "Kali Uchis", "Feid", "Tainy", "Dua Lipa"],
+     topTracks: [["Tití Me Preguntó", "Bad Bunny"], ["Provenza", "Karol G"], ["Despechá", "Rosalía"], ["Ella Baila Sola", "Peso Pluma"], ["Todo de Ti", "Rauw Alejandro"], ["Normal", "Feid"]],
+     likedSongs: [["Mi Gente", "J Balvin"], ["Telepatía", "Kali Uchis"], ["Me Porto Bonito", "Bad Bunny"], ["Levitating", "Dua Lipa"], ["Safaera", "Bad Bunny"]],
+@@ -104,8 +104,20 @@ function slug(text: string): string {
+   return normalizeName(text).replace(/ /g, "-");
+ }
+ 
++// The same key real students get from their Spotify data (lib/normalize), so demo and real tracks can match.
+ export function trackKey(name: string, artist: string): string {
+-  return `${normalizeName(name)} | ${normalizeName(artist)}`;
++  return normalizeTrackKey(name, [artist]);
++}
++
++// The same stand-in in the shape of a Spotify fetch, for onboarding's analyzeFixture (no normalized fields:
++// onboarding derives them itself, exactly as it does for real students).
++export function demoListening(fixture: DemoFixture) {
++  const snapshot = demoSnapshot(fixture);
++  return {
++    topArtists: snapshot.topArtists.map(({ spotifyId, name, genres, rank, range }) => ({ spotifyId, name, genres, rank, range })),
++    topTracks: snapshot.topTracks.map(({ spotifyId, name, artistNames, rank, range }) => ({ spotifyId, name, artistNames, rank, range })),
++    likedSongs: snapshot.likedSongs,
++  };
+ }
+ 
+ // The generated stand-in for a Spotify fetch, in the tasteSnapshots shape.
+diff --git a/convex/demoPipeline.test.ts b/convex/demoPipeline.test.ts
+new file mode 100644
+index 0000000..8c58326
+--- /dev/null
++++ b/convex/demoPipeline.test.ts
+@@ -0,0 +1,52 @@
++/// <reference types="vite/client" />
++import { afterEach, expect, test, vi } from "vitest";
++import { internal } from "./_generated/api";
++import { DEMO_FIXTURES } from "./demo/fixtures";
++import { TASTE_LABELS } from "./ai/labels";
++import { EMBEDDING } from "./lib/config";
++import { advance, setup } from "./testing.helpers";
++
++// Demo students go through the same Claude summary and Voyage vector as real students (§6.7), and
++// onboarding confirms them when the summary is done: well before the fixture fallback would fire.
++
++const SUMMARY = "Warm, lyric heavy indie with a soft spot for live folk.";
++
++vi.mock("./services/claude", () => ({
++  generateJson: vi.fn(async () => ({
++    summary: SUMMARY,
++    labels: TASTE_LABELS.slice(0, 3),
++    // validateTaste keeps only names in each student's own data, so every student keeps their own.
++    artists: DEMO_FIXTURES.map((fixture) => fixture.topArtists[0]),
++  })),
++}));
++
++vi.mock("./services/voyage", () => ({
++  embed: vi.fn(async (texts: string[]) => texts.map(() => Array.from({ length: EMBEDDING.dimensions }, () => 0.01))),
++}));
++
++afterEach(() => {
++  vi.useRealTimers();
++});
++
++test("seeded demo students get a Claude summary and a vector through onboarding, then become ready", async () => {
++  const t = await setup();
++  await t.mutation(internal.demo.admin.seed, {});
++
++  // Well inside the fallback window: only the real pipeline can have confirmed them.
++  await advance(t, 30_000);
++
++  const { users, profiles } = await t.run(async (ctx) => ({
++    users: (await ctx.db.query("users").collect()).filter((user) => user.isDemo),
++    profiles: await ctx.db.query("tasteProfiles").collect(),
++  }));
++  expect(users).toHaveLength(6);
++  expect(users.every((user) => user.onboarding === "ready")).toBe(true);
++  const demoProfiles = profiles.filter((profile) => users.some((user) => user._id === profile.userId));
++  expect(demoProfiles).toHaveLength(6);
++  for (const profile of demoProfiles) {
++    expect(profile.summary).toBe(SUMMARY);
++    expect(profile.confirmedAt).toEqual(expect.any(Number));
++    expect(profile.embedding).toHaveLength(EMBEDDING.dimensions);
++    expect(profile.artists.length).toBeGreaterThan(0);
++  }
++});
+diff --git a/convex/events/admin.ts b/convex/events/admin.ts
+index 2c4dc69..9b4fb5e 100644
+--- a/convex/events/admin.ts
++++ b/convex/events/admin.ts
+@@ -146,8 +146,8 @@ export const pull = internalMutation({
+     const event = await ctx.db.get(eventId);
+     if (event === null) fail("validation_failed", "No such event");
+     await ctx.db.patch(eventId, { status: "rejected", rejectReason: PULLED_REASON, featured: false });
+-    // INTEGRATION: close asks and release plans for the pulled event (idempotent):
+-    // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId })
++    // Closes its open asks, withdraws offers, and calls off its plans, in the same transaction.
++    await ctx.runMutation(internal.plans.release.forEvent, { eventId });
+     return null;
+   },
+ });
+@@ -222,8 +222,8 @@ export const edit = internalMutation({
+       await ctx.scheduler.runAfter(0, internal.events.admin.reembed, { eventId });
+     }
+     if (patch.startsAt !== undefined || patch.meetOffsetMinutes !== undefined) {
+-      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
+-      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId })
++      // Plans on this event move their meeting time and cutoff, and reconcile right away.
++      await ctx.runMutation(internal.plans.retime.forEvent, { eventId });
+     }
+     return null;
+   },
+diff --git a/convex/events/imports.ts b/convex/events/imports.ts
+index 0dc7cc2..1c691dc 100644
+--- a/convex/events/imports.ts
++++ b/convex/events/imports.ts
+@@ -238,8 +238,8 @@ export const upsertEvent = internalMutation({
+       const wasPublished = existing.status === "published";
+       await ctx.db.patch(existing._id, { ...seen, status: "rejected", rejectReason, featured: false });
+       if (wasPublished) {
+-        // INTEGRATION: stream C releases seats and closes asks for an event that left the catalog:
+-        // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId: existing._id })
++        // It left the catalog (now 21+): close its asks, withdraw offers, and call off its plans.
++        await ctx.runMutation(internal.plans.release.forEvent, { eventId: existing._id });
+       }
+       return { outcome: "rejected" as const, eventId: existing._id, needsEmbedding: false };
+     }
+@@ -282,8 +282,8 @@ export const upsertEvent = internalMutation({
+       ...(textChanged ? { embedding: undefined } : {}),
+     });
+     if (timeChanged && !wasRejected) {
+-      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
+-      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId: existing._id })
++      // Plans on this event move their meeting time and cutoff, and reconcile right away.
++      await ctx.runMutation(internal.plans.retime.forEvent, { eventId: existing._id });
+     }
+     const outcome = wasRejected ? "published" : priceChanged || timeChanged ? "updated" : "duplicate";
+     return {
+@@ -358,7 +358,7 @@ export const finish = internalMutation({
+   handler: async (ctx, { importId, counts, errors }) => {
+     await ctx.db.patch(importId, { status: "done", counts, errors: errors.slice(0, 50), finishedAt: Date.now() });
+     if (counts.published > 0) {
+-      // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
++      await ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
+     }
+     return null;
+   },
+diff --git a/convex/http.ts b/convex/http.ts
+index 1816e5b..373a0ec 100644
+--- a/convex/http.ts
++++ b/convex/http.ts
+@@ -1,8 +1,12 @@
+ import { httpRouter } from "convex/server";
+ import { auth } from "./auth";
++import { apifyWebhook } from "./events/webhook";
+ 
+ const http = httpRouter();
+ 
+ auth.addHttpRoutes(http);
+ 
++// Apify calls this when an event scout run succeeds (§6.1); the handler checks the shared secret.
++http.route({ path: "/apify/webhook", method: "POST", handler: apifyWebhook });
++
+ export default http;
+diff --git a/convex/integration.test.ts b/convex/integration.test.ts
+new file mode 100644
+index 0000000..a8de9bc
+--- /dev/null
++++ b/convex/integration.test.ts
+@@ -0,0 +1,52 @@
++import { describe, expect, test } from "vitest";
++import { DEMO_FIXTURES, demoFingerprint, demoSnapshot } from "./demo/fixtures";
++import { fingerprint } from "./onboarding/snapshot";
++import { normalizeName, normalizeTrackKey } from "./lib/normalize";
++import { normalizeName as matchingNormalizeName } from "./matching/taste";
++import { TASTE_LABELS } from "./ai/labels";
++import { validateHook } from "./ai/hooks";
++
++// Cross-stream contracts that no single stream's tests can see.
++
++describe("demo and real students compare alike", () => {
++  test("matching uses the same name normalization as onboarding", () => {
++    for (const name of ["The Beatles", "Beyoncé", "AC/DC", "米津玄師", "Simon & Garfunkel"]) {
++      expect(matchingNormalizeName(name)).toBe(normalizeName(name));
++    }
++    expect(normalizeName("米津玄師")).not.toBe("");
++  });
++
++  test("a demo fingerprint equals the one onboarding builds from the same listening data", () => {
++    for (const fixture of DEMO_FIXTURES) {
++      const demo = demoFingerprint(fixture);
++      const real = fingerprint(demoSnapshot(fixture), fixture.labels);
++      expect(new Set(demo.topArtists)).toEqual(new Set(real.topArtists));
++      expect(new Set(demo.likedArtists)).toEqual(new Set(real.likedArtists));
++      expect(new Set(demo.tracks)).toEqual(new Set(real.tracks));
++    }
++  });
++
++  test("track keys from demo data match real ones", () => {
++    const [name, artist] = DEMO_FIXTURES[0].topTracks[0];
++    expect(demoSnapshot(DEMO_FIXTURES[0]).topTracks[0].normalizedKey).toBe(normalizeTrackKey(name, [artist]));
++  });
++});
++
++describe("demo fixtures follow onboarding's rules", () => {
++  test("every demo label is on the fixed label list", () => {
++    for (const fixture of DEMO_FIXTURES) {
++      for (const label of fixture.labels) expect(TASTE_LABELS, `${fixture.key}: ${label}`).toContain(label);
++    }
++  });
++});
++
++describe("hooks name only what both students share", () => {
++  test("a genre from the fixed list that neither student has is refused", () => {
++    // What plans/hooks builds: every label on the fixed list plus the pair's own items.
++    const known = new Set([...TASTE_LABELS.map(normalizeName), normalizeName("Big Thief")]);
++    const shared = [{ kind: "artist" as const, name: "Big Thief" }];
++    const icebreaker = "Which Big Thief song would you play first?";
++    expect(validateHook({ hook: "You both have Big Thief on repeat, plus a soft spot for jazz.", icebreaker }, shared, known)).toBeNull();
++    expect(validateHook({ hook: "You both have Big Thief on repeat.", icebreaker }, shared, known)).not.toBeNull();
++  });
++});
+diff --git a/convex/lib/config.ts b/convex/lib/config.ts
+index 118d7fb..4b88d4c 100644
+--- a/convex/lib/config.ts
++++ b/convex/lib/config.ts
+@@ -17,6 +17,8 @@ export const TIMING = {
+   nextTimeCooldownMs: 0,
+   demoReplyDelayMs: { min: 5 * SECOND, max: 20 * SECOND },
+   demoTicketDelayMs: 1 * MINUTE,
++  // A demo student whose Claude summary isn't done by then gets its fixture summary instead (§6.7).
++  demoProfileFallbackMs: 2 * MINUTE,
+   meetOffsetMinutes: 30,
+   cutoffBeforeMeetMs: 2 * HOUR,
+   completionAfterStartMs: 4 * HOUR,
+diff --git a/convex/lib/normalize.ts b/convex/lib/normalize.ts
+new file mode 100644
+index 0000000..8839034
+--- /dev/null
++++ b/convex/lib/normalize.ts
+@@ -0,0 +1,24 @@
++// Normalized names for exact shared items (§6.3). The one shared copy: every fingerprint, demo or real, and every
++// comparison against one (pair scores, performer overlap, hook validation) uses these, so all students compare alike.
++
++// "Beyoncé" → "beyonce", "The Beatles" → "beatles", "AC/DC" → "ac dc".
++export function normalizeName(name: string): string {
++  return name
++    .normalize("NFKD")
++    .replace(/[̀-ͯ]/g, "")
++    .toLowerCase()
++    .replace(/&/g, " and ")
++    .replace(/[^\p{L}\p{N}]+/gu, " ")
++    .trim()
++    .replace(/^the /, "");
++}
++
++// A track is the same song when its title (minus "remastered" style suffixes) and lead artist match.
++export function normalizeTrackKey(title: string, artistNames: string[]): string {
++  const base = title.replace(/\s+[-–—]\s+.*$/, "").replace(/\s*[([].*?[)\]]\s*/g, " ");
++  return `${normalizeName(base)}|${normalizeName(artistNames[0] ?? "")}`;
++}
++
++export function uniqueSorted(values: Iterable<string>): string[] {
++  return [...new Set([...values].filter((value) => value.length > 0))].sort();
++}
+diff --git a/convex/lib/registered.ts b/convex/lib/registered.ts
+new file mode 100644
+index 0000000..f35bcbb
+--- /dev/null
++++ b/convex/lib/registered.ts
+@@ -0,0 +1,19 @@
++import type {
++  DefaultFunctionArgs,
++  FunctionVisibility,
++  RegisteredAction,
++  RegisteredMutation,
++  RegisteredQuery,
++} from "convex/server";
++
++// The return type of a registered Convex function, read from its own definition rather than through the
++// generated `internal` api. A thin wrapper annotated with it avoids the circular type you get when a
++// handler's inferred return type depends on `ctx.runQuery(internal...)` in a module `internal` includes.
++export type ReturnsOf<F> =
++  F extends RegisteredQuery<FunctionVisibility, DefaultFunctionArgs, infer R>
++    ? Awaited<R>
++    : F extends RegisteredMutation<FunctionVisibility, DefaultFunctionArgs, infer R>
++      ? Awaited<R>
++      : F extends RegisteredAction<FunctionVisibility, DefaultFunctionArgs, infer R>
++        ? Awaited<R>
++        : never;
+diff --git a/convex/matching/names.ts b/convex/matching/names.ts
+index cc6e150..2f361c3 100644
+--- a/convex/matching/names.ts
++++ b/convex/matching/names.ts
+@@ -2,6 +2,7 @@ import type { Id } from "../_generated/dataModel";
+ import type { DatabaseReader } from "../_generated/server";
+ import type { HookItem } from "../ai/hooks";
+ import { normalizeName, type SharedItem } from "./taste";
++import { normalizeTrackKey } from "../lib/normalize";
+ 
+ // Fingerprints hold normalized names; hooks show the names as Spotify spells them.
+ export async function hookItems(
+@@ -26,11 +27,15 @@ export async function hookItems(
+     for (const track of snapshot.topTracks) tracks.set(track.normalizedKey, track.name);
+     for (const song of snapshot.likedSongs) {
+       for (const name of song.artistNames) if (!artists.has(normalizeName(name))) artists.set(normalizeName(name), name);
++      // Liked songs are in the fingerprint's tracks too, under the same key onboarding builds.
++      const key = normalizeTrackKey(song.name, song.artistNames);
++      if (!tracks.has(key)) tracks.set(key, song.name);
+     }
+   }
+   return shared.map((item) => {
+     if (item.kind === "artist") return { kind: item.kind, name: artists.get(item.name) ?? item.name };
+-    if (item.kind === "track") return { kind: item.kind, name: tracks.get(item.name) ?? item.name.split(" | ")[0] };
++    // A key is "title|artist"; without a spelling on file, show the title, never the raw key.
++    if (item.kind === "track") return { kind: item.kind, name: tracks.get(item.name) ?? item.name.split("|")[0] };
+     return { kind: item.kind, name: item.name };
+   });
+ }
+diff --git a/convex/matching/taste.ts b/convex/matching/taste.ts
+index fd675c0..d08d99e 100644
+--- a/convex/matching/taste.ts
++++ b/convex/matching/taste.ts
+@@ -8,16 +8,8 @@ export type ItemKind = "artist" | "track" | "label";
+ export type SharedItem = { kind: ItemKind; name: string; weight: number };
+ export type Fingerprint = Doc<"tasteProfiles">["fingerprint"];
+ 
+-// INTEGRATION: must match stream A's normalization of artist and track names in the fingerprint.
+-export function normalizeName(name: string): string {
+-  return name
+-    .normalize("NFKD")
+-    .replace(/[̀-ͯ]/g, "")
+-    .toLowerCase()
+-    .replace(/&/g, " and ")
+-    .replace(/[^a-z0-9]+/g, " ")
+-    .trim();
+-}
++// Shared with onboarding, so demo and real fingerprints compare alike.
++export { normalizeName } from "../lib/normalize";
+ 
+ // Built once per fingerprint object, so scoring every pair in a pool doesn't rebuild them.
+ const setCache = new WeakMap<Fingerprint, Record<ItemKind, Set<string>>>();
+diff --git a/convex/onboarding/analysis.ts b/convex/onboarding/analysis.ts
+index a5eef3a..33ed05a 100644
+--- a/convex/onboarding/analysis.ts
++++ b/convex/onboarding/analysis.ts
+@@ -246,6 +246,8 @@ async function finish(ctx: MutationCtx, job: Doc<"analysisJobs">) {
+   await ctx.db.patch(job._id, { status: "done", error: undefined, finishedAt: Date.now() });
+   const user = await ctx.db.get(job.userId);
+   if (user?.onboarding === "analyzing") await ctx.db.patch(job.userId, { onboarding: "needs_review" });
++  // Demo students have nobody to review their summary, so they confirm it the way a student would (§6.7).
++  if (user?.isDemo === true) await confirmProfile(ctx, job.userId);
+ }
+ 
+ export const run = internalAction({
+@@ -499,7 +501,7 @@ export const embedComplete = internalMutation({
+     }
+     const user = await ctx.db.get(context.userId);
+     if (user?.onboarding !== "ready") return null;
+-    // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
++    await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
+     return null;
+   },
+ });
+diff --git a/convex/onboarding/normalize.ts b/convex/onboarding/normalize.ts
+index ed46401..93d7337 100644
+--- a/convex/onboarding/normalize.ts
++++ b/convex/onboarding/normalize.ts
+@@ -1,23 +1 @@
+-// Normalized names for exact shared items (§6.3). Every fingerprint is built here, so all students compare alike.
+-
+-// "Beyoncé" → "beyonce", "The Beatles" → "beatles", "AC/DC" → "ac dc".
+-export function normalizeName(name: string): string {
+-  return name
+-    .normalize("NFKD")
+-    .replace(/[̀-ͯ]/g, "")
+-    .toLowerCase()
+-    .replace(/&/g, " and ")
+-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+-    .trim()
+-    .replace(/^the /, "");
+-}
+-
+-// A track is the same song when its title (minus "remastered" style suffixes) and lead artist match.
+-export function normalizeTrackKey(title: string, artistNames: string[]): string {
+-  const base = title.replace(/\s+[-–—]\s+.*$/, "").replace(/\s*[([].*?[)\]]\s*/g, " ");
+-  return `${normalizeName(base)}|${normalizeName(artistNames[0] ?? "")}`;
+-}
+-
+-export function uniqueSorted(values: Iterable<string>): string[] {
+-  return [...new Set([...values].filter((value) => value.length > 0))].sort();
+-}
++export { normalizeName, normalizeTrackKey, uniqueSorted } from "../lib/normalize";
+diff --git a/convex/plans/hooks.ts b/convex/plans/hooks.ts
+index 9a7e2a6..c6c4354 100644
+--- a/convex/plans/hooks.ts
++++ b/convex/plans/hooks.ts
+@@ -7,6 +7,7 @@ import { generateJson } from "../services/claude";
+ import { HOOK_SYSTEM, hookPrompt, hookSchema, templateHook, validateHook, type HookItem } from "../ai/hooks";
+ import { aiPool } from "../lib/pools";
+ import { itemSets, normalizeName } from "../matching/taste";
++import { TASTE_LABELS } from "../ai/labels";
+ 
+ // Hooks and icebreakers for a pair (CLAUDE.md §6.4, §7): the template is written at once, then Claude's
+ // version replaces it if it validates and the pair hasn't changed in the meantime.
+@@ -32,9 +33,10 @@ export async function setPairHook(ctx: MutationCtx, meetupId: Id<"meetups">, ite
+   const event = plan ? await ctx.db.get(plan.eventId) : null;
+   if (plan === null || event === null || items.length === 0) return;
+ 
+-  // Every artist and track either student has, so the validator can reject unshared names.
++  // Every artist and track either student has, plus every label on the fixed list, so the validator can
++  // reject any name or genre the two don't share (a label neither has can't slip in either).
+   const { key, userIds } = await pairKey(ctx, meetupId);
+-  const known = new Set<string>();
++  const known = new Set<string>(TASTE_LABELS.map(normalizeName));
+   for (const userId of userIds) {
+     const profile = await ctx.db
+       .query("tasteProfiles")
+diff --git a/convex/plans/release.ts b/convex/plans/release.ts
+index 96a3aa9..93b0a01 100644
+--- a/convex/plans/release.ts
++++ b/convex/plans/release.ts
+@@ -5,7 +5,7 @@ import { reconcilePlan } from "./reconcile";
+ 
+ // Spotify disconnect (S16): gives up any seat the student was offered or holds (it reopens for the
+ // partner) and closes their open asks, so no new asks or offers reach them.
+-// INTEGRATION: stream A's settings.disconnectSpotify calls this.
++// stream A's settings.disconnectSpotify calls this.
+ export const forUser = internalMutation({
+   args: { userId: v.id("users") },
+   returns: v.object({ seatsReleased: v.number(), asksClosed: v.number() }),
+@@ -49,7 +49,7 @@ export const forUser = internalMutation({
+ 
+ // The team pulled an event (S17): open asks for it close, and every plan for it that is still forming
+ // or set is called off. An offer is withdrawn, not declined, so it goes out as no_answer.
+-// INTEGRATION: stream B's convex/events/admin.ts calls this when an event is pulled.
++// stream B's convex/events/admin.ts calls this when an event is pulled.
+ export const forEvent = internalMutation({
+   args: { eventId: v.id("events") },
+   returns: v.object({ asksClosed: v.number(), plansCalledOff: v.number(), offersWithdrawn: v.number() }),
+diff --git a/convex/plans/retime.ts b/convex/plans/retime.ts
+index 6496601..7e0b5a3 100644
+--- a/convex/plans/retime.ts
++++ b/convex/plans/retime.ts
+@@ -7,7 +7,7 @@ import { scheduleAskCloses } from "../asks/close";
+ // An event's start time or meeting offset changed: every plan still forming or set gets the new
+ // meeting time and cutoff, is reconciled at once (offers now past the cutoff expire, an empty seat past
+ // it calls the plan off), and has its time boundaries rescheduled. Reconcile reads now(forDemo).
+-// INTEGRATION: stream B's convex/events/imports.ts and admin edits call this after changing the times.
++// stream B's convex/events/imports.ts and admin edits call this after changing the times.
+ export const forEvent = internalMutation({
+   args: { eventId: v.id("events") },
+   returns: v.object({ plansRetimed: v.number() }),
+diff --git a/convex/settings.ts b/convex/settings.ts
+index aa4af39..c3997a3 100644
+--- a/convex/settings.ts
++++ b/convex/settings.ts
+@@ -1,4 +1,5 @@
+ import { mutation } from "./_generated/server";
++import { internal } from "./_generated/api";
+ import { v } from "convex/values";
+ import { requireVerifiedUser } from "./lib/access";
+ import { accessFor } from "./onboarding/apps";
+@@ -30,7 +31,8 @@ export const disconnectSpotify = mutation({
+       user.onboarding === "ready";
+     if (reachedConnect) await ctx.db.patch(userId, { onboarding: "needs_spotify_connect" });
+ 
+-    // INTEGRATION: await ctx.runMutation(internal.plans.release.forUser, { userId }); gives up any seat (it reopens) and closes asks.
++    // Gives up any seat (it reopens for the partner) and closes asks, in the same transaction.
++    await ctx.runMutation(internal.plans.release.forUser, { userId });
+     return null;
+   },
+ });

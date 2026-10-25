@@ -2,7 +2,7 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { notBuilt } from "./lib/errors";
 import { vArea, vGenderSelf, vMeetWho, vYear } from "./lib/validators";
-import { vAccessView } from "./lib/views";
+import { vAccessView, vPreferencesView } from "./lib/views";
 
 // Stream A (onboarding) owns this file. Contract stubs: names and types are final; bodies come next.
 
@@ -45,5 +45,12 @@ export const surpriseMe = mutation({
 export const access = query({
   args: {},
   returns: vAccessView,
-  handler: async () => ({ status: "none" as const, refused: false }),
+  handler: async () => ({ status: "none" as const, refused: false, spotifyEmail: null }),
+});
+
+// S05 from the menu: the saved answers, or null before any are saved.
+export const preferences = query({
+  args: {},
+  returns: vPreferencesView,
+  handler: async () => null,
 });

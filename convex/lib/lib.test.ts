@@ -17,6 +17,17 @@ describe("edu email check", () => {
     expect(isEduEmail("alex@edu")).toBe(false);
     expect(isEduEmail("not an email")).toBe(false);
   });
+
+  test("validates the normalized address, the same one we store and send to", () => {
+    // NFKC folds compatibility characters (the Kelvin sign, fullwidth letters) to ASCII before the check,
+    // so what passes is exactly the address the code goes to.
+    expect(normalizeEmail("alex@Keio.edu")).toBe("alex@keio.edu");
+    expect(isEduEmail("alex@Keio.edu")).toBe(true);
+    expect(normalizeEmail("alex@berkeley.ｅｄｕ")).toBe("alex@berkeley.edu");
+    // Lookalikes that stay non-ASCII after normalization are refused.
+    expect(isEduEmail("alex@berkeley.еdu")).toBe(false);
+    expect(isEduEmail("аlex@berkeley.edu")).toBe(false);
+  });
 });
 
 describe("display labels", () => {
@@ -26,6 +37,13 @@ describe("display labels", () => {
     expect(priceLabel(22, 22)).toBe("$22");
     expect(priceLabel(18, 25)).toBe("$18 to $25");
     expect(priceLabel(0, 15)).toBe("Free to $15");
+  });
+
+  test("a one-sided price never reads as exact", () => {
+    expect(priceLabel(15, null)).toBe("From $15");
+    expect(priceLabel(null, 25)).toBe("Up to $25");
+    expect(priceLabel(null, 0)).toBe("Free");
+    expect(priceLabel(0, null)).toBe("Free and up");
   });
 
   test("times are Pacific and lowercase", () => {

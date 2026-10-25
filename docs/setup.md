@@ -20,7 +20,20 @@ Everything here is a human step (accounts, keys, DNS). Do it now so no build str
    - In the repo, copy `.env.secrets.example` to `.env.secrets.local` (gitignored) and fill it in.
    - Run `scripts/push-secrets.sh dev`. It sets each filled value with `npx convex env set`, and generates the Apify webhook secret and the Spotify state secret the first time.
    - Production gets the same command with `prod`, once the production deployment exists (Claude will ask first).
-7. **Vercel:** sign in at vercel.com with GitHub now. Importing `azhao8/calhacks2026` and adding the domain waits until Stage 0 is on `main`. Then: add `melos.azhao.dev` to the project and create the CNAME record Vercel shows.
+7. **Vercel:** vercel.com → Add New → Project → import `azhao8/calhacks2026`. Leave the build settings as detected: `vercel.json` sets the build command and skips every non-production build.
+   - Environment Variables → `CONVEX_DEPLOY_KEY` = the production deploy key (Convex dashboard → melos → Production → Settings → Generate Production Deploy Key). Under Environments, leave only **Production** checked.
+   - Settings → Domains → add `melos.azhao.dev`, then create the CNAME record Vercel shows at the DNS provider for `azhao.dev`.
+
+## azhao8: cloud environment (for the Claude Code cloud sessions)
+
+The cloud environment's settings (the environment menu in a session's title bar → Edit):
+
+- **Network access → Allowed domains:** `*.convex.dev`, `*.convex.cloud`, `*.convex.site`, `api.apify.com`, `nominatim.openstreetmap.org`, with "Allow package managers" ticked.
+- **Environment variables** (every session in the environment can read them; never paste them in chat):
+  - `MELOS_DEV_DEPLOY_KEY`: a development deploy key for `elated-barracuda-447`. Stream sessions use it only for `npx convex codegen`.
+  - `APIFY_TOKEN`: the Apify personal token.
+  - `MELOS_ANTHROPIC_API_KEY`: an Anthropic API key (it starts with `sk-ant-api03-`) for the event scout. Not `ANTHROPIC_API_KEY`, which Claude Code itself reads.
+  - `MELOS_PROD_DEPLOY_KEY`: the production deploy key, used only by the coordinator to set production env vars and run the seed, after asking.
 
 ## nickzjl: Spotify apps (about 5 minutes per Premium teammate)
 

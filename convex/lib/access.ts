@@ -19,6 +19,14 @@ export async function requireUser(ctx: QueryCtx): Promise<Doc<"users">> {
   return user;
 }
 
+// Every student function needs a verified school email (S03), checked on the server.
+export async function requireVerifiedUser(ctx: QueryCtx): Promise<Doc<"users">> {
+  const user = await requireUser(ctx);
+  if (user.verifiedAt === undefined) fail("forbidden", "Verify your school email first.");
+  if (user.isDemo) fail("forbidden", "Demo students never sign in.");
+  return user;
+}
+
 export function adminEmails(): string[] {
   return (process.env.ADMIN_EMAILS ?? "")
     .split(",")

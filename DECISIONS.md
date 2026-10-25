@@ -115,3 +115,33 @@ Entry format:
 - Why: Spotify apps can be created now, before any Convex deployment exists, and never need editing when deployments change; parallel sessions must not overwrite each other's functions.
 - Replaces: BASELINE — the callback on the deployment's `.convex.site` address (§8.9).
 - Affects: S07; `CLAUDE.md` §8.1, §8.2, §8.9; `docs/setup.md` (already uses these addresses).
+
+## 2026-10-24 19:02 PT · azhao8 · Cloud sessions test in memory; production builds only from main
+- Changed: Stage 1 runs as Claude Code cloud sessions, which can't download Convex's local backend. Instead of a local Convex deployment per worktree, each stream session tests its functions in memory with convex-test and regenerates types with `npx convex codegen` against the shared dev deployment; codegen uploads code for analysis only and never makes it live. Only the coordinator pushes to dev or production. The cloud environment allows the Convex, Apify, and OpenStreetMap hosts and holds `MELOS_DEV_DEPLOY_KEY`, `APIFY_TOKEN`, `MELOS_ANTHROPIC_API_KEY`, and later `MELOS_PROD_DEPLOY_KEY` (prefixed so neither the Convex CLI nor Claude Code picks them up by default). Vercel builds only production: `vercel.json` runs `npx convex deploy --cmd 'npm run build'`, then the idempotent seed, and skips every other build, so branch builds never touch production. Cross-stream function names are fixed in `docs/stage1-briefs.md`, and calls between streams are wired by the coordinator after merge.
+- Why: isolated local backends are blocked in cloud sessions, the owner works from a phone, and a branch build must never push branch code to the production deployment.
+- Replaces: BASELINE — one local Convex deployment per worktree (the 17:05 PT entry). Implements `CLAUDE.md` §8.1 "Preview deploys are off".
+- Affects: `README.md`, `docs/setup.md`, `docs/stage1-briefs.md`, `vercel.json`; no screens or data contracts.
+
+## 2026-10-24 19:18 PT · azhao8 · Spotify redirect addresses come from config; shared pools and guard
+- Changed: `spotifyApps` doesn't store a `redirectUri`. Every app registers the same two addresses (§8.9), so the server builds them from config (`SITE` plus `SPOTIFY.callbackPath`) and accepts only those two, bound into the signed OAuth state. Every stream uses one Workpool client per pool from `convex/lib/pools.ts` (the email pool runs 2 at a time for Resend's free-plan rate) and the shared `requireVerifiedUser` guard in `convex/lib/access.ts`. The `.edu` check normalizes Unicode (NFKC) first and accepts printable ASCII only, so the address that passes is exactly the one stored and sent to.
+- Why: one source for the redirect addresses; two clients for the same pool would fight over its settings; and `@auth/core` below 0.41.3 had a critical advisory about validating email before Unicode normalization.
+- Replaces: BASELINE — `spotifyApps.redirectUri` in §8.5.
+- Affects: S03, S07; `CLAUDE.md` §8.5 `spotifyApps`, §8.9; `convex/lib/`.
+
+## 2026-10-24 19:35 PT · azhao8 · Each matcher run is one mutation per event
+- Changed: a matcher run for an event is a single internal mutation that loads the pool, scores every pair, refills seats, runs blossom matching, and fills gaps with demo students, instead of an action that scores and then commits through mutations. Hooks and icebreakers still go through the AI pool after the commit, so no Claude or Voyage call ever runs inside the matcher.
+- Why: a mutation is serialized and re-reads current state by construction, so "one run per event at a time" and "re-check before committing" hold without extra locking; a pool of a few dozen students scores well within a mutation's limits.
+- Replaces: BASELINE — the matching flow in §8.2 ("the matcher action loads the pool ... a mutation commits each seat").
+- Affects: `CLAUDE.md` §6.4, §8.2 Matching; no screens or data contracts.
+
+## 2026-10-24 19:46 PT · azhao8 · Team rehearsals never block the stage demo
+- Changed: two team accounts (emails on `ADMIN_EMAILS`) are exempt from the 7-day repeat-pair block with each other, and "Reset demo" also deletes demo plans (every member a demo student or a team account) and the team accounts' asks, so rehearsals don't use up their asks. Reset still never deletes a real student's records.
+- Why: the stage demo pairs the two team phones on a real event; a rehearsal earlier that night would otherwise block that pair for 7 days and hand each phone a demo partner instead.
+- Replaces: BASELINE — the repeat-pair block for every pair (§6.4, §6.6) and the scope of "Reset demo" (§6.7).
+- Affects: `CLAUDE.md` §6.4, §6.6, §6.7; S17 demo controls.
+
+## 2026-10-24 21:37 PT · azhao8 · No account deletion flow or address for the hackathon
+- Changed: Melos shows no account-deletion control or address. The privacy page stays: it says what we read from Spotify and why, as Spotify's developer policy requires. Disconnecting Spotify still deletes every Spotify-derived record (tokens, snapshot, taste profile, vector).
+- Why: the owner judged account deletion unnecessary for a hackathon build; the Spotify data rules are met by disconnect.
+- Replaces: OPEN — the account deletion workflow and address (§5 S16, §13 open items).
+- Affects: S16 menu and the privacy page copy.
