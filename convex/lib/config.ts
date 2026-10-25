@@ -83,7 +83,9 @@ export const MATCHING = {
   hookMaxChars: 120,
   icebreakerMaxChars: 140,
   askCandidates: 50,
-  askShortlist: 10,
+  // Claude chooses among every candidate that passes the hard rules, up to this many (§6.2), so a
+  // game or a play can be picked even when the music-only rerank ranks it low.
+  askChoices: 40,
 } as const;
 
 export const PLACES = {

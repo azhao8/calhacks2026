@@ -169,3 +169,9 @@ Entry format:
 - Why: the owner asked for it, for this hackathon demo build, to remove test accounts and reset the app from the admin page.
 - Replaces: CONFIRMED (owner) — the §6.7 rule that only "Reset demo" touches data and never deletes a real student's records; deletion is now an explicit, confirmed team action. Also OPEN — account deletion (§5 S16), on the team side only; students still have no self-service deletion.
 - Affects: S17; every table that holds student or event data; `convex/admin/students.ts`.
+
+## 2026-10-25 02:50 PT · azhao8 · Claude picks asks from every eligible event, not the music top 10
+- Changed: the ask picker sends Claude every event that passes the hard rules (up to `MATCHING.askChoices`, 40), listed by date, instead of the top 10 of the rerank. The prompt asks Claude to read the student's music as a clue to the nights out they'd enjoy (energy, crowd, setting, scene), with games, plays, talks and campus performances judged alongside concerts; a performer they play is a good sign, not a requirement. The taste summary is sent alongside labels and artists. The rerank still orders the fallback when Claude fails. No quota or kind rule.
+- Why: the owner reported that asks were only concerts. On dev, 7 games and 7 performances were published within 7 days, but every game ranked 13th or lower in the rerank (music-vector similarity about 0.2 against 0.3 to 0.5 for concerts, no performer overlap, and the unknown-price penalty), so none reached the 10 Claude saw, and the prompt said "based only on their music taste". The owner asked that the event be one both students would genuinely enjoy, inferred from their music, not directly tied to it, and without hardcoded rules.
+- Replaces: BASELINE — "Claude picks 3 of the top 10" in `CLAUDE.md` §6.2 and the event-picks input in §7.
+- Affects: S10 (which events appear on "Your week"); `convex/asks/picker.ts`, `convex/lib/config.ts`.
