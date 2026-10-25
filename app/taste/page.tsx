@@ -12,7 +12,7 @@ import { TasteSummary } from "@/components/TasteSummary";
 import { TextArea } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
-import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { revisionState } from "@/app/_lib/tasteRevision";
 import { useAnalysis, useTasteProfile } from "@/app/_lib/views";
 import { checkNote } from "@/app/_lib/validate";
@@ -111,7 +111,7 @@ function Review({ me }: { me: NonNullable<MeView> }) {
     <Screen
       object="cassette"
       menu={!onboarding}
-      step={onboarding ? ONBOARDING_STEP[ROUTES.taste] : undefined}
+      step={onboardingStep(ROUTES.taste, me) ?? undefined}
       top={<ScreenTitle>{onboarding ? "Does this sound like you?" : "Your taste"}</ScreenTitle>}
     >
       {revised ? (

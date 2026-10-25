@@ -33,7 +33,7 @@ import {
   type MeetWho,
   type Year,
 } from "@/app/_lib/preferences";
-import { ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { BackLink } from "@/app/_components/BackLink";
 import { Confirm } from "@/app/_components/Confirm";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
@@ -225,7 +225,7 @@ function FirstTime({ me }: { me: NonNullable<MeView> }) {
   const last = step === QUESTIONS.length;
 
   return (
-    <Screen object="headphones" menu={me.onboarding !== "needs_preferences"}>
+    <Screen object="headphones" menu={me.onboarding !== "needs_preferences"} step={onboardingStep(ROUTES.preferences, me) ?? undefined}>
       <Card>
         <QuestionnaireStep
           id={`pref-${step}`}

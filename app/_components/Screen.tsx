@@ -6,11 +6,12 @@ import { Backdrop, type BackdropObject } from "@/components/Backdrop";
 import { cx } from "@/components/cx";
 import { Ok } from "@/components/Card";
 import { MenuButton } from "@/components/MenuButton";
+import { OnboardingProgress } from "@/components/OnboardingProgress";
 import { StateView } from "@/components/StateView";
 import { Wordmark } from "@/components/Wordmark";
 import { useOnline } from "@/app/_lib/hooks";
 import { useFlash, useTrackPath } from "@/app/_lib/nav";
-import { ROUTES } from "@/app/_lib/routes";
+import { ONBOARDING_STEPS, ROUTES } from "@/app/_lib/routes";
 
 // A full screen on the Backdrop (design/docs/backgrounds.md): the top bar with the wordmark and
 // either the step count (onboarding) or the menu, then `top` in the sky and `children` in the lower
@@ -27,7 +28,8 @@ export function Screen({
   object?: BackdropObject;
   quiet?: boolean;
   menu?: boolean;
-  step?: string;
+  // The onboarding step (routes.ts onboardingStep), shown as the header's progress bar.
+  step?: number;
   right?: ReactNode;
   top?: ReactNode;
   children?: ReactNode;
@@ -44,13 +46,9 @@ export function Screen({
             <Link href={ROUTES.welcome} aria-label="Melos home" className="inline-flex min-h-12 items-center">
               <Wordmark />
             </Link>
-            {right ??
-              (menu ? (
-                <MenuButton href={ROUTES.menu} />
-              ) : step ? (
-                <p className="text-caption font-semibold text-ink">{step}</p>
-              ) : null)}
+            {right ?? (menu ? <MenuButton href={ROUTES.menu} /> : null)}
           </header>
+          {step !== undefined ? <OnboardingProgress step={step} total={ONBOARDING_STEPS} /> : null}
           {online ? null : <StateView kind="offline" inline />}
           {flash ? (
             <div className="rounded-sm bg-backdrop-vignette px-4 py-3">

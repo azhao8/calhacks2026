@@ -10,7 +10,7 @@ import { InlineError } from "@/components/Card";
 import { TextField } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
-import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { checkEmail, checkFirstName } from "@/app/_lib/validate";
 import { normalizeEmail } from "@/convex/lib/edu";
 import { Confirm } from "@/app/_components/Confirm";
@@ -83,7 +83,7 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
   return (
     <Screen
       object="headphones"
-      step={firstTime ? ONBOARDING_STEP[ROUTES.aboutYou] : undefined}
+      step={onboardingStep(ROUTES.aboutYou, me) ?? undefined}
       menu={!firstTime}
       top={
         <div className="flex flex-col gap-2">

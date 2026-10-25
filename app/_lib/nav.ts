@@ -118,6 +118,6 @@ export function takeNext(me: MeView): string {
   if (next === null) return ROUTES.welcome;
   const cut = next.indexOf("?");
   const path = cut < 0 ? next : next.slice(0, cut);
-  if (!isRoute(path) || path === ROUTES.signIn || redirectFor(path, me) !== null) return ROUTES.welcome;
+  if (!isRoute(path) || path === ROUTES.signIn || path === ROUTES.signUp || redirectFor(path, me) !== null) return ROUTES.welcome;
   return next;
 }

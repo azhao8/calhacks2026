@@ -4,7 +4,7 @@ import Link from "next/link";
 import { buttonClasses } from "@/components/Button";
 import { StateView } from "@/components/StateView";
 import { useGate } from "@/app/_lib/hooks";
-import { ROUTES } from "@/app/_lib/routes";
+import { onboardingStep, ROUTES } from "@/app/_lib/routes";
 import { useAccess } from "@/app/_lib/views";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 import { SpotifyAccount } from "@/app/_components/SpotifyAccount";
@@ -50,7 +50,7 @@ export default function WaitingPage() {
   }
 
   return (
-    <Screen object="cassette" menu>
+    <Screen object="cassette" menu step={onboardingStep(ROUTES.waiting, gate.me) ?? undefined}>
       <Panel className="flex flex-col gap-3">{body}</Panel>
       <StateView
         kind="empty"
