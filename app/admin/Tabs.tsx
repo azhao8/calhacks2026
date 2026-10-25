@@ -8,7 +8,8 @@ import { priceLabel } from "@/convex/lib/format";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { Icon } from "@/components/Icon";
-import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, ShowMore, ago, useRun, when } from "./_ui";
+import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, ShowMore, ShownError, ago, useRun, when } from "./_ui";
+import { fromPacificInput, parseLatLng, parsePrice, toPacificInput } from "./format";
 import type { StudentFocus } from "./Spotify";
 
 export type TabKey = "action" | "spotify" | "events" | "matching" | "help" | "demo";
@@ -215,18 +216,28 @@ export function EventsTab() {
 
 type ListedEvent = FunctionReturnType<typeof api.admin.events.list>[number];
 
+const FIELD_NAMES: Record<string, string> = {
+  title: "title",
+  startsAt: "start time",
+  priceMin: "price",
+  priceMax: "price",
+  ticketUrl: "ticket link",
+  freeEntryNote: "free entry note",
+  ageLimit: "age limit",
+  kind: "kind",
+  performers: "performers",
+  tags: "tags",
+};
+
 function EventRow({ event }: { event: ListedEvent }) {
   const [open, setOpen] = useState(false);
+  const [panel, setPanel] = useState<"none" | "edit" | "spot">("none");
   const pull = useMutation(api.admin.events.pull);
   const restore = useMutation(api.admin.events.restore);
   const feature = useMutation(api.admin.events.feature);
-  const edit = useMutation(api.admin.events.edit);
   const { busy, error, done, run } = useRun();
-  const [min, setMin] = useState(event.priceMin === null ? "" : String(event.priceMin));
-  const [max, setMax] = useState(event.priceMax === null ? "" : String(event.priceMax));
   const id = event.eventId;
-  const toPrice = (text: string) => (text.trim() === "" ? null : Number(text));
-  const restorable = event.pulled || event.status === "rejected";
+  const locked = [...new Set(event.teamFields.map((field) => FIELD_NAMES[field] ?? field))];
 
   return (
     <li className="flex flex-col gap-2 py-3">
@@ -241,12 +252,16 @@ function EventRow({ event }: { event: ListedEvent }) {
           <span className="shrink-0 text-small font-semibold text-accent">{open ? "Close" : "Open"}</span>
         </span>
         <span className="text-small text-ink-muted tabular-nums">
-          {when(event.startsAt)} · {event.venueName ?? "No venue"} · {priceLabel(event.priceMin, event.priceMax)}
+          {event.startsAt > 0 ? when(event.startsAt) : "No start time"} · {event.venueName ?? "No venue"} · {priceLabel(event.priceMin, event.priceMax)}
         </span>
         <span className="flex flex-wrap gap-1.5">
           {event.featured ? <Badge tone="accent">Featured</Badge> : null}
           {event.pulled ? <Badge tone="danger">Pulled</Badge> : event.rejectReason ? <Badge tone="danger">Rejected</Badge> : null}
-          {event.flaggedMissing ? <Badge tone="danger" icon="alert">Missing from runs</Badge> : null}
+          {event.flaggedMissing ? (
+            <Badge tone="danger" icon="alert">
+              Missing from runs
+            </Badge>
+          ) : null}
         </span>
       </button>
       {open ? (
@@ -261,23 +276,41 @@ function EventRow({ event }: { event: ListedEvent }) {
             <dt className="text-ink-muted">Price from</dt>
             <dd className="text-ink">{event.priceSource ?? "Not found"}</dd>
             <dt className="text-ink-muted">Meet at</dt>
-            <dd className="text-ink">{event.meetingSpot ? `${event.meetingSpot.name} (chosen by ${event.meetingSpot.chosenBy})` : "No meeting spot"}</dd>
+            <dd className="text-ink">
+              {event.meetingSpot ? `${event.meetingSpot.name}, ${event.meetOffsetMinutes} min before (chosen by ${event.meetingSpot.chosenBy})` : "No meeting spot"}
+            </dd>
+            <dt className="text-ink-muted">Tickets</dt>
+            <dd className="text-ink">
+              {event.ticketUrl ? (
+                <a href={event.ticketUrl} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline">
+                  Ticket link
+                </a>
+              ) : (
+                (event.freeEntryNote ?? "No link")
+              )}
+            </dd>
             <dt className="text-ink-muted">Source</dt>
             <dd>
               <a href={event.sourceUrl} target="_blank" rel="noopener noreferrer" className="break-all text-accent underline">
                 {event.sourceName}
               </a>
             </dd>
+            {locked.length > 0 ? (
+              <>
+                <dt className="text-ink-muted">Kept by team</dt>
+                <dd className="text-ink">{locked.join(", ")}. Scout runs won&apos;t change these.</dd>
+              </>
+            ) : null}
           </dl>
           <div className="grid gap-4 sm:grid-cols-2">
-            {restorable ? (
+            {event.restorable ? (
               <Action
                 label="Restore"
                 explain="Publishes it again, so students can be asked about it."
                 busy={busy === "restore"}
                 onClick={() => run("restore", () => restore({ eventId: id }), "Restored.")}
               />
-            ) : (
+            ) : event.status === "published" ? (
               <ConfirmAction
                 label="Pull"
                 explain="Takes it out of Melos. Nobody is asked about it again."
@@ -287,34 +320,173 @@ function EventRow({ event }: { event: ListedEvent }) {
                 busy={busy === "pull"}
                 onConfirm={() => run("pull", () => pull({ eventId: id }), "Pulled.")}
               />
+            ) : (
+              <p className="text-caption text-ink-muted">
+                The import checks rejected it, so it can&apos;t be restored here. A later scout run publishes it if the listing is fixed.
+              </p>
             )}
+            {event.status === "published" ? (
+              <Action
+                label={event.featured ? "Unfeature" : "Feature"}
+                explain={
+                  event.featured
+                    ? "Removes its boost."
+                    : "Boosts it for every student. After Reset demo, featured events come first on both team phones."
+                }
+                busy={busy === "feature"}
+                onClick={() => run("feature", () => feature({ eventId: id, featured: !event.featured }))}
+              />
+            ) : null}
             <Action
-              label={event.featured ? "Unfeature" : "Feature"}
-              explain={event.featured ? "Removes its boost in what students are asked about." : "Boosts it in what students are asked about."}
-              busy={busy === "feature"}
-              onClick={() => run("feature", () => feature({ eventId: id, featured: !event.featured }))}
+              label={panel === "edit" ? "Close" : "Edit details"}
+              explain="Fix the title, time, price, ticket link, or age limit."
+              onClick={() => setPanel(panel === "edit" ? "none" : "edit")}
+            />
+            <Action
+              label={panel === "spot" ? "Close" : "Change meeting spot"}
+              explain="Sets the spot for every show at this venue, including plans already made."
+              disabledReason={event.venueId === null ? "This event has no venue yet." : null}
+              onClick={() => setPanel(panel === "spot" ? "none" : "spot")}
             />
           </div>
-          <form
-            className="flex flex-col gap-3"
-            onSubmit={(e: FormEvent) => {
-              e.preventDefault();
-              void run("edit", () => edit({ eventId: id, patch: { priceMin: toPrice(min), priceMax: toPrice(max) } }), "Price saved.");
-            }}
-          >
-            <div className="grid grid-cols-2 gap-3">
-              <TextField label="Lowest price ($)" value={min} onChange={(e) => setMin(e.target.value)} inputMode="decimal" />
-              <TextField label="Highest price ($)" value={max} onChange={(e) => setMax(e.target.value)} inputMode="decimal" />
-            </div>
-            <p className="text-caption text-ink-muted">Leave both empty when the price isn&apos;t listed. Students see “Price not listed.”</p>
-            <Button type="submit" variant="secondary" loading={busy === "edit"} className="self-start">
-              Save price
-            </Button>
-          </form>
+          {panel === "edit" ? <EventEdit event={event} onDone={() => setPanel("none")} /> : null}
+          {panel === "spot" && event.venueId !== null ? <SpotForm event={event} onDone={() => setPanel("none")} /> : null}
           <Result error={error} done={done} />
         </div>
       ) : null}
     </li>
+  );
+}
+
+// Sends only the fields that changed, because every edited field stops updating from scout runs.
+function EventEdit({ event, onDone }: { event: ListedEvent; onDone: () => void }) {
+  const edit = useMutation(api.admin.events.edit);
+  const { busy, error, run, setError } = useRun();
+  const initial = {
+    title: event.title,
+    startsAt: event.startsAt > 0 ? toPacificInput(event.startsAt) : "",
+    priceMin: event.priceMin === null ? "" : String(event.priceMin),
+    priceMax: event.priceMax === null ? "" : String(event.priceMax),
+    ticketUrl: event.ticketUrl ?? "",
+    freeEntryNote: event.freeEntryNote ?? "",
+    ageLimit: event.ageLimit === null ? "" : String(event.ageLimit),
+  };
+  const [form, setForm] = useState(initial);
+  const set = (key: keyof typeof initial) => (e: { target: { value: string } }) => setForm({ ...form, [key]: e.target.value });
+
+  function patch() {
+    const out: Parameters<typeof edit>[0]["patch"] = {};
+    if (form.title.trim() !== initial.title) {
+      if (form.title.trim() === "") throw new ShownError("Add a title.");
+      out.title = form.title.trim();
+    }
+    if (form.startsAt !== initial.startsAt) {
+      const startsAt = fromPacificInput(form.startsAt);
+      if (startsAt === null) throw new ShownError("Pick a start date and time.");
+      out.startsAt = startsAt;
+    }
+    for (const key of ["priceMin", "priceMax"] as const) {
+      if (form[key].trim() === initial[key]) continue;
+      const price = parsePrice(form[key]);
+      if (price === "invalid") throw new ShownError("Prices are dollar amounts like 15, or empty when not listed.");
+      out[key] = price;
+    }
+    if (form.ticketUrl.trim() !== initial.ticketUrl) out.ticketUrl = form.ticketUrl.trim() || null;
+    if (form.freeEntryNote.trim() !== initial.freeEntryNote) out.freeEntryNote = form.freeEntryNote.trim() || null;
+    if (form.ageLimit.trim() !== initial.ageLimit) {
+      const age = form.ageLimit.trim() === "" ? null : Number(form.ageLimit);
+      if (age !== null && !(Number.isInteger(age) && age >= 0)) throw new ShownError("The age limit is a whole number, or empty for all ages.");
+      out.ageLimit = age;
+    }
+    return out;
+  }
+
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={async (e: FormEvent) => {
+        e.preventDefault();
+        let changes;
+        try {
+          changes = patch();
+        } catch (problem) {
+          setError(problem instanceof Error ? problem.message : "Check the fields.");
+          return;
+        }
+        if (Object.keys(changes).length === 0) {
+          setError("Nothing changed yet.");
+          return;
+        }
+        if (await run("edit", () => edit({ eventId: event.eventId, patch: changes }))) onDone();
+      }}
+    >
+      <TextField label="Title" value={form.title} onChange={set("title")} />
+      <TextField label="Starts (Pacific time)" type="datetime-local" value={form.startsAt} onChange={set("startsAt")} hint="Plans on this event move their meeting time with it." />
+      <div className="grid grid-cols-2 gap-3">
+        <TextField label="Lowest price ($)" value={form.priceMin} onChange={set("priceMin")} inputMode="decimal" />
+        <TextField label="Highest price ($)" value={form.priceMax} onChange={set("priceMax")} inputMode="decimal" />
+      </div>
+      <p className="text-caption text-ink-muted">Leave both empty when the price isn&apos;t listed. Students see “Price not listed.”</p>
+      <TextField label="Ticket link" type="url" value={form.ticketUrl} onChange={set("ticketUrl")} autoCapitalize="none" spellCheck={false} />
+      <TextField label="Free entry note" value={form.freeEntryNote} onChange={set("freeEntryNote")} hint="For free events with no ticket link." />
+      <TextField label="Age limit" value={form.ageLimit} onChange={set("ageLimit")} inputMode="numeric" hint="Empty for all ages. Melos never asks students about 21+ events." />
+      <p className="text-caption text-ink-muted">Only the fields you change are saved, and scout runs stop updating them.</p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" loading={busy === "edit"}>
+          Save changes
+        </Button>
+        <Button variant="quiet" onClick={onDone} disabled={busy !== null}>
+          Cancel
+        </Button>
+      </div>
+      <Result error={error} />
+    </form>
+  );
+}
+
+function SpotForm({ event, onDone }: { event: ListedEvent; onDone: () => void }) {
+  const override = useMutation(api.admin.events.overrideSpot);
+  const { busy, error, run, setError } = useRun();
+  const [name, setName] = useState("");
+  const [howToFind, setHowToFind] = useState("");
+  const [where, setWhere] = useState("");
+  const [offset, setOffset] = useState(String(event.meetOffsetMinutes));
+  return (
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={async (e: FormEvent) => {
+        e.preventDefault();
+        const point = parseLatLng(where);
+        const minutes = Number(offset);
+        if (name.trim() === "" || howToFind.trim() === "") return setError("Add a name and one sentence on how to find it.");
+        if (point === null) return setError("Paste coordinates like 37.8716, -122.2727.");
+        if (!(Number.isInteger(minutes) && minutes >= 0 && minutes <= 180)) return setError("Minutes before is a whole number up to 180.");
+        if (await run("spot", () => override({ venueId: event.venueId!, name: name.trim(), howToFind: howToFind.trim(), ...point, meetOffsetMinutes: minutes }))) onDone();
+      }}
+    >
+      <p className="text-small text-ink">
+        Busy, public, well lit, and within about a 3 minute walk of {event.venueName ?? "the venue"}. Never a bar or a residence.
+      </p>
+      <TextField label="Spot name" value={name} onChange={(e) => setName(e.target.value)} hint="Like Bench left of the main doors." />
+      <TextField label="How to find it" value={howToFind} onChange={(e) => setHowToFind(e.target.value)} hint="One sentence a first timer can follow." />
+      <TextField
+        label="Coordinates"
+        value={where}
+        onChange={(e) => setWhere(e.target.value)}
+        inputMode="decimal"
+        hint="In a map app, press and hold the spot, then copy the numbers."
+      />
+      <TextField label="Minutes before the start" value={offset} onChange={(e) => setOffset(e.target.value)} inputMode="numeric" />
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" loading={busy === "spot"}>
+          Save spot
+        </Button>
+        <Button variant="quiet" onClick={onDone} disabled={busy !== null}>
+          Cancel
+        </Button>
+      </div>
+      <Result error={error} />
+    </form>
   );
 }
 
