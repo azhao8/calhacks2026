@@ -297,7 +297,7 @@ const flows = {
     const reopened = await text(page);
     await context.close();
     return {
-      summaryShowsSaved: /Up to \$50/.test(summary) && /Women, Non binary people/.test(summary) && /Anywhere BART goes/.test(summary),
+      summaryShowsSaved: /Up to \$50/.test(summary) && /Women, Other/.test(summary) && /Anywhere BART goes/.test(summary),
       landedAfterSave: landed,
       savedMessage: /Preferences saved/.test(after),
       showsNewValue: /Up to \$15/.test(after),
