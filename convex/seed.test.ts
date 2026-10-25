@@ -24,5 +24,5 @@ test("seeding is idempotent and only UC Berkeley is open", async () => {
 test("signed-out visitors get no profile", async () => {
   const t = convexTest(schema, modules);
   expect(await t.query(api.me.get, {})).toBeNull();
-  expect(await t.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false });
+  expect(await t.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null });
 });

@@ -1,12 +1,18 @@
 import { internalMutation, internalQuery } from "../_generated/server";
 import { v, type Infer } from "convex/values";
-import { accessFor } from "./apps";
+import { accessFor, savedSecret } from "./apps";
 import { startJob } from "./analysis";
 
 // S07 internals behind spotify.connectUrl and spotify.completeConnect.
 
 const vConnectContext = v.union(
-  v.object({ ok: v.literal(true), appId: v.id("spotifyApps"), clientId: v.string(), label: v.string() }),
+  v.object({
+    ok: v.literal(true),
+    appId: v.id("spotifyApps"),
+    clientId: v.string(),
+    label: v.string(),
+    secret: v.union(v.string(), v.null()),
+  }),
   v.object({ ok: v.literal(false), code: v.union(v.literal("forbidden"), v.literal("spotify_not_ready")) }),
 );
 
@@ -28,7 +34,7 @@ export const connectContext = internalQuery({
     if (!added) return { ok: false as const, code: "spotify_not_ready" as const };
     const app = await ctx.db.get(access.spotifyAppId!);
     if (app === null || !app.active) return { ok: false as const, code: "spotify_not_ready" as const };
-    return { ok: true as const, appId: app._id, clientId: app.clientId, label: app.label };
+    return { ok: true as const, appId: app._id, clientId: app.clientId, label: app.label, secret: await savedSecret(ctx, app._id) };
   },
 });
 

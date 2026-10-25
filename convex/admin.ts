@@ -9,12 +9,13 @@ import { now } from "./lib/clock";
 
 export const whoami = query({
   args: {},
-  returns: v.object({ signedIn: v.boolean(), isAdmin: v.boolean() }),
+  // Only the caller's own email, so the admin page can say who is signed in.
+  returns: v.object({ signedIn: v.boolean(), isAdmin: v.boolean(), email: v.union(v.string(), v.null()) }),
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) return { signedIn: false, isAdmin: false };
+    if (userId === null) return { signedIn: false, isAdmin: false, email: null };
     const user = await ctx.db.get(userId);
-    return { signedIn: true, isAdmin: isTeamEmail(user?.email) };
+    return { signedIn: true, isAdmin: isTeamEmail(user?.email), email: user?.email ?? null };
   },
 });
 

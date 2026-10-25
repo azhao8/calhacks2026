@@ -79,7 +79,19 @@ export default defineSchema({
     clientId: v.string(),
     capacity: v.number(),
     active: v.boolean(),
+    // The last "Check app" result on the admin page: did Spotify accept the client ID and secret.
+    checkedAt: v.optional(v.number()),
+    checkOk: v.optional(v.boolean()),
   }).index("by_label", ["label"]),
+
+  // Server-only: each app's client secret, entered on the admin page. Kept apart from spotifyApps so
+  // no query that reads apps can return a secret; only internal functions read this table.
+  spotifyAppSecrets: defineTable({
+    appId: v.id("spotifyApps"),
+    secret: v.string(),
+    setAt: v.number(),
+    setBy: v.string(),
+  }).index("by_appId", ["appId"]),
 
   spotifyAccess: defineTable({
     userId: v.id("users"),

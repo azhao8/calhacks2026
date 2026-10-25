@@ -21,11 +21,32 @@ export type SpotifyTokenSet = {
   scopes: string[];
 };
 
-export function clientSecret(label: string): string {
-  const name = SPOTIFY.secretEnvName(label);
+// An app as the token calls need it. `secret` is the one saved on the admin page, if any.
+export type SpotifyAppCredentials = { clientId: string; label: string; secret: string | null };
+
+// The saved secret wins; the env var SPOTIFY_CLIENT_SECRET_<LABEL> is the fallback for older apps.
+export function clientSecret(app: { label: string; secret: string | null }): string {
+  if (app.secret) return app.secret;
+  const name = SPOTIFY.secretEnvName(app.label);
   const secret = process.env[name];
-  if (!secret) throw new Error(`${name} is not set on this Convex deployment`);
+  if (!secret) throw new Error(`No client secret saved for ${app.label}, and ${name} is not set`);
   return secret;
+}
+
+// "Check app": Spotify's client credentials grant. It touches no user and needs no allow-list,
+// so it only tells us whether Spotify accepts this client ID and secret pair.
+export async function checkClientCredentials(clientId: string, secret: string): Promise<"accepted" | "rejected"> {
+  const response = await fetch(`${ACCOUNTS}/api/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${clientId}:${secret}`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ grant_type: "client_credentials" }).toString(),
+  });
+  if (response.ok) return "accepted";
+  if (response.status === 400 || response.status === 401) return "rejected";
+  throw new Error(`Spotify token request failed with ${response.status}`);
 }
 
 export function authorizeUrl(options: { clientId: string; redirectUri: string; state: string }): string {
@@ -39,14 +60,14 @@ export function authorizeUrl(options: { clientId: string; redirectUri: string; s
 }
 
 async function tokenRequest(
-  app: { clientId: string; label: string },
+  app: SpotifyAppCredentials,
   body: Record<string, string>,
   previousRefreshToken?: string,
 ): Promise<SpotifyTokenSet> {
   const response = await fetch(`${ACCOUNTS}/api/token`, {
     method: "POST",
     headers: {
-      Authorization: `Basic ${btoa(`${app.clientId}:${clientSecret(app.label)}`)}`,
+      Authorization: `Basic ${btoa(`${app.clientId}:${clientSecret(app)}`)}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body: new URLSearchParams(body).toString(),
@@ -72,7 +93,7 @@ async function tokenRequest(
 }
 
 export async function exchangeCode(
-  app: { clientId: string; label: string },
+  app: SpotifyAppCredentials,
   code: string,
   redirectUri: string,
 ): Promise<SpotifyTokenSet> {
@@ -80,7 +101,7 @@ export async function exchangeCode(
 }
 
 export async function refreshTokens(
-  app: { clientId: string; label: string },
+  app: SpotifyAppCredentials,
   refreshToken: string,
 ): Promise<SpotifyTokenSet> {
   return await tokenRequest(app, { grant_type: "refresh_token", refresh_token: refreshToken }, refreshToken);
