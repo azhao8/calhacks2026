@@ -88,7 +88,9 @@ async function inspect(page, { variant, width }) {
     const t = raw.replace(/\S+@\S+|https?:\/\/\S+|@[\w.]+/g, "");
     const add = (why) => {
       const key = `${why}: “${raw.slice(0, 90)}”`;
-      if (!seen.has(key)) copy.push(key), seen.add(key);
+      if (seen.has(key)) return;
+      copy.push(key);
+      seen.add(key);
     };
     if (/[–—]/.test(t) || /\s-\s/.test(t) || /[A-Za-z]-[A-Za-z]/.test(t)) add("dash or hyphen");
     if (/!/.test(t)) add("exclamation mark");

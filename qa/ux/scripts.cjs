@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- plain Node scripts run outside the app build */
 // Interactions a scenario runs before its screenshot. Each takes (page, mock).
 
 const { MockConvex } = require("./mock-convex.cjs");
@@ -24,9 +25,7 @@ const scripts = {
     await settle(page, 800);
   },
   async signInWrongCode(page, mock) {
-    let n = 0;
     mock.handlers["auth:signIn"] = (args) => {
-      n += 1;
       if (args.params && args.params.code) throw MockConvex.fail("retryable", "Invalid code");
       return { started: true };
     };

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports -- plain Node scripts run outside the app build */
 // Navigation and state clarity journeys. Each flow clicks through the app on the mock, records what
 // happened (where it landed, what it said, how many server calls a double tap made), and saves
 // screenshots. Writes qa/ux/out/flows.json and qa/ux/out/flows.md.

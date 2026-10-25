@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports -- plain Node scripts run outside the app build */
 // Renders every scenario in Chromium at 375×812 (plus variants), saves a screenshot, and runs the
 // automatic checks in checks.cjs. Writes qa/ux/out/report.json and qa/ux/out/report.md.
 //

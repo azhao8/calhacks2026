@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- plain Node scripts run outside the app build */
 // Every student screen in every meaningful state. Each scenario is a path plus the data its live
 // queries return. `variants` adds extra renders: text200 (200% text), w320 (320px wide),
 // offline (the browser's offline signal after load), reduced (prefers-reduced-motion).
