@@ -2,33 +2,17 @@
 
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
+import type { FunctionReturnType } from "convex/server";
+import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
 import { Loading, Muted, Panel, Result, useRun, when } from "./_ui";
 import { countdown } from "./format";
 
 // The Drop tab: one drop for every student at once, moved through its phases from here.
-// Drop 1's functions, referenced by name so this page builds before or after the backend lands.
-type DropStatus = "choosing" | "confirming" | "matched";
-type DropCounts = {
-  eligible: number;
-  choosing: number;
-  deciding: number;
-  accepted: number;
-  passed: number;
-  declined: number;
-  turnedAway: number;
-  matched: number;
-  unmatched: number;
-  demo: number;
-};
-type Drop = { status: DropStatus; startedAt: number; choosingEndsAt: number; matchAt: number; counts: DropCounts };
-
-const dropStatus = makeFunctionReference<"query", Record<string, never>, { drop: Drop | null }>("admin/drops:status");
-const startDrop = makeFunctionReference<"mutation", Record<string, never>, unknown>("admin/drops:start");
-const endChoosing = makeFunctionReference<"mutation", Record<string, never>, unknown>("admin/drops:endChoosing");
-const matchNow = makeFunctionReference<"mutation", Record<string, never>, unknown>("admin/drops:matchNow");
+type Drop = NonNullable<FunctionReturnType<typeof api.admin.drops.status>["drop"]>;
+type DropStatus = Drop["status"];
+type DropCounts = Drop["counts"];
 
 const PHASE: Record<DropStatus | "none", string> = {
   none: "No drop",
@@ -59,10 +43,10 @@ export function DropTab() {
 }
 
 function DropControls() {
-  const status = useQuery(dropStatus, {});
-  const start = useMutation(startDrop);
-  const end = useMutation(endChoosing);
-  const match = useMutation(matchNow);
+  const status = useQuery(api.admin.drops.status);
+  const start = useMutation(api.admin.drops.start);
+  const end = useMutation(api.admin.drops.endChoosing);
+  const match = useMutation(api.admin.drops.matchNow);
   const { busy, error, done, run } = useRun();
 
   if (status === undefined) return <Loading />;
