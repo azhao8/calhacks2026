@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { announcedTimeLeft, countdownDigits, spokenTimeLeft, whenLabel } from "./drop";
+import { announcedTimeLeft, countdownDigits, dropPhase, spokenTimeLeft, whenLabel } from "./drop";
 
 const s = (n: number) => n * 1000;
 const min = (n: number) => n * 60_000;
@@ -42,6 +42,13 @@ describe("spokenTimeLeft", () => {
     expect(spokenTimeLeft(min(1) + s(30))).toBe("1 minute left");
   });
 
+  test("with the phase", () => {
+    expect(spokenTimeLeft(hr(2) - s(1), "choosing")).toBe("1 hour 59 minutes left to choose");
+    expect(spokenTimeLeft(min(5), "confirming")).toBe("5 minutes until matching");
+    expect(spokenTimeLeft(s(30), "confirming")).toBe("Less than a minute until matching");
+    expect(spokenTimeLeft(0, "choosing")).toBe("Time is up");
+  });
+
   test("the last minute and after", () => {
     expect(spokenTimeLeft(s(30))).toBe("Less than a minute left");
     expect(spokenTimeLeft(0)).toBe("Time is up");
@@ -60,7 +67,20 @@ describe("announcedTimeLeft", () => {
     expect(announcedTimeLeft(s(10))).toBe("Less than a minute left");
   });
 
+  test("keeps the phase", () => {
+    expect(announcedTimeLeft(hr(2) - s(1), "choosing")).toBe("1 hour 45 minutes left to choose");
+    expect(announcedTimeLeft(min(59), "confirming")).toBe("55 minutes until matching");
+  });
+
   test("stays the same within a step", () => {
     expect(announcedTimeLeft(min(44))).toBe(announcedTimeLeft(min(40) + s(1)));
+  });
+});
+
+describe("dropPhase", () => {
+  test("reads the phase when the view has one", () => {
+    expect(dropPhase({ kind: "done", endsAt: 0, phase: "confirming" } as never)).toBe("confirming");
+    expect(dropPhase({ kind: "done", endsAt: 0 })).toBeUndefined();
+    expect(dropPhase({ kind: "none" })).toBeUndefined();
   });
 });

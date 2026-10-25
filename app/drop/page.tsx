@@ -7,7 +7,7 @@ import { Button } from "@/components/Button";
 import { Card, InlineError, Meta, MetaItem } from "@/components/Card";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { DropTimer } from "@/components/DropTimer";
-import { countdownDigits, dropsApi, useDrop, whenLabel, type DropEvent, type DropView } from "@/app/_lib/drop";
+import { countdownDigits, dropPhase, dropsApi, useDrop, whenLabel, type DropEvent, type DropView } from "@/app/_lib/drop";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useNow, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
@@ -43,7 +43,7 @@ export default function DropPage() {
     );
   }
   return (
-    <Screen object="ticket" menu top={<DropTimer endsAt={drop.endsAt} />}>
+    <Screen object="ticket" menu top={<DropTimer endsAt={drop.endsAt} phase={dropPhase(drop)} />}>
       {notices}
       <DropState key={drop.kind} drop={drop} />
     </Screen>
