@@ -1,37 +1,134 @@
 /*
-  The reveal's motion (components/Reveal.tsx): each opened step rises into place, and the present
-  gives a small squeeze when tapped. Classes are applied with motion-safe:, so under reduced motion
-  nothing moves and the steps simply appear.
+  The reveal's motion (components/Reveal.tsx). The first line fades and rises into the middle;
+  each tap breaks the words into flying letters, pops the next color in with a ring of light, and
+  raises the next line; the last step opens a circle onto the gradient. The "Tap" hint breathes.
+  Under reduced motion the global rule in app/globals.css ends every animation at once, so each
+  screen simply appears.
 */
-@theme {
-  --animate-reveal-in: reveal-in 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-reveal-pop: reveal-pop 360ms cubic-bezier(0.3, 1.4, 0.5, 1) both;
-
-  @keyframes reveal-in {
-    0% {
-      opacity: 0;
-      transform: translateY(16px) scale(0.94);
-      filter: blur(6px);
-    }
-    100% {
-      opacity: 1;
-      transform: none;
-      filter: none;
-    }
+@layer components {
+  .reveal-arrive {
+    animation: reveal-arrive 1100ms cubic-bezier(0.2, 0.8, 0.2, 1) 150ms both;
   }
 
-  @keyframes reveal-pop {
-    0% {
-      transform: scale(1);
-    }
-    35% {
-      transform: scale(0.93) rotate(-1.5deg);
-    }
-    70% {
-      transform: scale(1.03) rotate(0.5deg);
-    }
-    100% {
-      transform: scale(1);
-    }
+  .reveal-rise {
+    animation: reveal-rise 640ms cubic-bezier(0.2, 0.9, 0.25, 1.15) 260ms both;
+  }
+
+  .reveal-shard {
+    animation: reveal-shard 620ms cubic-bezier(0.15, 0.6, 0.3, 1) forwards;
+  }
+
+  .reveal-pop {
+    animation: reveal-pop 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .reveal-boom {
+    width: 24px;
+    height: 24px;
+    margin: -12px 0 0 -12px;
+    border-radius: var(--radius-pill);
+    border: 3px solid currentColor;
+    opacity: 0;
+    animation: reveal-boom 700ms cubic-bezier(0.1, 0.7, 0.3, 1) both;
+  }
+
+  .reveal-iris {
+    animation: reveal-iris 1000ms cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+
+  .reveal-tap {
+    animation:
+      reveal-tap-in 400ms ease-out 1200ms both,
+      reveal-tap 1400ms ease-in-out 1600ms infinite;
+  }
+}
+
+@keyframes reveal-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(48px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes reveal-shard {
+  0% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  15% {
+    opacity: 1;
+    transform: scale(1.12);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--shard-x), var(--shard-y)) rotate(var(--shard-r)) scale(0.4);
+    filter: blur(3px);
+  }
+}
+
+@keyframes reveal-pop {
+  from {
+    transform: scale(1.06);
+    filter: brightness(1.35);
+  }
+  to {
+    transform: none;
+    filter: none;
+  }
+}
+
+@keyframes reveal-boom {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(40);
+    border-width: 0.5px;
+  }
+}
+
+@keyframes reveal-iris {
+  from {
+    clip-path: circle(0% at 50% 50%);
+  }
+  to {
+    clip-path: circle(150% at 50% 50%);
+  }
+}
+
+@keyframes reveal-tap-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.8;
+  }
+}
+
+@keyframes reveal-tap {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
   }
 }
