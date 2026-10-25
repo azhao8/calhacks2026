@@ -68,10 +68,30 @@ Open the app at http://127.0.0.1:3000, not `localhost`: Spotify only redirects b
 
 ## Parallel worktrees
 
-Every Convex push replaces the deployment's whole set of functions, so two worktrees must never push to the same deployment. Give each worktree its own local deployment:
+Every Convex push replaces the deployment's whole set of functions, so two worktrees must never push to the same deployment. On a laptop, give each worktree its own local deployment:
 
 ```bash
 npx convex dev --configure existing --project melos --dev-deployment local
 ```
 
 Then load secrets into it with `scripts/push-secrets.sh dev`.
+
+## Cloud sessions
+
+Cloud sessions can't download Convex's local backend, so they test functions in memory with `npm test` (convex-test) and never push. Verified October 24 in the cloud environment:
+
+```bash
+CONVEX_DEPLOY_KEY="$MELOS_DEV_DEPLOY_KEY" npx convex codegen
+```
+
+Regenerates `convex/_generated` against the shared dev deployment. Codegen uploads code for analysis only and never makes it live. It is the only Convex command a stream session runs with that key.
+
+```bash
+NEXT_PUBLIC_CONVEX_URL=https://elated-barracuda-447.convex.cloud npm run build
+```
+
+`npx convex env list`, `data`, and `logs` hang in cloud sessions because their WebSockets ignore the proxy, and Node's built-in `fetch` needs `NODE_USE_ENV_PROXY=1` to reach outside services.
+
+## Deploy (configured, not yet verified)
+
+Vercel builds only production, from `main`: `vercel.json` runs `npx convex deploy --cmd 'npm run build'`, then the idempotent seed, and skips every other build so branches never touch production. Vercel's `CONVEX_DEPLOY_KEY` is the production deploy key, scoped to Production.
