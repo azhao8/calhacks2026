@@ -169,3 +169,9 @@ Entry format:
 - Why: the owner asked for it, for this hackathon demo build, to remove test accounts and reset the app from the admin page.
 - Replaces: CONFIRMED (owner) — the §6.7 rule that only "Reset demo" touches data and never deletes a real student's records; deletion is now an explicit, confirmed team action. Also OPEN — account deletion (§5 S16), on the team side only; students still have no self-service deletion.
 - Affects: S17; every table that holds student or event data; `convex/admin/students.ts`.
+
+## 2026-10-25 02:45 PT · azhao8 · Admins can delete their own account, and student wipes include team accounts
+- Changed: "Delete student" on the admin page also works on the account you're signed in with: it removes the account and its Convex Auth sessions, refresh tokens, verifiers, sign-in accounts and codes, then signs the browser out to Welcome. "Delete all students" and "Delete everything" now remove every account, team accounts and the caller included. Admin access comes from `ADMIN_EMAILS`, not the account row, so signing in again with the same school email creates a fresh account that is still on the team and starts onboarding from the beginning. A session left over from a deleted account reads as signed out.
+- Why: the owner asked that deleting all users delete them as well, and that they can delete themselves.
+- Replaces: the "never your own account" rule and "team accounts are always kept" in the 2026-10-25 01:15 PT entry (the team can delete students and wipe data from the admin page).
+- Affects: S17 Students and Danger zone; `convex/admin/students.ts`, `convex/admin.ts` (whoami); every table holding account data.

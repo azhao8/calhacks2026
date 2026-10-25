@@ -44,5 +44,5 @@ test("another spot sharing a seeded spot's name neither breaks the seed nor gets
 test("signed-out visitors get no profile", async () => {
   const t = convexTest(schema, modules);
   expect(await t.query(api.me.get, {})).toBeNull();
-  expect(await t.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null });
+  expect(await t.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null, orphaned: false });
 });
