@@ -277,7 +277,9 @@ export async function acceptSeat(ctx: MutationCtx, seat: Seat): Promise<void> {
 
   const bothIn = active.length === 2 && active.every((other) => other._id === seat._id || other.seat === "in");
   if (bothIn) {
-    await ctx.db.patch(plan._id, { status: "set", ...(plan.setAt === undefined ? { setAt: now } : {}) });
+    // Stamped every time the plan becomes set: it means "most recently set", so whoever was in then
+    // keeps the meeting spot through a later drop.
+    await ctx.db.patch(plan._id, { status: "set", setAt: now });
     for (const member of active) {
       const memberUser = await ctx.db.get(member.userId);
       if (memberUser?.isDemo) {

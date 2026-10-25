@@ -124,6 +124,36 @@ describe("the meeting spot needs a plan that was set", () => {
   });
 });
 
+describe("the meeting spot after two drops", () => {
+  test("a partner who joined a refilled plan keeps the spot when the other person drops", async () => {
+    const t = await setup();
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const maya = await makeStudent(t, { firstName: "Maya" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const p = await pairOn(t, maya, sam, eventId);
+    await asUser(t, maya).mutation(api.plans.accept, { seatId: p.seatOf(maya) });
+    await asUser(t, sam).mutation(api.plans.accept, { seatId: p.seatOf(sam) });
+    await asUser(t, sam).mutation(api.plans.cantMakeIt, { seatId: p.seatOf(sam) });
+
+    await advance(t, 1000);
+    const lee = await makeStudent(t, { firstName: "Lee" });
+    await makeAsk(t, lee, eventId);
+    await t.mutation(internal.matching.run.forEvent, { eventId, trigger: "seat_open" });
+    const leeSeat = (await seatsFor(t, p.meetupId)).find((s) => s.userId === lee)!;
+    await advance(t, 1000);
+    await asUser(t, lee).mutation(api.plans.accept, { seatId: leeSeat._id });
+    expect((await t.run(async (ctx) => ctx.db.get(p.meetupId)))!.status).toBe("set");
+
+    await advance(t, 1000);
+    await asUser(t, maya).mutation(api.plans.cantMakeIt, { seatId: p.seatOf(maya) });
+    const view = (await asUser(t, lee).query(api.plans.current, {}))!;
+    expect(view.stage).toBe("waiting");
+    expect(view.notice).toBe("partner_dropped");
+    expect(view.previousPartnerFirstName).toBe("Maya");
+    expect(view.meeting?.spotName).toBe("Sather Gate");
+  });
+});
+
 describe("smaller fixes", () => {
   test("demo students' yeses don't count toward the close-fit boost", async () => {
     const t = await setup();

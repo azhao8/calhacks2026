@@ -111,7 +111,7 @@ export const current = query({
 
     // The meeting spot appears once both are in. The person who stayed keeps it while a dropped seat is
     // refilled; someone newly offered a seat doesn't see it until they're in.
-    // Keeping the spot after a drop needs a plan that was set while this student was already in.
+    // Keeping the spot after a drop needs the student to have been in when the plan was last set.
     const wasSetWithMe = plan.setAt !== undefined && (seat.respondedAt ?? Infinity) <= plan.setAt;
     const seesMeeting =
       seat.seat === "in" &&
