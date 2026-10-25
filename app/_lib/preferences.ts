@@ -29,13 +29,13 @@ export const MEET_OPTIONS = [
   { id: "anyone", label: "Anyone" },
   { id: "woman", label: "Women" },
   { id: "man", label: "Men" },
-  { id: "non_binary", label: "Non binary people" },
+  { id: "non_binary", label: "Other" },
 ] as const;
 
 export const SELF_OPTIONS = [
   { id: "woman", label: "Woman" },
   { id: "man", label: "Man" },
-  { id: "non_binary", label: "Non binary" },
+  { id: "non_binary", label: "Other" },
   { id: "prefer_not_to_say", label: "Prefer not to say" },
 ] as const;
 
