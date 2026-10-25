@@ -1,8 +1,24 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "../components/backdrop.css";
 
 /* design/ is a read-only reference the app never loads, so its files are not scanned for classes. */
 @source not "../design";
+
+/* The design's equalizer bars for loading (.ml-state__bars). They hold still under reduced motion. */
+@theme {
+  --animate-eq: eq 1s ease-in-out infinite;
+
+  @keyframes eq {
+    0%,
+    100% {
+      height: 30%;
+    }
+    50% {
+      height: 100%;
+    }
+  }
+}
 
 @layer base {
   html {
