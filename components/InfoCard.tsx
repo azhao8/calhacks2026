@@ -17,7 +17,8 @@ export function InfoCard({ kind, from, value }: { kind: keyof typeof KIND; from:
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(value);
+      // Copy a plain hyphen, not the non-breaking one used for display.
+      await navigator.clipboard.writeText(value.replace(/\u2011/g, "-"));
       setCopied("yes");
     } catch {
       setCopied("failed");
