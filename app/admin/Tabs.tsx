@@ -8,8 +8,8 @@ import { priceLabel } from "@/convex/lib/format";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
 import { Icon } from "@/components/Icon";
-import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, ShowMore, ShownError, ago, useRun, when } from "./_ui";
-import { fromPacificInput, parseLatLng, parsePrice, toPacificInput } from "./format";
+import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, ShowMore, ago, useRun, when } from "./_ui";
+import { eventFormValues, eventPatch, parseLatLng, type EventFormValues } from "./format";
 import type { StudentFocus } from "./Spotify";
 
 export type TabKey = "action" | "spotify" | "events" | "matching" | "help" | "demo" | "funnel";
@@ -381,57 +381,23 @@ function EventRow({ event }: { event: ListedEvent }) {
 function EventEdit({ event, onDone }: { event: ListedEvent; onDone: () => void }) {
   const edit = useMutation(api.admin.events.edit);
   const { busy, error, run, setError } = useRun();
-  const initial = {
-    title: event.title,
-    startsAt: event.startsAt > 0 ? toPacificInput(event.startsAt) : "",
-    priceMin: event.priceMin === null ? "" : String(event.priceMin),
-    priceMax: event.priceMax === null ? "" : String(event.priceMax),
-    ticketUrl: event.ticketUrl ?? "",
-    freeEntryNote: event.freeEntryNote ?? "",
-    ageLimit: event.ageLimit === null ? "" : String(event.ageLimit),
-  };
-  const [form, setForm] = useState(initial);
-  const set = (key: keyof typeof initial) => (e: { target: { value: string } }) => setForm({ ...form, [key]: e.target.value });
-
-  function patch() {
-    const out: Parameters<typeof edit>[0]["patch"] = {};
-    if (form.title.trim() !== initial.title) {
-      if (form.title.trim() === "") throw new ShownError("Add a title.");
-      out.title = form.title.trim();
-    }
-    if (form.startsAt !== initial.startsAt) {
-      const startsAt = fromPacificInput(form.startsAt);
-      if (startsAt === null) throw new ShownError("Pick a start date and time.");
-      out.startsAt = startsAt;
-    }
-    for (const key of ["priceMin", "priceMax"] as const) {
-      if (form[key].trim() === initial[key]) continue;
-      const price = parsePrice(form[key]);
-      if (price === "invalid") throw new ShownError("Prices are dollar amounts like 15, or empty when not listed.");
-      out[key] = price;
-    }
-    if (form.ticketUrl.trim() !== initial.ticketUrl) out.ticketUrl = form.ticketUrl.trim() || null;
-    if (form.freeEntryNote.trim() !== initial.freeEntryNote) out.freeEntryNote = form.freeEntryNote.trim() || null;
-    if (form.ageLimit.trim() !== initial.ageLimit) {
-      const age = form.ageLimit.trim() === "" ? null : Number(form.ageLimit);
-      if (age !== null && !(Number.isInteger(age) && age >= 0)) throw new ShownError("The age limit is a whole number, or empty for all ages.");
-      out.ageLimit = age;
-    }
-    return out;
-  }
+  // The values the form opened with, captured once: a scout run that updates the event while the
+  // form is open must not make untouched fields look edited (each edited field is kept by the team).
+  const [baseline] = useState(() => eventFormValues(event));
+  const [form, setForm] = useState(baseline);
+  const set = (key: keyof EventFormValues) => (e: { target: { value: string } }) => setForm({ ...form, [key]: e.target.value });
 
   return (
     <form
       className="flex flex-col gap-3"
       onSubmit={async (e: FormEvent) => {
         e.preventDefault();
-        let changes;
-        try {
-          changes = patch();
-        } catch (problem) {
-          setError(problem instanceof Error ? problem.message : "Check the fields.");
+        const result = eventPatch(baseline, form);
+        if ("error" in result) {
+          setError(result.error);
           return;
         }
+        const changes = result.patch;
         if (Object.keys(changes).length === 0) {
           setError("Nothing changed yet.");
           return;
