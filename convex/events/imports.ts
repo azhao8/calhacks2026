@@ -371,6 +371,10 @@ export const finish = internalMutation({
     if (counts.published > 0) {
       await ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
     }
+    // Drops: audience profiles for new or changed events.
+    if (counts.published > 0 || counts.updated > 0) {
+      await ctx.scheduler.runAfter(0, internal.drops.audience.backfill, {});
+    }
     return null;
   },
 });

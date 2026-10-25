@@ -137,3 +137,9 @@ export const AUDIENCE = {
   labelsMax: 8,
   effort: "low",
 } as const;
+
+// The old "Your week" asks and live matching on a yes run only while drops are off. MELOS_LEGACY_ASKS=1
+// turns them back on (their own test suites set it).
+export function legacyAsksOn(): boolean {
+  return !DROP.enabled || process.env.MELOS_LEGACY_ASKS === "1";
+}
