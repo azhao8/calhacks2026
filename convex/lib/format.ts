@@ -31,14 +31,15 @@ function dollars(amount: number): string {
   return Number.isInteger(amount) ? `$${amount}` : `$${amount.toFixed(2)}`;
 }
 
-// "Free", "$22", "$18 to $25", or "Price not listed" (never invent a price).
+// "Free", "$22", "$18 to $25", "From $15", "Up to $25", or "Price not listed" (never invent a price:
+// a listing that only says "from $15" has no known top price, so it never reads as exactly $15).
 export function priceLabel(priceMin: number | null, priceMax: number | null): string {
   if (priceMin === null && priceMax === null) return "Price not listed";
-  const low = priceMin ?? priceMax!;
-  const high = priceMax ?? priceMin!;
-  if (high === 0) return "Free";
-  if (low === high) return dollars(low);
-  return `${low === 0 ? "Free" : dollars(low)} to ${dollars(high)}`;
+  if (priceMax === null) return priceMin === 0 ? "Free and up" : `From ${dollars(priceMin!)}`;
+  if (priceMin === null) return priceMax === 0 ? "Free" : `Up to ${dollars(priceMax)}`;
+  if (priceMax === 0) return "Free";
+  if (priceMin === priceMax) return dollars(priceMin);
+  return `${priceMin === 0 ? "Free" : dollars(priceMin)} to ${dollars(priceMax)}`;
 }
 
 // "0.6 mi from campus"

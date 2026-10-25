@@ -229,6 +229,8 @@ export default defineSchema({
     matcherWakeAt: v.optional(v.number()),
     // Fields the team edited on the admin page; later imports leave them alone (§6.1 team control).
     teamFields: v.optional(v.array(v.string())),
+    // Consecutive runs that covered this event's source without seeing it; flagged at 2, reset on sight (§6.1).
+    missedRuns: v.optional(v.number()),
   })
     .index("by_status_startsAt", ["status", "startsAt"])
     .index("by_dedupeKey", ["dedupeKey"])
