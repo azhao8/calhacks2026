@@ -191,7 +191,7 @@ export function EventsTab() {
           )
         ) : null}
       </Panel>
-      <Panel title="Events" lead="Upcoming events only. Tap one to pull it, feature it, or fix its price.">
+      <Panel title="Events" lead="Tap one to pull it, feature it, edit it, or change its meeting spot.">
         <Filters
           label="Which events"
           value={filter}
