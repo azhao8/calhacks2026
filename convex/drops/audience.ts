@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { z } from "zod";
-import { AUDIENCE } from "../lib/config";
+import { AUDIENCE, dropsEnabled } from "../lib/config";
 import { aiPool } from "../lib/pools";
 import { generateJson } from "../services/claude";
 import { embed } from "../services/voyage";
@@ -48,6 +48,8 @@ export const backfill = internalMutation({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
+    // Drops off: write nothing new, so the old flow sees exactly what main has today.
+    if (!dropsEnabled()) return 0;
     const events = await ctx.db
       .query("events")
       .withIndex("by_status_startsAt", (q) => q.eq("status", "published").gt("startsAt", Date.now()))

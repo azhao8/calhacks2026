@@ -423,3 +423,19 @@ describe("audience profiles", () => {
     expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(0);
   });
 });
+
+describe("the runtime switch", () => {
+  test("DROP_ENABLED=false brings back the old asks and refuses Start drop", async () => {
+    const { t, admin } = await world();
+    await makeStudent(t, { firstName: "Sam" });
+    expect(await t.mutation(internal.asks.picker.pickAfterImport, {})).toBe(0);
+    process.env.DROP_ENABLED = "false";
+    try {
+      expect(await t.mutation(internal.asks.picker.pickAfterImport, {})).toBeGreaterThan(0);
+      expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(0);
+      await expect(admin.mutation(api.admin.drops.start, {})).rejects.toThrow(/validation_failed/);
+    } finally {
+      delete process.env.DROP_ENABLED;
+    }
+  });
+});
