@@ -16,15 +16,38 @@ function token(): string {
   return value;
 }
 
+// An Apify refusal, with its HTTP status (402 or 429 when the plan's concurrent-run or memory limit is full).
+export class ApifyError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function call(path: string, init?: RequestInit): Promise<Response> {
   const response = await fetch(`${API}${path}`, {
     ...init,
     headers: { Authorization: `Bearer ${token()}`, "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok && response.status !== 404) {
-    throw new Error(`Apify ${path.split("?")[0]} failed with ${response.status}: ${await response.text()}`);
+    throw new ApifyError(`Apify ${path.split("?")[0]} failed with ${response.status}: ${await response.text()}`, response.status);
   }
   return response;
+}
+
+// The plan's limits are full (a run plus its search runs can fill all concurrent slots): try again later.
+export function isBusyRefusal(error: unknown): boolean {
+  return error instanceof ApifyError && (error.status === 402 || error.status === 429);
+}
+
+// This actor's runs that are starting or running, newest first.
+export async function activeRuns(actorId: string): Promise<{ id: string; startedAt: number }[]> {
+  const response = await call(`/acts/${encodeURIComponent(actorId)}/runs?status=READY,RUNNING&desc=true&limit=5`);
+  if (response.status === 404) return [];
+  const body = (await response.json()) as { data: { items: { id: string; startedAt: string }[] } };
+  return body.data.items.map((item) => ({ id: item.id, startedAt: Date.parse(item.startedAt) }));
 }
 
 export async function getRun(runId: string): Promise<ApifyRun | null> {

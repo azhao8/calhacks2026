@@ -155,7 +155,7 @@ export function EventsTab() {
     filter === "flagged" ? { flaggedOnly: true, limit: deferred ? 500 : limit + 1 } : { status: filter, limit: deferred ? 500 : limit + 1 },
   );
   const findNow = useAction(api.admin.events.findNow);
-  const { busy, error, done, run } = useRun();
+  const { busy, error, done, run, setDone } = useRun();
   const matches = events?.filter((event) => !deferred || `${event.title} ${event.venueName ?? ""}`.toLowerCase().includes(deferred));
   const shown = matches?.slice(0, limit);
 
@@ -165,9 +165,9 @@ export function EventsTab() {
         <Action
           variant="primary"
           label="Find events now"
-          explain="Starts a scout run on Apify. New events arrive here when it finishes, usually in a few minutes."
+          explain="Starts a scout run on Apify, unless one is already going. New events arrive here when it finishes."
           busy={busy === "find"}
-          onClick={() => run("find", () => findNow({}), "Started a scout run. New events arrive when it finishes.")}
+          onClick={() => run("find", async () => setDone((await findNow({})).message))}
         />
         <Result error={error} done={done} />
         <Button variant="quiet" className="self-start" aria-expanded={showImports} onClick={() => setShowImports(!showImports)}>

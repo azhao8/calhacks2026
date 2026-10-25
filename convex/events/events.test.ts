@@ -14,12 +14,16 @@ import fullRunDuplicates from "./fixtures/full-run-duplicates.json";
 const apify = vi.hoisted(() => ({
   items: [] as unknown[],
   summary: null as unknown,
+  startRun: vi.fn(async () => ({ id: "newrun", status: "READY", defaultDatasetId: "d", defaultKeyValueStoreId: "k" })),
+  activeRuns: vi.fn(async (): Promise<{ id: string; startedAt: number }[]> => []),
 }));
 vi.mock("../services/apify", () => ({
   getRun: vi.fn(async (id: string) => ({ id, status: "SUCCEEDED", defaultDatasetId: `ds-${id}`, defaultKeyValueStoreId: `kv-${id}` })),
   listDatasetItems: vi.fn(async () => apify.items),
   getRecord: vi.fn(async () => apify.summary),
-  startRun: vi.fn(async () => ({ id: "newrun", status: "READY", defaultDatasetId: "d", defaultKeyValueStoreId: "k" })),
+  startRun: apify.startRun,
+  activeRuns: apify.activeRuns,
+  isBusyRefusal: (error: unknown) => (error as { status?: number })?.status === 402,
   scoutActorId: () => "test~scout",
 }));
 const geocode = vi.hoisted(() => ({ searchPlaces: vi.fn() }));
@@ -608,8 +612,43 @@ describe("venues and meeting spots", () => {
 });
 
 describe("admin", () => {
-  test("find events now starts a scout run", async () => {
+  test("find events now starts a scout run when none is going", async () => {
     const t = await setup();
-    expect(await t.action(internal.events.admin.findNow, {})).toEqual({ apifyRunId: "newrun" });
+    apify.activeRuns.mockResolvedValueOnce([]);
+    expect(await t.action(internal.events.admin.findNow, {})).toEqual({
+      status: "started",
+      apifyRunId: "newrun",
+      message: "Started. New events land in about 8 minutes.",
+    });
+  });
+
+  test("find events now doesn't start a second run while one is going", async () => {
+    const t = await setup();
+    apify.startRun.mockClear();
+    // Started at 3:09 am Pacific.
+    apify.activeRuns.mockResolvedValueOnce([{ id: "Xuv4", startedAt: Date.parse("2026-10-25T10:09:05Z") }]);
+    expect(await t.action(internal.events.admin.findNow, {})).toEqual({
+      status: "running",
+      runningSince: Date.parse("2026-10-25T10:09:05Z"),
+      message: "A search is already running, started 3:09 am. New events land when it finishes, usually in about 8 minutes.",
+    });
+    expect(apify.startRun).not.toHaveBeenCalled();
+  });
+
+  test("a full Apify plan (402) is an answer, not an error", async () => {
+    const t = await setup();
+    apify.activeRuns.mockResolvedValueOnce([]);
+    apify.startRun.mockRejectedValueOnce(Object.assign(new Error("Apify /acts/x/runs failed with 402"), { status: 402 }));
+    expect(await t.action(internal.events.admin.findNow, {})).toEqual({
+      status: "busy",
+      message: "Apify is busy with another run. Try again in a few minutes.",
+    });
+  });
+
+  test("other Apify failures still surface as errors", async () => {
+    const t = await setup();
+    apify.activeRuns.mockResolvedValueOnce([]);
+    apify.startRun.mockRejectedValueOnce(Object.assign(new Error("Apify failed with 500"), { status: 500 }));
+    await expect(t.action(internal.events.admin.findNow, {})).rejects.toThrow(/500/);
   });
 });
