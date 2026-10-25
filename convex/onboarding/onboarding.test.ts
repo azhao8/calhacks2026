@@ -791,15 +791,27 @@ describe("acceptance audit fixes", () => {
           { a: other.userId, b: other.userId, score: 1, similarity: 0.5, shared, reason: "untouched" },
         ],
       });
-      return { mine, theirs, runId };
+      // More runs than one scrub batch, so the job has to page through them.
+      const extra = [];
+      for (let i = 0; i < 120; i += 1) {
+        extra.push(
+          await ctx.db.insert("matchRuns", {
+            eventId, trigger: "sweep", startedAt: i + 1, seatsRefilled: 0, pairsCreated: 1, demoFills: 0, errors: [],
+            decisions: [{ a: other.userId, b: s.userId, score: 1, similarity: 0.5, shared, reason: "later" }],
+          }),
+        );
+      }
+      return { mine, theirs, runId, extra };
     });
     await s.as.mutation(api.settings.disconnectSpotify, {});
+    await drain(t); // the matcher-log scrub runs after the disconnect transaction
     await t.run(async (ctx) => {
       expect((await ctx.db.get(ids.mine))?.pickReason).toBeUndefined();
       expect((await ctx.db.get(ids.theirs))?.pickReason).toBe("keep");
       const run = await ctx.db.get(ids.runId);
       expect(run?.decisions[0].shared).toEqual([]);
       expect(run?.decisions[1].shared).toHaveLength(1);
+      for (const id of ids.extra) expect((await ctx.db.get(id))?.decisions[0].shared).toEqual([]);
     });
   });
 });
