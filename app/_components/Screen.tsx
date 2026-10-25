@@ -4,10 +4,12 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Backdrop, type BackdropObject } from "@/components/Backdrop";
 import { cx } from "@/components/cx";
+import { Ok } from "@/components/Card";
 import { MenuButton } from "@/components/MenuButton";
 import { StateView } from "@/components/StateView";
 import { Wordmark } from "@/components/Wordmark";
 import { useOnline } from "@/app/_lib/hooks";
+import { useFlash, useTrackPath } from "@/app/_lib/nav";
 import { ROUTES } from "@/app/_lib/routes";
 
 // A full screen on the Backdrop (design/docs/backgrounds.md): the top bar with the wordmark and
@@ -31,6 +33,8 @@ export function Screen({
   children?: ReactNode;
 }) {
   const online = useOnline();
+  const flash = useFlash();
+  useTrackPath();
   return (
     <div className="relative isolate min-h-dvh">
       <Backdrop object={object} quiet={quiet} fixed />
@@ -48,6 +52,11 @@ export function Screen({
               ) : null)}
           </header>
           {online ? null : <StateView kind="offline" inline />}
+          {flash ? (
+            <div className="rounded-sm bg-backdrop-vignette px-4 py-3">
+              <Ok>{flash}</Ok>
+            </div>
+          ) : null}
           {top}
         </div>
         <main className="flex flex-col gap-4">{children}</main>
@@ -88,8 +97,9 @@ export function ScreenTitle({
   return (
     <div className="flex flex-col gap-2">
       {eyebrow ? <p className={cx("text-small font-semibold", inkEyebrow ? "text-ink" : "text-accent")}>{eyebrow}</p> : null}
-      <h1 className={display ? "font-display text-display text-balance" : "font-display text-title text-balance"}>{children}</h1>
-      {lead ? <div className="text-body text-ink">{lead}</div> : null}
+      {/* Long names and emails wrap instead of pushing the page wider than the screen. */}
+      <h1 className={cx("font-display text-balance wrap-break-word", display ? "text-display" : "text-title")}>{children}</h1>
+      {lead ? <div className="text-body text-ink wrap-break-word">{lead}</div> : null}
     </div>
   );
 }

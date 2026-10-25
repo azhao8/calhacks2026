@@ -38,9 +38,11 @@ export function InfoCard({ kind, from, value }: { kind: keyof typeof KIND; from:
           target={kind === "instagram" ? "_blank" : undefined}
           rel={kind === "instagram" ? "noopener noreferrer" : undefined}
           aria-label={`${openLabel}, ${value}`}
-          className="inline-flex min-h-12 items-center font-semibold wrap-break-word text-ink tabular-nums underline decoration-line-strong underline-offset-4"
+          className="flex min-h-12 min-w-0 items-center font-semibold text-ink tabular-nums underline decoration-line-strong underline-offset-4"
         >
-          {value}
+          {/* A handle wraps anywhere rather than widening the screen. A number may break only at its
+              space, never at the hyphen, so "(510) 555-0123" never splits mid-number. */}
+          <span className={cx("min-w-0", kind === "phone" ? "" : "wrap-anywhere")}>{kind === "phone" ? value.replace(/-/g, "\u2011") : value}</span>
         </a>
       </span>
       <button type="button" onClick={copy} aria-label={`Copy ${from}'s ${k.label}`} className={cx(buttonClasses({ variant: "quiet" }))}>
