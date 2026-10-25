@@ -180,7 +180,10 @@ export async function runMatcher(
     const active = seats.filter(isActiveSeat);
     if (active.length !== 1) continue;
     const planNow = real + (plan.isDemoPlan ? offset : 0);
-    if (planNow >= plan.cutoffAt) continue;
+    if (planNow >= plan.cutoffAt) {
+      errors.push(`skipped plan ${plan._id}: demo clock is past the cutoff`);
+      continue;
+    }
     const stayerUser = await ctx.db.get(active[0].userId);
     if (stayerUser === null) continue;
     const stayer = await loadMember(ctx, stayerUser, profiles, real);
@@ -237,7 +240,10 @@ export async function runMatcher(
     const a = pool.get(aId)!;
     const b = pool.get(bId)!;
     const edge = edges.find((e) => (e.a === aId && e.b === bId) || (e.a === bId && e.b === aId))!;
-    if (await pastCutoffFor([a.user, b.user])) continue;
+    if (await pastCutoffFor([a.user, b.user])) {
+      errors.push(`skipped ${a.user._id} + ${b.user._id}: demo clock is past the cutoff`);
+      continue;
+    }
     const items = await hookItems(ctx.db, edge.score.shared, [aId, bId]);
     await createPlan(ctx, event, [a.user, b.user], items);
     pool.delete(aId);
@@ -294,7 +300,10 @@ export async function runMatcher(
     }
     const best = await bestDemo(member, new Set());
     if (best === null) continue;
-    if (await pastCutoffFor([member.user, best.member.user])) continue;
+    if (await pastCutoffFor([member.user, best.member.user])) {
+      errors.push(`skipped ${member.user._id} + ${best.member.user._id}: demo clock is past the cutoff`);
+      continue;
+    }
     const items = await hookItems(ctx.db, best.score.shared, [member.user._id, best.member.user._id]);
     await createPlan(ctx, event, [member.user, best.member.user], items);
     demos.splice(demos.indexOf(best.member), 1);

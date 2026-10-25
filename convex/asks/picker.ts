@@ -3,6 +3,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { z } from "zod";
+import { isTeamEmail } from "../lib/access";
 import { MATCHING, MODELS, SURPRISE_ME, TIMING } from "../lib/config";
 import { generateJson } from "../services/claude";
 import { aiPool } from "../lib/pools";
@@ -57,6 +58,7 @@ export const context = internalQuery({
     embedding: v.union(v.array(v.float64()), v.null()),
     labels: v.array(v.string()),
     artists: v.array(v.string()),
+    isTeam: v.boolean(),
   }),
   handler: async (ctx, { userId }) => {
     const user = await ctx.db.get(userId);
@@ -65,7 +67,7 @@ export const context = internalQuery({
       .withIndex("by_userId", (q) => q.eq("userId", userId))
       .unique();
     if (user === null || user.onboarding !== "ready" || profile?.confirmedAt === undefined) {
-      return { slots: 0, embedding: null, labels: [], artists: [] };
+      return { slots: 0, embedding: null, labels: [], artists: [], isTeam: false };
     }
     const recent = await asksInWindow(ctx.db, userId, Date.now());
     return {
@@ -73,6 +75,7 @@ export const context = internalQuery({
       embedding: profile.embedding ?? null,
       labels: profile.labels,
       artists: [...profile.artists, ...profile.fingerprint.topArtists].slice(0, 10),
+      isTeam: !user.isDemo && isTeamEmail(user.email),
     };
   },
 });
@@ -84,6 +87,7 @@ const vCandidate = v.object({
   kind: v.string(),
   performers: v.array(v.string()),
   tags: v.array(v.string()),
+  featured: v.boolean(),
 });
 
 // The hard rules and the rerank; returns the shortlist, best first.
@@ -162,11 +166,15 @@ export const shortlist = internalQuery({
         performers: event.performers,
         tags: event.tags,
         startsAt: event.startsAt,
+        featured: event.featured,
       });
     }
-    return scored
-      .sort((a, b) => b.score - a.score || a.startsAt - b.startsAt)
-      .slice(0, MATCHING.askShortlist)
+    // The top 10, then any featured event that passed the rules but ranked lower (team accounts get
+    // featured events first, so the stage event reaches both phones).
+    const ranked = scored.sort((a, b) => b.score - a.score || a.startsAt - b.startsAt);
+    const top = ranked.slice(0, MATCHING.askShortlist);
+    const featuredBelow = ranked.slice(MATCHING.askShortlist).filter((candidate) => candidate.featured);
+    return [...top, ...featuredBelow]
       .map((candidate) => ({
         eventId: candidate.eventId,
         score: candidate.score,
@@ -174,6 +182,7 @@ export const shortlist = internalQuery({
         kind: candidate.kind,
         performers: candidate.performers,
         tags: candidate.tags,
+        featured: candidate.featured,
       }));
   },
 });
@@ -204,19 +213,29 @@ export const run = internalAction({
       });
       similarities = results.map((result) => ({ eventId: result._id, score: result._score }));
     }
-    const candidates = await ctx.runQuery(internal.asks.picker.shortlist, { userId, similarities });
-    if (candidates.length === 0) return 0;
+    const shortlisted = await ctx.runQuery(internal.asks.picker.shortlist, { userId, similarities });
+    if (shortlisted.length === 0) return 0;
+    const candidates = shortlisted.slice(0, MATCHING.askShortlist);
 
-    let picks: { eventId: Id<"events">; reason: string }[] = [];
-    if (candidates.length > context.slots) {
+    // Team accounts get featured events first, in rerank order, so the stage event is on both phones.
+    const picks: { eventId: Id<"events">; reason: string }[] = [];
+    if (context.isTeam) {
+      for (const candidate of shortlisted) {
+        if (picks.length >= context.slots) break;
+        if (candidate.featured) picks.push({ eventId: candidate.eventId, reason: "Featured for the team" });
+      }
+    }
+    const remaining = candidates.filter((c) => !picks.some((p) => p.eventId === c.eventId));
+    const slotsLeft = context.slots - picks.length;
+    if (slotsLeft > 0 && remaining.length > slotsLeft) {
       try {
         const answer = await generateJson({
           schema: picksSchema,
           system: PICKS_SYSTEM,
           prompt: JSON.stringify({
-            pick: context.slots,
+            pick: slotsLeft,
             taste: { labels: context.labels, artists: context.artists },
-            candidates: candidates.map((c) => ({
+            candidates: remaining.map((c) => ({
               id: c.eventId,
               title: c.title,
               kind: c.kind,
@@ -228,17 +247,17 @@ export const run = internalAction({
           maxTokens: 2000,
         });
         // Only IDs from the shortlist, each once.
-        const allowed = new Set<string>(candidates.map((c) => c.eventId));
+        const allowed = new Set<string>(remaining.map((c) => c.eventId));
         for (const pick of answer.picks) {
+          if (picks.length >= context.slots) break;
           if (!allowed.has(pick.id) || picks.some((p) => p.eventId === pick.id)) continue;
           picks.push({ eventId: pick.id as Id<"events">, reason: pick.reason.slice(0, 280) });
-          if (picks.length >= context.slots) break;
         }
       } catch {
-        picks = [];
+        // Fall back to the rerank below.
       }
     }
-    for (const candidate of candidates) {
+    for (const candidate of remaining) {
       if (picks.length >= context.slots) break;
       if (picks.some((p) => p.eventId === candidate.eventId)) continue;
       picks.push({ eventId: candidate.eventId, reason: "Top of the rerank" });

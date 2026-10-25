@@ -87,7 +87,12 @@ export const current = query({
     const seats = await seatsOf(ctx.db, plan._id);
     const partnerSeat = seats.find((other) => other._id !== seat._id && isActiveSeat(other)) ?? null;
     const partnerUser = partnerSeat ? await ctx.db.get(partnerSeat.userId) : null;
-    const someoneLeftSeat = seats.some((other) => other.userId !== userId && other.seat === "out");
+    // Only seats that went out while this student held theirs: someone refilled into a seat is never
+    // told who left it.
+    const leftWhileIHeld = seats.filter(
+      (other) => other.userId !== userId && other.seat === "out" && (other.outAt ?? 0) >= seat.offeredAt,
+    );
+    const someoneLeftSeat = leftWhileIHeld.length > 0;
     const metAtMeetingTime = plan.meetingStartedAt !== undefined;
 
     const stage: PlanView["stage"] =
@@ -131,15 +136,14 @@ export const current = query({
     else if (partnerSeat?.leftAt !== undefined) notice = "partner_left";
     // Whether I'm in or still deciding on my offer, a partner who gave up their seat is named.
     else if (partnerSeat === null && someoneLeftSeat) notice = "partner_dropped";
-    else if (partnerSeat !== null && someoneLeftSeat && partnerSeat.offeredAt > (seat.respondedAt ?? 0))
+    // The partner arrived after me to take a seat someone gave up while I was here.
+    else if (partnerSeat !== null && someoneLeftSeat && partnerSeat.offeredAt > seat.offeredAt)
       notice = "partner_replaced";
 
     // The person who gave up the seat; this student already saw the name in the offer.
     let previousPartnerFirstName: string | null = null;
     if (notice === "partner_dropped" || notice === "partner_replaced") {
-      const lastOut = seats
-        .filter((other) => other.userId !== userId && other.seat === "out")
-        .sort((a, b) => (b.outAt ?? 0) - (a.outAt ?? 0))[0];
+      const lastOut = [...leftWhileIHeld].sort((a, b) => (b.outAt ?? 0) - (a.outAt ?? 0))[0];
       const previous = lastOut ? await ctx.db.get(lastOut.userId) : null;
       previousPartnerFirstName = previous?.firstName ?? null;
     }

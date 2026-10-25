@@ -330,6 +330,20 @@ export async function afterSeatOut(ctx: MutationCtx, meetupId: Id<"meetups">): P
     return;
   }
   if (active.length >= 2) return;
+  // A demo student never holds a plan alone: it would soak up the next real yes before blossom can
+  // pair real students with each other. Their seat goes out and the plan is called off.
+  const onlyUser = await ctx.db.get(active[0].userId);
+  if (onlyUser?.isDemo) {
+    const demoSeat = active[0];
+    await ctx.db.patch(demoSeat._id, {
+      seat: "out",
+      outReason: demoSeat.seat === "offered" ? "no_answer" : "cant_make_it",
+      outAt: now,
+    });
+    await closeAsk(ctx, demoSeat.userId, plan.eventId, "dropped");
+    await ctx.db.patch(meetupId, { status: "called_off", endReason: "demo_alone" });
+    return;
+  }
   if (now >= plan.cutoffAt) {
     await ctx.db.patch(meetupId, { status: "called_off", endReason: "nobody_by_cutoff", cutoffPassedAt: plan.cutoffPassedAt ?? now });
     await freeStudent(ctx, active[0].userId, plan.eventId);
