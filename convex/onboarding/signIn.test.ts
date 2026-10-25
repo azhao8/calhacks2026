@@ -6,8 +6,10 @@ import schema from "../schema";
 import { api, internal } from "../_generated/api";
 
 const sent: { to: string; subject: string; text: string }[] = [];
+const resend = { fail: false };
 vi.mock("../services/resend", () => ({
   sendEmail: async (message: { to: string; subject: string; text: string }) => {
+    if (resend.fail) throw new Error("Resend failed: 503");
     sent.push(message);
   },
 }));
@@ -24,6 +26,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   sent.length = 0;
+  resend.fail = false;
   vi.useFakeTimers();
 });
 afterEach(() => vi.useRealTimers());
@@ -171,6 +174,25 @@ describe("sign-in with a .edu email code", () => {
       const [user] = await ctx.db.query("users").collect();
       expect(user.verifiedAt).toBeUndefined();
     });
+  });
+
+  test("a code that never went out doesn't start the 30 second wait", async () => {
+    const t = await setup();
+    resend.fail = true;
+    expect(await errorCode(t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "alex@berkeley.edu" } }))).toBe(
+      "retryable",
+    );
+    await t.run(async (ctx) => {
+      expect(await ctx.db.query("authVerificationCodes").collect()).toHaveLength(0);
+    });
+    resend.fail = false;
+    vi.advanceTimersByTime(2_000);
+    const started = await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "alex@berkeley.edu" } });
+    expect(started.started).toBe(true);
+    expect(sent).toHaveLength(1);
+    // The code that did go out works.
+    const result = await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "alex@berkeley.edu", code: codeFrom() } });
+    expect(result.tokens).not.toBeNull();
   });
 
   test("ten failed tries lock the address for a while", async () => {

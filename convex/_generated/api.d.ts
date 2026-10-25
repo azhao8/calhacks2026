@@ -58,6 +58,7 @@ import type * as onboarding from "../onboarding.js";
 import type * as onboarding_admin from "../onboarding/admin.js";
 import type * as onboarding_analysis from "../onboarding/analysis.js";
 import type * as onboarding_apps from "../onboarding/apps.js";
+import type * as onboarding_codes from "../onboarding/codes.js";
 import type * as onboarding_connect from "../onboarding/connect.js";
 import type * as onboarding_normalize from "../onboarding/normalize.js";
 import type * as onboarding_oauthState from "../onboarding/oauthState.js";
@@ -141,6 +142,7 @@ declare const fullApi: ApiFromModules<{
   "onboarding/admin": typeof onboarding_admin;
   "onboarding/analysis": typeof onboarding_analysis;
   "onboarding/apps": typeof onboarding_apps;
+  "onboarding/codes": typeof onboarding_codes;
   "onboarding/connect": typeof onboarding_connect;
   "onboarding/normalize": typeof onboarding_normalize;
   "onboarding/oauthState": typeof onboarding_oauthState;
