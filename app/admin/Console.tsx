@@ -6,8 +6,9 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/Button";
 import { cx } from "@/components/cx";
+import { Icon } from "@/components/Icon";
 import { SpotifyTab, type StudentFocus } from "./Spotify";
-import { DemoTab, EventsTab, HelpTab, MatchingTab, NeedsActionTab, type TabKey } from "./Tabs";
+import { DemoTab, EventsTab, FunnelList, FunnelTab, HelpTab, MatchingTab, NeedsActionTab, type TabKey } from "./Tabs";
 
 // The signed-in S17 page: a sticky header with who is signed in, tabs with live counts, one tab at a time.
 const TABS: { key: TabKey; label: string }[] = [
@@ -17,6 +18,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "matching", label: "Matching" },
   { key: "help", label: "Help" },
   { key: "demo", label: "Demo" },
+  { key: "funnel", label: "Funnel" },
 ];
 const isTab = (value: string | null): value is TabKey => TABS.some((tab) => tab.key === value);
 
@@ -30,6 +32,7 @@ export function Admin({ email }: { email: string | null }) {
   });
   const [focus, setFocus] = useState<StudentFocus>({ status: "all", appId: "all" });
   const counts = useCounts();
+  const [stage, setStage] = useState(false);
 
   function go(next: TabKey, nextFocus?: Partial<StudentFocus>) {
     setTab(next);
@@ -40,6 +43,22 @@ export function Admin({ email }: { email: string | null }) {
     window.scrollTo({ top: 0 });
   }
 
+  if (stage) {
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-6 bg-canvas px-4 py-10">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-1">
+            <h1 className="font-display text-title text-ink">Melos tonight</h1>
+            <p className="text-small text-ink-muted">Real students only. Counts, no names.</p>
+          </div>
+          <Button variant="quiet" onClick={() => setStage(false)}>
+            Exit stage view
+          </Button>
+        </div>
+        <FunnelList large />
+      </main>
+    );
+  }
   return (
     <div className="min-h-dvh bg-canvas">
       <div className="sticky top-0 z-10 border-b border-line bg-canvas pt-[env(safe-area-inset-top)]">
@@ -69,6 +88,7 @@ export function Admin({ email }: { email: string | null }) {
           </nav>
         </div>
       </div>
+      <DemoClockWarning onOpen={() => go("demo")} />
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pt-4 pb-[calc(3rem+env(safe-area-inset-bottom))]">
         {tab === "action" ? <NeedsActionTab go={go} /> : null}
         {tab === "spotify" ? <SpotifyTab focus={focus} onFocus={setFocus} /> : null}
@@ -76,7 +96,30 @@ export function Admin({ email }: { email: string | null }) {
         {tab === "matching" ? <MatchingTab /> : null}
         {tab === "help" ? <HelpTab /> : null}
         {tab === "demo" ? <DemoTab /> : null}
+        {tab === "funnel" ? <FunnelTab onStage={() => setStage(true)} /> : null}
       </main>
+    </div>
+  );
+}
+
+// A moved demo clock changes what demo plans show, so say so on every tab.
+function DemoClockWarning({ onOpen }: { onOpen: () => void }) {
+  const demo = useQuery(api.admin.demo.overview);
+  if (!demo || demo.clockOffsetMs === 0) return null;
+  const hours = demo.clockOffsetMs / (60 * 60 * 1000);
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-h-12 w-full items-start gap-2 rounded-md border border-danger px-4 py-3 text-left text-small text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      >
+        <Icon name="alert" className="mt-0.5 shrink-0 text-danger" />
+        <span>
+          The demo clock is {Number.isInteger(hours) ? hours : hours.toFixed(1)} {Math.abs(hours) === 1 ? "hour" : "hours"} ahead for demo plans. Tap to
+          set it back on the Demo tab.
+        </span>
+      </button>
     </div>
   );
 }

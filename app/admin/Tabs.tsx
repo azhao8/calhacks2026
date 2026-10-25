@@ -12,7 +12,7 @@ import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, S
 import { fromPacificInput, parseLatLng, parsePrice, toPacificInput } from "./format";
 import type { StudentFocus } from "./Spotify";
 
-export type TabKey = "action" | "spotify" | "events" | "matching" | "help" | "demo";
+export type TabKey = "action" | "spotify" | "events" | "matching" | "help" | "demo" | "funnel";
 
 // ---- Needs action ----
 
@@ -22,7 +22,6 @@ export function NeedsActionTab({ go }: { go: (tab: TabKey, focus?: Partial<Stude
   const queue = useQuery(api.admin.queue.list, { limit: 1 });
   const notes = useQuery(api.admin.helpNotes);
   const missing = useQuery(api.admin.events.list, { flaggedOnly: true, limit: 100 });
-  const funnel = useQuery(api.admin.funnel);
 
   if (queue === undefined || notes === undefined || missing === undefined) return <Loading />;
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -100,21 +99,41 @@ export function NeedsActionTab({ go }: { go: (tab: TabKey, focus?: Partial<Stude
         )}
         {fullApps ? <Muted>Every active app is full. New students wait for a slot until you add an app.</Muted> : null}
       </Panel>
-      <Panel title="Funnel" lead="Real students only. Demo students and team accounts are left out. Safe to show on stage.">
-        {funnel === undefined ? (
-          <Loading />
-        ) : (
-          <ol className="flex flex-col">
-            {funnel.map(({ stage, count }) => (
-              <li key={stage} className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">
-                <span className="text-body text-ink">{stage}</span>
-                <span className="text-body-strong text-ink tabular-nums">{count}</span>
-              </li>
-            ))}
-          </ol>
-        )}
+    </div>
+  );
+}
+
+// ---- Funnel ----
+
+// Counts only, real students only (S17). Nothing on this tab names a student, so it is safe on stage.
+export function FunnelTab({ onStage }: { onStage: () => void }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <Panel title="Funnel" lead="Real students only. Demo students and team accounts are left out. No names or emails, so it's safe to show on stage.">
+        <Action
+          variant="primary"
+          label="Open stage view"
+          explain="Shows only these counts, full screen, without your email or the other tabs."
+          onClick={onStage}
+        />
+        <FunnelList />
       </Panel>
     </div>
+  );
+}
+
+export function FunnelList({ large }: { large?: boolean }) {
+  const funnel = useQuery(api.admin.funnel);
+  if (funnel === undefined) return <Loading />;
+  return (
+    <ol className="flex flex-col">
+      {funnel.map(({ stage, count }) => (
+        <li key={stage} className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">
+          <span className={large ? "text-headline text-ink" : "text-body text-ink"}>{stage}</span>
+          <span className={large ? "font-display text-title text-ink tabular-nums" : "text-body-strong text-ink tabular-nums"}>{count}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
