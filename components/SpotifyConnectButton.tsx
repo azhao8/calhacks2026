@@ -1,15 +1,15 @@
-import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 import { Spinner } from "./Spinner";
+import { SpotifyIcon } from "./SpotifyIcon";
 
 // The one place Spotify green appears (design/components/SpotifyConnectButton). Never themed.
-//
-// PLACEHOLDER: Spotify's official logo goes in the slot (from Spotify's developer branding
-// guidelines, 28px, black on the green; never drawn, recolored or cropped). Until the real asset
-// is added, the slot shows the design's dashed placeholder. Pass it as `logo` once it's in public/.
+// Brand colors come from the design tokens `spotify` (Spotify Green #1ED760) and `on-spotify`
+// (black), the colors Spotify's Design & Branding Guidelines allow for the icon and its button.
+// The icon is 28px (the guidelines' digital minimum is 21px) with 14px of clear space on every
+// side (half its height). It is decorative, so the button's accessible name is just its text.
+// The label says what Melos does; it never implies Spotify endorses or partners with Melos.
 export function SpotifyConnectButton({
   state = "idle",
-  logo,
   label = "Connect Spotify",
   account,
   note,
@@ -17,7 +17,6 @@ export function SpotifyConnectButton({
   disabled,
 }: {
   state?: "idle" | "connecting" | "connected";
-  logo?: ReactNode;
   label?: string;
   account?: string;
   note?: string;
@@ -46,22 +45,10 @@ export function SpotifyConnectButton({
         onClick={connecting ? undefined : onClick}
         disabled={disabled}
         aria-busy={connecting || undefined}
-        className="inline-flex min-h-13 cursor-pointer items-center justify-center gap-3 rounded-pill bg-spotify py-2.5 pr-6 pl-3.5 text-body font-bold text-on-spotify aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex min-h-14 cursor-pointer items-center justify-center gap-3.5 rounded-pill bg-spotify py-3.5 pr-6 pl-3.5 text-body font-bold text-on-spotify aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-60"
       >
-        <span className="grid size-7 flex-none place-items-center">
-          {connecting ? (
-            <Spinner />
-          ) : (
-            (logo ?? (
-              <span
-                aria-hidden="true"
-                data-placeholder="spotify-logo"
-                className="grid size-full place-items-center rounded-full border-[1.5px] border-dashed border-on-spotify text-[0.5rem] font-bold"
-              >
-                logo
-              </span>
-            ))
-          )}
+        <span aria-hidden="true" className="grid size-7 flex-none place-items-center">
+          {connecting ? <Spinner /> : <SpotifyIcon className="size-7" />}
         </span>
         {connecting ? "Connecting to Spotify" : label}
       </button>

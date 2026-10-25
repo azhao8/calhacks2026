@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Card, Tag } from "./Card";
 import { Icon } from "./Icon";
+import { SpotifyIcon } from "./SpotifyIcon";
 
 // A local or recommended artist with Spotify attribution (design/components/ArtistCard).
 // Ported for completeness; unused while there is no local artists page (CLAUDE.md §2).
@@ -51,7 +52,7 @@ export function ArtistCard({
         ) : null}
       </div>
       <a href={spotifyUrl} target="_blank" rel="noopener noreferrer" className="flex min-h-12 items-center gap-2 text-caption font-semibold text-ink-muted no-underline">
-        {logo ?? <span aria-hidden="true" className="size-5 flex-none rounded-full border-[1.5px] border-dashed border-ink-muted" />}
+        {logo ?? <SpotifyIcon className="size-5.5 flex-none text-spotify" />}
         Listen on Spotify
       </a>
     </Card>
