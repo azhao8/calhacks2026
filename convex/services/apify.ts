@@ -60,7 +60,7 @@ export async function getRecord(storeId: string, key: string): Promise<unknown> 
 
 // The scout actor, as "username~actor-name" (or its ID), from APIFY_SCOUT_ACTOR.
 export function scoutActorId(): string {
-  return process.env.APIFY_SCOUT_ACTOR ?? "azhao8~melos-event-scout";
+  return process.env.APIFY_SCOUT_ACTOR ?? "prolific_moccasin_3df~melos-event-scout";
 }
 
 // Starts a run and returns at once; the run's webhook brings the results back (§8.2 Events).

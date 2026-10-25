@@ -1,0 +1,20 @@
+{
+  "actorSpecification": 1,
+  "name": "melos-event-scout",
+  "title": "Event Scout: real local events, structured",
+  "description": "An AI agent that reads venue sites, official feeds, ticketing listings, and the open web, and saves upcoming events with verified venues, start times, recorded price sources, official ticket links, and a safe meeting spot near each venue.",
+  "version": "0.1",
+  "buildTag": "latest",
+  "minMemoryMbytes": 512,
+  "maxMemoryMbytes": 2048,
+  "input": "./input_schema.json",
+  "dockerfile": "./Dockerfile",
+  "readme": "../README.md",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "environmentVariables": {
+    "MELOS_OWNER_USER_ID": "7oK9uJOQuLsfxLIlw",
+    "MELOS_ANTHROPIC_API_KEY": "@melosAnthropicKey"
+  }
+}

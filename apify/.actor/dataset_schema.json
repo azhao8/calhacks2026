@@ -1,0 +1,28 @@
+{
+  "actorSpecification": 1,
+  "views": {
+    "overview": {
+      "title": "Events",
+      "transformation": {
+        "fields": ["title", "kind", "startsAt", "venue", "price", "ticketUrl", "freeEntryNote", "performers", "ageLimit", "meetingSpot", "sourceName", "sourceUrl"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "title": { "label": "Title" },
+          "kind": { "label": "Kind" },
+          "startsAt": { "label": "Starts at" },
+          "venue": { "label": "Venue", "format": "object" },
+          "price": { "label": "Price", "format": "object" },
+          "ticketUrl": { "label": "Tickets", "format": "link" },
+          "freeEntryNote": { "label": "Free entry" },
+          "performers": { "label": "Performers", "format": "array" },
+          "ageLimit": { "label": "Age limit" },
+          "meetingSpot": { "label": "Meeting spot", "format": "object" },
+          "sourceName": { "label": "Source" },
+          "sourceUrl": { "label": "Listing", "format": "link" }
+        }
+      }
+    }
+  }
+}
