@@ -12,17 +12,18 @@ import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
 import { checkEmail, checkFirstName } from "@/app/_lib/validate";
+import { setFlash } from "@/app/_lib/nav";
 import { useAccess } from "@/app/_lib/views";
 import { BackTo } from "@/app/_components/BackLink";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S04 About you (no mockup; built from the design's parts). First name, then the email of the
-// Spotify account, which an app owner adds to the allow-list by hand.
+// Spotify account, which an app owner adds to the allow-list by hand. Also opened from Waiting and
+// Connect to fix that email; saving there goes back home, which shows the new address.
 export default function AboutYouPage() {
   const gate = useGate(ROUTES.aboutYou);
   const signedIn = gate.status === "ready" && gate.me !== null;
-  // Coming back from Preferences, the form starts from what was saved, so Continue doesn't swap the
-  // saved Spotify email for the school email and reset the allow-list request.
+  // The form starts from what was saved, so coming back doesn't change the allow-list request.
   const access = useAccess(signedIn ? undefined : "skip");
   if (gate.status === "loading" || gate.me === null || access === undefined) return <LoadingScreen object="headphones" />;
   return <AboutYouForm me={gate.me} savedSpotifyEmail={access.spotifyEmail} />;
@@ -33,7 +34,12 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
   const save = useMutation(api.onboarding.saveAboutYou);
   const online = useOnline();
   const [firstName, setFirstName] = useState(me.firstName ?? "");
-  const [spotifyEmail, setSpotifyEmail] = useState(savedSpotifyEmail ?? me.email ?? "");
+  // Never the school email: most students would keep it, and it's rarely their Spotify login, so
+  // the app owner would add the wrong account and Spotify would refuse the connection later.
+  const [spotifyEmail, setSpotifyEmail] = useState(savedSpotifyEmail ?? "");
+  // First time through, Continue leads to Preferences. Opened later to fix the email, it saves and
+  // goes home (Waiting or Connect) with a short confirmation.
+  const firstTime = me.onboarding === "needs_about_you" || me.onboarding === "needs_preferences";
   const [errors, setErrors] = useState<{ firstName?: string; spotifyEmail?: string; form?: string }>({});
   const [saving, setSaving] = useState(false);
 
@@ -49,7 +55,12 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
     setSaving(true);
     try {
       await save({ firstName: name.value, spotifyEmail: mail.value });
-      router.replace(ROUTES.preferences);
+      if (firstTime) {
+        router.replace(ROUTES.preferences);
+      } else {
+        setFlash("Saved.");
+        router.replace(ROUTES.welcome);
+      }
     } catch (e) {
       setErrors({ form: errorCopy(e) });
       setSaving(false);
@@ -59,11 +70,13 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
   return (
     <Screen
       object="headphones"
-      step={ONBOARDING_STEP[ROUTES.aboutYou]}
+      step={firstTime ? ONBOARDING_STEP[ROUTES.aboutYou] : undefined}
+      menu={!firstTime}
       top={
         <div className="flex flex-col gap-2">
-          {/* Sign in is behind us (it would send a signed-in student straight back), so back is the school. */}
-          <BackTo href={ROUTES.school} className="-ml-3 self-start" />
+          {/* Sign in is behind us (it would send a signed-in student straight back), so back is the
+              school; opened later from Waiting or Connect, back is home. */}
+          <BackTo href={firstTime ? ROUTES.school : ROUTES.welcome} className="-ml-3 self-start" />
           <ScreenTitle>A little about you</ScreenTitle>
         </div>
       }
@@ -78,7 +91,8 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
           hint="First name only. The person you go with sees it, and nobody else does."
         />
         <TextField
-          label="What email is your Spotify account under?"
+          label="The email you log in to Spotify with"
+          required
           type="email"
           inputMode="email"
           autoComplete="email"
@@ -87,11 +101,17 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
           value={spotifyEmail}
           onChange={(e) => setSpotifyEmail(e.target.value)}
           error={errors.spotifyEmail}
-          hint="Melos is in early access with Spotify, so we add each account by hand. We only use this email for that."
+          hint={
+            <>
+              Not sure? Spotify → Profile → Account. If you signed up with Google or Apple, it&apos;s that email.
+              <br />
+              Melos is in early access with Spotify, so we add each account by hand. We only use this email for that.
+            </>
+          }
         />
         {errors.form ? <InlineError>{errors.form}</InlineError> : null}
         <Button type="submit" block loading={saving} disabled={!online}>
-          Continue
+          {firstTime ? "Continue" : "Save"}
         </Button>
       </form>
     </Screen>

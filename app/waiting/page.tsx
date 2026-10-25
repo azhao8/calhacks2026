@@ -7,6 +7,7 @@ import { useGate } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
 import { useAccess } from "@/app/_lib/views";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
+import { SpotifyAccount } from "@/app/_components/SpotifyAccount";
 
 // S06 Waiting for Spotify access (no mockup). Updates live: when the app owner marks the student as
 // added, onboarding moves on and the gate sends them to Connect. No fake progress or wait times.
@@ -15,6 +16,10 @@ export default function WaitingPage() {
   const access = useAccess(gate.status === "ready" && gate.me ? undefined : "skip");
   if (gate.status === "loading" || access === undefined) return <LoadingScreen object="cassette" />;
 
+  // The address we're adding, with a way to fix it. Changing it sends a fresh request to the app
+  // owner (onboarding.saveAboutYou), and this screen updates on its own.
+  const account = access.spotifyEmail ? <SpotifyAccount lead="The Spotify account we're adding:" email={access.spotifyEmail} /> : null;
+
   let body;
   if (access.status === "no_capacity") {
     body = (
@@ -22,21 +27,25 @@ export default function WaitingPage() {
     );
   } else if (access.refused) {
     body = (
-      <ScreenTitle
-        lead={
-          access.spotifyEmail
-            ? `Make sure you sign in to Spotify as ${access.spotifyEmail}. If you used a different account, switch accounts in Spotify. We'll email you when you can try again.`
-            : "Make sure you sign in to Spotify with the account whose email you gave us. If you used a different account, switch accounts in Spotify. We'll email you when you can try again."
-        }
-      >
-        Spotify hasn&apos;t let us in yet.
-      </ScreenTitle>
+      <>
+        <ScreenTitle
+          lead={
+            access.spotifyEmail
+              ? `Make sure you sign in to Spotify as ${access.spotifyEmail}. If you used a different account, switch accounts in Spotify. We'll email you when you can try again.`
+              : "Make sure you sign in to Spotify with the account whose email you gave us. If you used a different account, switch accounts in Spotify. We'll email you when you can try again."
+          }
+        >
+          Spotify hasn&apos;t let us in yet.
+        </ScreenTitle>
+        {account}
+      </>
     );
   } else {
     body = (
-      <ScreenTitle lead={access.spotifyEmail ? `The Spotify account we're adding: ${access.spotifyEmail}` : undefined}>
-        You&apos;re on the list. We&apos;ll email you when Spotify is ready to connect.
-      </ScreenTitle>
+      <>
+        <ScreenTitle>You&apos;re on the list. We&apos;ll email you when Spotify is ready to connect.</ScreenTitle>
+        {account}
+      </>
     );
   }
 
@@ -56,3 +65,4 @@ export default function WaitingPage() {
     </Screen>
   );
 }
+

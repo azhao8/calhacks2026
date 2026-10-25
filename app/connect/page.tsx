@@ -9,7 +9,9 @@ import { SpotifyConnectButton } from "@/components/SpotifyConnectButton";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
-import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
+import { useAccess } from "@/app/_lib/views";
+import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
+import { SpotifyAccount } from "@/app/_components/SpotifyAccount";
 
 // S07 Connect Spotify (mockup spotify.png). Says exactly what we read and why, then sends the
 // student to Spotify's consent page for their assigned app.
@@ -19,6 +21,7 @@ export default function ConnectPage() {
   const online = useOnline();
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const access = useAccess(gate.status === "ready" && gate.me ? undefined : "skip");
 
   if (gate.status === "loading") return <LoadingScreen object="cassette" />;
 
@@ -46,6 +49,12 @@ export default function ConnectPage() {
         note="We never post for you. Disconnect anytime."
       />
       {error ? <InlineError>{error}</InlineError> : null}
+      {/* Spotify only lets in the account the app owner added, so say which one, with a way to fix it. */}
+      {access?.spotifyEmail ? (
+        <Panel>
+          <SpotifyAccount lead="Sign in to Spotify as" email={access.spotifyEmail} />
+        </Panel>
+      ) : null}
       <p className="text-center text-caption text-ink-muted">
         <Link href={ROUTES.privacy} className="inline-flex min-h-12 items-center font-semibold text-accent underline underline-offset-3">
           What we read and why

@@ -73,7 +73,8 @@ export const atLeast = (state: Onboarding, min: Onboarding) => ORDER.indexOf(sta
 // Which onboarding states may open each screen. Back navigation keeps completed work reachable
 // (About you while on Preferences); the menu reaches Preferences and Taste after onboarding.
 const SIGNED_IN_SCREENS: Partial<Record<Route, (state: Onboarding) => boolean>> = {
-  [ROUTES.aboutYou]: (s) => s === "needs_about_you" || s === "needs_preferences",
+  // Later, Waiting and Connect open it to fix the Spotify email.
+  [ROUTES.aboutYou]: (s) => s === "needs_about_you" || s === "needs_preferences" || s === "waiting_for_spotify" || s === "needs_spotify_connect",
   [ROUTES.preferences]: (s) => atLeast(s, "needs_preferences"),
   [ROUTES.waiting]: (s) => s === "waiting_for_spotify",
   [ROUTES.connect]: (s) => s === "needs_spotify_connect",
