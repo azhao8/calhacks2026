@@ -42,7 +42,8 @@ export async function setPairHook(ctx: MutationCtx, meetupId: Id<"meetups">, ite
       .unique();
     if (profile === null) continue;
     const sets = itemSets(profile.fingerprint);
-    for (const name of [...sets.artist, ...sets.track]) known.add(normalizeName(name));
+    // Labels too: a label only one of them has may not appear either.
+    for (const name of [...sets.artist, ...sets.track, ...sets.label]) known.add(normalizeName(name));
     for (const name of profile.artists) known.add(normalizeName(name));
   }
   await aiPool.enqueueAction(

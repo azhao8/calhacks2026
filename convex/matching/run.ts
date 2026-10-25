@@ -2,6 +2,7 @@ import { internalMutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
+import { isTeamEmail } from "../lib/access";
 import { demoClockOffsetMs } from "../lib/clock";
 import { MATCHING, SURPRISE_ME, TIMING } from "../lib/config";
 import { vMatchTrigger } from "../lib/validators";
@@ -126,7 +127,9 @@ export async function runMatcher(
   // Hard rules, then the exact score. Null when the pair isn't allowed.
   async function evaluate(a: Member, b: Member): Promise<PairScore | null> {
     if (!accepts(a.prefs.meetWho, b.user.gender) || !accepts(b.prefs.meetWho, a.user.gender)) return null;
-    if ((await recentPartners(a.user._id)).has(b.user._id)) return null;
+    // Two team accounts may pair again, so rehearsals never block the stage demo (DECISIONS.md).
+    const bothTeam = isTeamEmail(a.user.email) && isTeamEmail(b.user.email) && !a.user.isDemo && !b.user.isDemo;
+    if (!bothTeam && (await recentPartners(a.user._id)).has(b.user._id)) return null;
     const shared = sharedItems(a.profile.fingerprint, b.profile.fingerprint, frequency, students);
     if (shared.length < MATCHING.minSharedItems) return null;
     return pairScore({

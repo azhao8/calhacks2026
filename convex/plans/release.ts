@@ -1,6 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { afterSeatOut, heldSeats, isActivePlan, planClock, seatsOf } from "./model";
+import { afterSeatOut, freeStudent, heldSeats, isActivePlan, planClock, seatsOf } from "./model";
+import { reconcilePlan } from "./reconcile";
 
 // Spotify disconnect (S16): gives up any seat the student was offered or holds (it reopens for the
 // partner) and closes their open asks, so no new asks or offers reach them.
@@ -12,6 +13,17 @@ export const forUser = internalMutation({
     const now = Date.now();
     let seatsReleased = 0;
     for (const { seat, plan } of await heldSeats(ctx.db, userId)) {
+      // From the meeting time on, disconnecting is like "I need to leave": the plan continues and
+      // anything shared stays visible.
+      if (seat.seat === "in" && plan.meetingStartedAt !== undefined) {
+        if (seat.leftAt === undefined) {
+          const { now: planNow } = await planClock(ctx.db, plan);
+          await ctx.db.patch(seat._id, { leftAt: planNow });
+          await reconcilePlan(ctx, plan._id);
+        }
+        seatsReleased += 1;
+        continue;
+      }
       await ctx.db.patch(seat._id, {
         seat: "out",
         outReason: seat.seat === "offered" ? "next_time" : "cant_make_it",
@@ -71,6 +83,7 @@ export const forEvent = internalMutation({
         }
         await ctx.db.patch(plan._id, { status: "called_off", endReason: "event_pulled" });
         plansCalledOff += 1;
+        for (const seat of await seatsOf(ctx.db, plan._id)) await freeStudent(ctx, seat.userId, eventId);
       }
     }
     return { asksClosed, plansCalledOff, offersWithdrawn };

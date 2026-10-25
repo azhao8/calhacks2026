@@ -101,6 +101,7 @@ describe("demo students", () => {
     const result = await t.mutation(internal.demo.admin.reset, {});
     expect(result.deletedStudents).toBe(6);
     expect(result.reopenedSeats).toBe(1);
+    expect(result.deletedPlans).toBe(0);
     const after = await demoUsers(t);
     expect(after).toHaveLength(6);
     expect(after.map((u) => u._id)).not.toEqual(expect.arrayContaining(before.map((u) => u._id)));
@@ -109,10 +110,12 @@ describe("demo students", () => {
     const stillThere = await t.run(async (ctx) => ctx.db.get(ana));
     expect(stillThere?.firstName).toBe("Ana");
     const seats = await seatsFor(t, plan._id);
-    expect(seats).toHaveLength(1);
-    expect(seats[0].userId).toBe(ana);
-    expect(seats[0].seat).toBe("in");
+    expect(seats.find((s) => s.userId === ana)!.seat).toBe("in");
+    const demoSeat = seats.find((s) => s.userId !== ana)!;
+    expect(demoSeat.seat).toBe("out");
+    expect(demoSeat.outReason).toBe("cant_make_it");
     const view = (await asUser(t, ana).query(api.plans.current, {}))!;
     expect(view.stage).toBe("waiting");
+    expect(view.notice).toBe("partner_dropped");
   });
 });

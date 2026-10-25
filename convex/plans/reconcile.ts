@@ -1,9 +1,8 @@
 import { internalMutation, type MutationCtx } from "../_generated/server";
-import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { demoPhone } from "../demo/fixtures";
-import { afterSeatOut, closeAsk, eventTimes, isActivePlan, isActiveSeat, planClock, seatsOf } from "./model";
+import { afterSeatOut, closeAsk, eventTimes, freeStudent, isActivePlan, isActiveSeat, planClock, seatsOf } from "./model";
 
 // The one reconcile step (CLAUDE.md §6.5): works out what should be true for a plan at the plan's
 // clock and applies it idempotently. The scheduler calls it at every boundary; the demo clock calls
@@ -23,7 +22,7 @@ export async function reconcilePlan(ctx: MutationCtx, meetupId: Id<"meetups">): 
     if (seat.seat === "offered" && now >= Math.min(seat.offerExpiresAt, plan.cutoffAt)) {
       await ctx.db.patch(seat._id, { seat: "out", outReason: "no_answer", outAt: now });
       await closeAsk(ctx, seat.userId, plan.eventId, "dropped");
-      await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: seat.userId });
+      await freeStudent(ctx, seat.userId, plan.eventId);
       reopened = true;
     }
   }
@@ -33,9 +32,14 @@ export async function reconcilePlan(ctx: MutationCtx, meetupId: Id<"meetups">): 
   if (!isActivePlan(current)) return;
   const active = (await seatsOf(ctx.db, meetupId)).filter(isActiveSeat);
 
-  // The cutoff: an empty seat calls the plan off; nobody new is added after it.
+  // The cutoff: nobody new is added after it (recorded so live views stop promising a refill), and an
+  // empty seat calls the plan off.
+  if (now >= current.cutoffAt && current.cutoffPassedAt === undefined) {
+    await ctx.db.patch(meetupId, { cutoffPassedAt: now });
+  }
   if (now >= current.cutoffAt && (active.length < 2 || active.some((seat) => seat.seat !== "in"))) {
     await ctx.db.patch(meetupId, { status: "called_off", endReason: "nobody_by_cutoff" });
+    for (const seat of active) await freeStudent(ctx, seat.userId, plan.eventId);
     return;
   }
   if (current.status !== "set") return;
@@ -52,9 +56,13 @@ export async function reconcilePlan(ctx: MutationCtx, meetupId: Id<"meetups">): 
   // Both people left: nothing more happens in this plan. One leaving never ends it.
   if (active.length === 2 && active.every((seat) => seat.leftAt !== undefined)) {
     await ctx.db.patch(meetupId, { status: "called_off", endReason: "both_left" });
+    for (const seat of active) await freeStudent(ctx, seat.userId, plan.eventId);
     return;
   }
-  if (now >= times.completeAt) await ctx.db.patch(meetupId, { status: "done", endReason: "completed" });
+  if (now >= times.completeAt) {
+    await ctx.db.patch(meetupId, { status: "done", endReason: "completed" });
+    for (const seat of active) await freeStudent(ctx, seat.userId, plan.eventId);
+  }
 }
 
 // Demo students share a fictional 555-01xx number once Stay in touch opens (§6.7).

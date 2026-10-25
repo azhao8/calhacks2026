@@ -2,6 +2,7 @@ import { internalMutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
+import { isTeamEmail } from "../lib/access";
 import { fail } from "../lib/errors";
 import {
   acceptSeat,
@@ -10,6 +11,7 @@ import {
   dropSeat,
   heldSeats,
   isActivePlan,
+  planClock,
   scheduleBoundaries,
   seatsOf,
   setTicketGot,
@@ -122,21 +124,31 @@ async function demoUsers(ctx: MutationCtx): Promise<Doc<"users">[]> {
   return users.filter((user) => user.isDemo === true);
 }
 
-// Deletes and reseeds the demo students with their asks, seats, and shares. A seat a demo student held
-// in a plan with a real student reopens instead; a real student's records are never deleted.
+// Deletes and reseeds the demo students. Also deletes demo plans (every member a demo student or a
+// team account) with their seats and shares, and the team accounts' asks, so rehearsals never use up
+// the stage demo (DECISIONS.md). In a plan with a real student, the demo seat goes out as
+// cant_make_it and reopens for them with the usual notice. A real student's records are never deleted.
 export const reset = internalMutation({
   args: {},
-  returns: v.object({ deletedStudents: v.number(), reopenedSeats: v.number(), deletedPlans: v.number() }),
+  returns: v.object({
+    deletedStudents: v.number(),
+    reopenedSeats: v.number(),
+    deletedPlans: v.number(),
+    teamAsksDeleted: v.number(),
+  }),
   handler: async (ctx) => {
     const demos = await demoUsers(ctx);
     const demoIds = new Set(demos.map((user) => user._id));
+    const teams = (await ctx.db.query("users").collect()).filter((user) => !user.isDemo && isTeamEmail(user.email));
+    const demoOrTeam = new Set([...demoIds, ...teams.map((user) => user._id)]);
+
     let reopenedSeats = 0;
     let deletedPlans = 0;
     const touchedPlans = new Set<Id<"meetups">>();
-    for (const user of demos) {
+    for (const userId of demoOrTeam) {
       const seats = await ctx.db
         .query("meetupMembers")
-        .withIndex("by_user_seat", (q) => q.eq("userId", user._id))
+        .withIndex("by_user_seat", (q) => q.eq("userId", userId))
         .collect();
       for (const seat of seats) touchedPlans.add(seat.meetupId);
     }
@@ -144,33 +156,40 @@ export const reset = internalMutation({
       const plan = await ctx.db.get(meetupId);
       if (plan === null) continue;
       const seats = await seatsOf(ctx.db, meetupId);
-      const othersInPlan = seats.filter((seat) => !demoIds.has(seat.userId));
-      if (othersInPlan.length === 0) {
-        // Only demo students: delete the plan, its seats, and its shares.
+      const shares = await ctx.db
+        .query("contactShares")
+        .withIndex("by_meetup", (q) => q.eq("meetupId", meetupId))
+        .collect();
+      if (seats.every((seat) => demoOrTeam.has(seat.userId))) {
+        // A demo plan: delete it with its seats and shares.
         for (const seat of seats) await ctx.db.delete(seat._id);
-        for (const share of await ctx.db
-          .query("contactShares")
-          .withIndex("by_meetup", (q) => q.eq("meetupId", meetupId))
-          .collect()) {
-          await ctx.db.delete(share._id);
-        }
+        for (const share of shares) await ctx.db.delete(share._id);
         await ctx.db.delete(meetupId);
         deletedPlans += 1;
         continue;
       }
-      // Someone else is in it: the demo seat goes away and reopens for them.
+      // A real student is in it: the demo seat gives way like "I can't make it", so the plan reopens
+      // and they keep their place and the meeting spot.
+      const { now } = await planClock(ctx.db, plan);
       for (const seat of seats) {
-        if (!demoIds.has(seat.userId)) continue;
-        if (seat.seat !== "out") reopenedSeats += 1;
-        await ctx.db.delete(seat._id);
+        if (!demoIds.has(seat.userId) || seat.seat === "out") continue;
+        await ctx.db.patch(seat._id, { seat: "out", outReason: "cant_make_it", outAt: now, respondedAt: seat.respondedAt ?? now });
+        reopenedSeats += 1;
       }
-      for (const share of await ctx.db
-        .query("contactShares")
-        .withIndex("by_meetup", (q) => q.eq("meetupId", meetupId))
-        .collect()) {
-        if (demoIds.has(share.userId)) await ctx.db.delete(share._id);
-      }
+      for (const share of shares) if (demoIds.has(share.userId)) await ctx.db.delete(share._id);
       if (isActivePlan(plan)) await afterSeatOut(ctx, meetupId);
+    }
+
+    let teamAsksDeleted = 0;
+    for (const user of teams) {
+      for (const ask of await ctx.db
+        .query("asks")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect()) {
+        await ctx.db.delete(ask._id);
+        teamAsksDeleted += 1;
+      }
+      await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: user._id });
     }
 
     for (const user of demos) {
@@ -190,7 +209,7 @@ export const reset = internalMutation({
       await ctx.db.delete(user._id);
     }
     await seedDemoStudents(ctx);
-    return { deletedStudents: demos.length, reopenedSeats, deletedPlans };
+    return { deletedStudents: demos.length, reopenedSeats, deletedPlans, teamAsksDeleted };
   },
 });
 

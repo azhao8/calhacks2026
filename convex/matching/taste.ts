@@ -19,12 +19,19 @@ export function normalizeName(name: string): string {
     .trim();
 }
 
+// Built once per fingerprint object, so scoring every pair in a pool doesn't rebuild them.
+const setCache = new WeakMap<Fingerprint, Record<ItemKind, Set<string>>>();
+
 export function itemSets(fingerprint: Fingerprint): Record<ItemKind, Set<string>> {
-  return {
+  const cached = setCache.get(fingerprint);
+  if (cached) return cached;
+  const sets = {
     artist: new Set([...fingerprint.topArtists, ...fingerprint.likedArtists]),
     track: new Set(fingerprint.tracks),
     label: new Set(fingerprint.labels),
   };
+  setCache.set(fingerprint, sets);
+  return sets;
 }
 
 export const ITEM_KINDS: ItemKind[] = ["artist", "track", "label"];

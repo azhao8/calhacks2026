@@ -83,7 +83,7 @@ export const current = query({
     const event = await ctx.db.get(plan.eventId);
     if (event === null) return null;
     const venue = event.venueId ? await ctx.db.get(event.venueId) : null;
-    const { offset, now: planNow } = await planClock(ctx.db, plan);
+    const { offset } = await planClock(ctx.db, plan);
     const seats = await seatsOf(ctx.db, plan._id);
     const partnerSeat = seats.find((other) => other._id !== seat._id && isActiveSeat(other)) ?? null;
     const partnerUser = partnerSeat ? await ctx.db.get(partnerSeat.userId) : null;
@@ -129,8 +129,9 @@ export const current = query({
     if (plan.status === "called_off" && plan.endReason === "event_pulled") notice = "event_pulled";
     else if (plan.status === "called_off" && plan.endReason === "nobody_by_cutoff") notice = "nobody_by_cutoff";
     else if (partnerSeat?.leftAt !== undefined) notice = "partner_left";
-    else if (partnerSeat === null && someoneLeftSeat && seat.seat === "in") notice = "partner_dropped";
-    else if (partnerSeat !== null && someoneLeftSeat && seat.seat === "in" && partnerSeat.offeredAt > (seat.respondedAt ?? 0))
+    // Whether I'm in or still deciding on my offer, a partner who gave up their seat is named.
+    else if (partnerSeat === null && someoneLeftSeat) notice = "partner_dropped";
+    else if (partnerSeat !== null && someoneLeftSeat && partnerSeat.offeredAt > (seat.respondedAt ?? 0))
       notice = "partner_replaced";
 
     // The person who gave up the seat; this student already saw the name in the offer.
@@ -182,7 +183,7 @@ export const current = query({
       marker: revealDay ? plan.marker : null,
       icebreaker: revealDay ? plan.icebreaker : null,
       // A seat given up now reopens and is refilled only before the cutoff (same clock as reconcile).
-      beforeCutoff: isActivePlan(plan) && planNow < plan.cutoffAt,
+      beforeCutoff: isActivePlan(plan) && plan.cutoffPassedAt === undefined,
       canCantMakeIt: seat.seat === "in" && isActivePlan(plan) && !meetingTimeReached,
       canLeave: plan.status === "set" && meetingTimeReached && seat.leftAt === undefined,
       canShare: eligible,

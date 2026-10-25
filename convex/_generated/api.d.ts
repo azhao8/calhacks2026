@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as ai_hooks from "../ai/hooks.js";
+import type * as asks_close from "../asks/close.js";
 import type * as asks_picker from "../asks/picker.js";
 import type * as asks_rules from "../asks/rules.js";
 import type * as auth from "../auth.js";
@@ -64,6 +65,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   "ai/hooks": typeof ai_hooks;
+  "asks/close": typeof asks_close;
   "asks/picker": typeof asks_picker;
   "asks/rules": typeof asks_rules;
   auth: typeof auth;

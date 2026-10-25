@@ -2,6 +2,7 @@ import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { eventTimes, isActivePlan, scheduleBoundaries } from "./model";
 import { reconcilePlan } from "./reconcile";
+import { scheduleAskCloses } from "../asks/close";
 
 // An event's start time or meeting offset changed: every plan still forming or set gets the new
 // meeting time and cutoff, is reconciled at once (offers now past the cutoff expire, an empty seat past
@@ -21,13 +22,23 @@ export const forEvent = internalMutation({
         .withIndex("by_event_status", (q) => q.eq("eventId", eventId).eq("status", status))
         .collect();
       for (const plan of plans) {
-        await ctx.db.patch(plan._id, { meetAt: times.meetAt, cutoffAt: times.cutoffAt });
+        // A show moved later reopens refills and un-reveals what isn't due yet; reconcile then
+        // re-applies whatever the new times make true.
+        await ctx.db.patch(plan._id, {
+          meetAt: times.meetAt,
+          cutoffAt: times.cutoffAt,
+          cutoffPassedAt: undefined,
+          dayRevealedAt: undefined,
+          meetingStartedAt: undefined,
+        });
         await reconcilePlan(ctx, plan._id);
         const current = await ctx.db.get(plan._id);
         if (current !== null && isActivePlan(current)) await scheduleBoundaries(ctx, current);
         plansRetimed += 1;
       }
     }
+    // Open asks close at the event's new cutoff.
+    await scheduleAskCloses(ctx, eventId);
     return { plansRetimed };
   },
 });

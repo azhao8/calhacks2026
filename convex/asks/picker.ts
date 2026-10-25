@@ -8,6 +8,7 @@ import { generateJson } from "../services/claude";
 import { aiPool } from "../lib/pools";
 import { itemSets } from "../matching/taste";
 import { eventCutoff } from "../plans/model";
+import { scheduleAskClose } from "./close";
 import { isAdultOnly, knownPrice, performerOverlap, rerankScore, withinArea, withinBudget } from "./rules";
 
 // The ask picker (CLAUDE.md §6.2): vector search over published events with the student's taste
@@ -266,7 +267,7 @@ export const save = internalMutation({
         .first();
       if (asked !== null) continue;
       // Demo students say yes to every ask (§6.7).
-      await ctx.db.insert("asks", {
+      const askId = await ctx.db.insert("asks", {
         userId,
         eventId: pick.eventId,
         createdAt: now,
@@ -274,6 +275,7 @@ export const save = internalMutation({
         answeredAt: user.isDemo ? now : undefined,
         pickReason: pick.reason,
       });
+      await scheduleAskClose(ctx, askId, eventCutoff(event));
       slots -= 1;
       saved += 1;
     }

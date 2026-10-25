@@ -8,6 +8,7 @@ import { fail } from "../lib/errors";
 import type { HookItem } from "../ai/hooks";
 import { DEMO_FILL_DELAY_MS, wakeForDemoFill, wakeMatcher } from "../matching/wake";
 import { setPairHook } from "./hooks";
+import { reconcilePlan } from "./reconcile";
 
 // Plans and seats (CLAUDE.md §6.5). A plan is a `meetups` row; a seat is a `meetupMembers` row.
 // Plan times (offer expiry, cutoff, reveal, meeting, completion) are compared against the plan's own
@@ -238,10 +239,21 @@ export async function refillSeat(
   const seats = await seatsOf(ctx.db, plan._id);
   const stayers = seats.filter(isActiveSeat).map((seat) => seat.userId);
   const isDemoPlan = await computeIsDemoPlan(ctx.db, [...stayers, user._id]);
-  if (isDemoPlan !== plan.isDemoPlan) await ctx.db.patch(plan._id, { isDemoPlan });
+  if (isDemoPlan !== plan.isDemoPlan) {
+    // The plan moves to the real clock: undo reveals that aren't due there yet.
+    const real = Date.now();
+    const times = { dayRevealAt: pacificMidnight((await ctx.db.get(plan.eventId))?.startsAt ?? plan.meetAt) };
+    await ctx.db.patch(plan._id, {
+      isDemoPlan,
+      ...(!isDemoPlan && plan.dayRevealedAt !== undefined && real < times.dayRevealAt ? { dayRevealedAt: undefined } : {}),
+      ...(!isDemoPlan && plan.meetingStartedAt !== undefined && real < plan.meetAt ? { meetingStartedAt: undefined } : {}),
+      ...(!isDemoPlan && plan.cutoffPassedAt !== undefined && real < plan.cutoffAt ? { cutoffPassedAt: undefined } : {}),
+    });
+  }
   const current = (await ctx.db.get(plan._id))!;
   const seatId = await insertOffer(ctx, current, user);
   await setPairHook(ctx, plan._id, items);
+  if (isDemoPlan !== plan.isDemoPlan) await scheduleBoundaries(ctx, current);
   return seatId;
 }
 
@@ -274,6 +286,8 @@ export async function acceptSeat(ctx: MutationCtx, seat: Seat): Promise<void> {
         });
       }
     }
+    // A plan set on the event day shows meetup day at once.
+    await reconcilePlan(ctx, plan._id);
   }
 }
 
@@ -286,9 +300,24 @@ export async function dropSeat(ctx: MutationCtx, seat: Seat, reason: NonNullable
   const { now } = await planClock(ctx.db, plan);
   await ctx.db.patch(seat._id, { seat: "out", outReason: reason, outAt: now, respondedAt: seat.respondedAt ?? now });
   await closeAsk(ctx, seat.userId, plan.eventId, "dropped");
-  // An ask closed, so the student may have room for a new one (no cooldown).
-  await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: seat.userId });
+  await freeStudent(ctx, seat.userId, plan.eventId);
   await afterSeatOut(ctx, plan._id);
+}
+
+// A student gave up a seat or a plan ended: no cooldown, so their other open yeses go back to the
+// matcher right away, and a closed ask may leave room for a new one.
+export async function freeStudent(ctx: MutationCtx, userId: Id<"users">, exceptEventId?: Id<"events">): Promise<void> {
+  await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
+  const yeses = await ctx.db
+    .query("asks")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  const events = new Set(
+    yeses
+      .filter((ask) => ask.answer === "yes" && ask.closedReason === undefined && ask.eventId !== exceptEventId)
+      .map((ask) => ask.eventId),
+  );
+  for (const eventId of events) await wakeMatcher(ctx, eventId, "seat_open");
 }
 
 export async function afterSeatOut(ctx: MutationCtx, meetupId: Id<"meetups">): Promise<void> {
@@ -302,7 +331,8 @@ export async function afterSeatOut(ctx: MutationCtx, meetupId: Id<"meetups">): P
   }
   if (active.length >= 2) return;
   if (now >= plan.cutoffAt) {
-    await ctx.db.patch(meetupId, { status: "called_off", endReason: "nobody_by_cutoff" });
+    await ctx.db.patch(meetupId, { status: "called_off", endReason: "nobody_by_cutoff", cutoffPassedAt: plan.cutoffPassedAt ?? now });
+    await freeStudent(ctx, active[0].userId, plan.eventId);
     return;
   }
   if (plan.status === "set") await ctx.db.patch(meetupId, { status: "forming" });
@@ -319,8 +349,9 @@ export async function ownSeat(ctx: MutationCtx, userId: Id<"users">, seatId: Id<
 }
 
 // "I can't make it anymore" / "I couldn't get one": allowed until the meeting time.
+// Only a seat you're in: an offered seat is declined with "Next time".
 export async function cantMakeIt(ctx: MutationCtx, seat: Seat, reason: "cant_make_it" | "no_ticket"): Promise<void> {
-  if (seat.seat === "out") return;
+  if (seat.seat !== "in") fail("seat_unavailable");
   const plan = await ctx.db.get(seat.meetupId);
   if (plan === null || !isActivePlan(plan)) fail("seat_unavailable");
   const { now } = await planClock(ctx.db, plan);
