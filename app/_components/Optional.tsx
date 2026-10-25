@@ -2,7 +2,7 @@
 
 import { Component, type ReactNode } from "react";
 
-// For a part of a screen whose query may not be deployed yet, or may fail on its own: shows
+// For a part of a screen whose query may fail on its own (for example while a deployment is behind): shows
 // `fallback` (nothing by default) instead of taking down the whole screen.
 export class Optional extends Component<{ children: ReactNode; fallback?: ReactNode }, { failed: boolean }> {
   state = { failed: false };

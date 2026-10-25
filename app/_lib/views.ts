@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -41,13 +40,9 @@ export const useContacts = (skip?: Skip) => useQuery(api.contacts.list, args(ski
 export const useMyShares = (meetupId: Id<"meetups">) =>
   useQuery(api.contacts.myShares, { meetupId }) as MySharesView | undefined;
 
-// Stream C's sharing queries (args {}). Referenced by name until they're in the generated API;
-// screens render them inside <Optional> so a deployment without them still works.
+// The student's own active shares (S15) and recent plans where sharing is still open (S14).
 export type MyShare = { meetupId: Id<"meetups">; partnerFirstName: string; kind: "phone" | "instagram"; value: string };
 export type Shareable = { meetupId: Id<"meetups">; partnerFirstName: string; eventTitle: string; startsAt: number };
 
-const contactsMine = makeFunctionReference<"query", Record<string, never>, MyShare[]>("contacts:mine");
-const contactsShareable = makeFunctionReference<"query", Record<string, never>, Shareable[]>("contacts:shareable");
-
-export const useMyActiveShares = (skip?: Skip) => useQuery(contactsMine, args(skip)) as MyShare[] | undefined;
-export const useShareable = (skip?: Skip) => useQuery(contactsShareable, args(skip)) as Shareable[] | undefined;
+export const useMyActiveShares = (skip?: Skip) => useQuery(api.contacts.mine, args(skip)) as MyShare[] | undefined;
+export const useShareable = (skip?: Skip) => useQuery(api.contacts.shareable, args(skip)) as Shareable[] | undefined;
