@@ -2,6 +2,9 @@
 
 import { useDeferredValue, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useRouter } from "next/navigation";
+import { ROUTES } from "@/app/_lib/routes";
 import { api } from "@/convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { Button } from "@/components/Button";
@@ -118,11 +121,17 @@ export function StudentsTab() {
   );
 }
 
+// True because admin access comes from ADMIN_EMAILS, not from the account row.
+const SELF =
+  "This deletes your own account and signs you out. You can sign in again with the same school email; you'll keep admin access and start onboarding from the beginning.";
+
 function StudentRow({ row }: { row: Row }) {
   const [open, setOpen] = useState(false);
   const remove = useMutation(api.admin.students.deleteStudent);
+  const { signOut } = useAuthActions();
   const { busy, error, run } = useRun();
   const name = row.firstName ?? row.email ?? "this student";
+  const router = useRouter();
   return (
     <li className="flex flex-col gap-2 py-3">
       <button
@@ -168,14 +177,22 @@ function StudentRow({ row }: { row: Row }) {
           <ConfirmAction
             label="Delete student"
             explain="Permanently removes this account and all its data."
-            disabledReason={row.isYou ? "This is the account you're signed in with." : null}
-            question={`Delete ${name} and all their data?`}
-            consequence={`Removes their account, sign-in, preferences, Spotify connection and taste, asks, seats, shares and help notes. A seat they hold reopens for their partner. This can't be undone.${
-              row.spotify ? " Remove their email from the Spotify app's User Management too." : ""
+            question={row.isYou ? "Delete your own account and all its data?" : `Delete ${name} and all their data?`}
+            consequence={`${row.isYou ? `${SELF} ` : ""}Removes the account, sign-in, preferences, Spotify connection and taste, asks, seats, shares and help notes. A seat it holds reopens for the partner. This can't be undone.${
+              row.spotify ? " Remove the email from the Spotify app's User Management too." : ""
             }`}
-            yes="Delete student"
+            yes={row.isYou ? "Delete my account" : "Delete student"}
             busy={busy === "delete"}
-            onConfirm={() => run("delete", () => remove({ userId: row.userId }))}
+            onConfirm={() =>
+              run("delete", async () => {
+                const { deletedSelf } = await remove({ userId: row.userId });
+                if (deletedSelf) {
+                  // The account is gone; clear this browser's session and start at Welcome.
+                  await signOut().catch(() => undefined);
+                  router.replace(ROUTES.welcome);
+                }
+              })
+            }
           />
           <Result error={error} />
         </div>
@@ -193,9 +210,9 @@ const NUKES: { scope: Scope; label: string; phrase: string; explain: string; rem
     scope: "students",
     label: "Delete all students",
     phrase: "delete all students",
-    explain: "Every real and demo student and all their data.",
+    explain: "Every account, team accounts and yours included, and all their data.",
     removes:
-      "Every account that isn't on the team list, with their sign-ins, preferences, Spotify connections, taste, asks, seats, shares and help notes, plus all matcher logs. Team accounts, events, Spotify apps and schools stay. Remove the students from each Spotify app's User Management too.",
+      "Every account, including team accounts and the one you're signed in with, with their sign-ins, preferences, Spotify connections, taste, asks, seats, shares and help notes, plus all matcher logs. You'll be signed out; sign in again with your school email and you keep admin access, starting onboarding from the beginning. Events, Spotify apps and schools stay. Remove the students from each Spotify app's User Management too.",
   },
   {
     scope: "events",
@@ -211,7 +228,7 @@ const NUKES: { scope: Scope; label: string; phrase: string; explain: string; rem
     phrase: "delete everything",
     explain: "Starts Melos over, keeping only the setup.",
     removes:
-      "All events and imports, asks, plans, seats, shares, matcher logs, help notes and every student. The demo clock goes back to real time. Kept: team accounts, Spotify apps and their secrets, schools, venues and meeting spots.",
+      "All events and imports, asks, plans, seats, shares, matcher logs, help notes and every account, team accounts and yours included. The demo clock goes back to real time. You'll be signed out; sign in again with your school email and you keep admin access. Kept: Spotify apps and their secrets, schools, venues and meeting spots.",
   },
 ];
 
@@ -233,6 +250,8 @@ export function DangerTab() {
           <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-body">
             <dt className="text-ink-muted">Students (real and demo)</dt>
             <dd className="text-ink tabular-nums">{counts.students}</dd>
+            <dt className="text-ink-muted">Team accounts (yours included)</dt>
+            <dd className="text-ink tabular-nums">{counts.teamAccounts}</dd>
             <dt className="text-ink-muted">Events</dt>
             <dd className="text-ink tabular-nums">{counts.events}</dd>
             <dt className="text-ink-muted">Plans</dt>
@@ -276,7 +295,7 @@ function Nuke({ scope, label, phrase, explain, removes }: (typeof NUKES)[number]
               loading={busy === scope}
               disabled={!matches}
               onClick={async () => {
-                if (await run(scope, () => nuke({ scope, confirm: typed }), "Started. It finishes in a few seconds; the counts above update live.")) {
+                if (await run(scope, () => nuke({ scope, confirm: typed }), scope === "events" ? "Started. It finishes in a few seconds; the counts above update live." : "Started. You'll be signed out when your account is deleted, in a few seconds.")) {
                   setTyped("");
                   setOpen(false);
                 }

@@ -3,7 +3,7 @@
 import { useDeferredValue, useState, type FormEvent } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { makeFunctionReference, type FunctionReturnType } from "convex/server";
+import type { FunctionReturnType } from "convex/server";
 import { priceLabel } from "@/convex/lib/format";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
@@ -701,12 +701,10 @@ export function DemoTab() {
   );
 }
 
-// Stream C's generator. Referenced by name so this page builds before or after its PR lands.
-const generateDemoStudents = makeFunctionReference<"mutation", { count: number }, { created: number; firstNames: string[] }>("admin/demo:generate");
 const MAX_GENERATE = 50;
 
 function AddDemoStudents({ students }: { students: { onboarding: string | null }[] | undefined }) {
-  const generate = useMutation(generateDemoStudents);
+  const generate = useMutation(api.admin.demo.generate);
   const { busy, error, done, run, setDone, setError } = useRun();
   const [count, setCount] = useState("5");
   const ready = students?.filter((student) => student.onboarding === "ready").length ?? 0;

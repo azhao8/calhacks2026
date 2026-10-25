@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { Loading } from "./_ui";
 import { AdminSignIn } from "./SignIn";
@@ -11,6 +12,12 @@ import { Admin, Header } from "./Console";
 // page only decides what to show. Signing in here keeps you here, never in student onboarding.
 export default function AdminPage() {
   const who = useQuery(api.admin.whoami);
+  const { signOut } = useAuthActions();
+  // The server says this session's account was deleted (from this page or a wipe): drop the stale session.
+  const orphaned = who?.orphaned === true;
+  useEffect(() => {
+    if (orphaned) void signOut().catch(() => undefined);
+  }, [orphaned, signOut]);
 
   if (who === undefined) {
     return (
