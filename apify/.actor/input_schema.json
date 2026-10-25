@@ -1,0 +1,69 @@
+{
+  "title": "Event Scout input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "place": {
+      "title": "Place",
+      "type": "string",
+      "description": "The city or neighborhood to find events around.",
+      "default": "Berkeley, CA",
+      "editor": "textfield"
+    },
+    "daysAhead": {
+      "title": "Days ahead",
+      "type": "integer",
+      "description": "How many days ahead to look, starting today (or the start date).",
+      "default": 14,
+      "minimum": 1,
+      "maximum": 31
+    },
+    "startDate": {
+      "title": "Start date",
+      "type": "string",
+      "description": "Optional first day of the date range (YYYY-MM-DD). Defaults to now.",
+      "editor": "datepicker"
+    },
+    "eventTypes": {
+      "title": "Event types",
+      "type": "array",
+      "description": "Which kinds of events to keep.",
+      "editor": "select",
+      "items": { "type": "string", "enum": ["concert", "game", "performance", "other"] },
+      "default": ["concert", "game", "performance"]
+    },
+    "sources": {
+      "title": "Built-in sources",
+      "type": "array",
+      "description": "Built-in sources to scout, one agent each, in parallel. Leave empty for all. The venue presets cover Berkeley and Oakland; 'web' searches the open web for any place.",
+      "editor": "select",
+      "items": {
+        "type": "string",
+        "enum": ["cal_performances", "uc_theatre", "greek_theatre", "fox_theater", "freight_and_salvage", "uc_berkeley_events", "cal_athletics", "eventbrite", "web"]
+      }
+    },
+    "customSources": {
+      "title": "Your own listing pages",
+      "type": "array",
+      "description": "Extra public listing pages, each scouted by its own agent: objects with name, url, and optionally kind (official_feed, venue_site, listing, web) and useProxy.",
+      "editor": "json",
+      "prefill": [{ "name": "Ashkenaz", "url": "https://www.ashkenaz.com/calendar" }]
+    },
+    "maxEventsPerSource": {
+      "title": "Max events per source",
+      "type": "integer",
+      "description": "Each source stops after saving this many events, soonest first.",
+      "default": 25,
+      "minimum": 1,
+      "maximum": 100
+    },
+    "anthropicApiKey": {
+      "title": "Anthropic API key",
+      "type": "string",
+      "description": "Your Anthropic API key. The agent runs on Claude; usage is billed to this key.",
+      "editor": "textfield",
+      "isSecret": true
+    }
+  },
+  "required": []
+}
