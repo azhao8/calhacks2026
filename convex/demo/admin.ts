@@ -17,7 +17,8 @@ import {
   setTicketGot,
 } from "../plans/model";
 import { reconcilePlan } from "../plans/reconcile";
-import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoSnapshot } from "./fixtures";
+import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoListening } from "./fixtures";
+import { TIMING } from "../lib/config";
 
 // Demo controls for S17 (§6.7). These touch only demo records. The admin page wraps them in
 // server-checked ADMIN_EMAILS functions.
@@ -81,40 +82,57 @@ async function seedDemoStudents(ctx: MutationCtx): Promise<{ created: number; up
       if (existingPrefs) await ctx.db.patch(existingPrefs._id, prefs);
       else await ctx.db.insert("preferences", prefs);
 
-      // The generated data stands in for the Spotify fetch.
-      const snapshot = { userId, source: "demo_fixture" as const, ...demoSnapshot(fixture), fetchedAt: now };
-      const existingSnapshot = await ctx.db
-        .query("tasteSnapshots")
-        .withIndex("by_userId", (q) => q.eq("userId", userId))
-        .first();
-      if (existingSnapshot) await ctx.db.replace(existingSnapshot._id, snapshot);
-      else await ctx.db.insert("tasteSnapshots", snapshot);
-
-      // INTEGRATION: once stream A's PR #9 is on main, replace this direct write with
-      // internal.onboarding.analysis.analyzeFixture({ userId, listening }) and then
-      // internal.onboarding.analysis.confirmForUser({ userId }) (Claude summary from the fixed label list,
-      // then the Voyage vector). Until then demo students have no vector and match on exact items.
+      // The generated data stands in for the Spotify fetch: demo students go through the same pipeline as
+      // real ones (Claude summary from the fixed label list, then the Voyage vector), and onboarding confirms
+      // them when the summary is done, which makes them ready and picks their first asks.
       const existingProfile = await ctx.db
         .query("tasteProfiles")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
         .unique();
-      const profile = {
+      if (existingProfile?.confirmedAt !== undefined) {
+        await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
+        continue;
+      }
+      await ctx.db.patch(userId, { onboarding: "analyzing" });
+      await ctx.runMutation(internal.onboarding.analysis.analyzeFixture, { userId, listening: demoListening(fixture) });
+      // If Claude can't write the summary in time, the fixture's own summary stands in, so demo fill never waits on it.
+      await ctx.scheduler.runAfter(TIMING.demoProfileFallbackMs, internal.demo.admin.ensureProfile, {
+        userId,
+        key: fixture.key,
+      });
+    }
+    return { created, updated };
+  }
+}
+
+// The fallback for a demo student whose Claude summary didn't finish (for example while the Claude key is
+// missing): the fixture's summary and labels, in the same fingerprint onboarding builds, then the usual confirm.
+export const ensureProfile = internalMutation({
+  args: { userId: v.id("users"), key: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { userId, key }) => {
+    const user = await ctx.db.get(userId);
+    const fixture = DEMO_FIXTURES.find((candidate) => candidate.key === key);
+    if (user === null || user.isDemo !== true || fixture === undefined) return null;
+    const profile = await ctx.db
+      .query("tasteProfiles")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+    if (profile?.confirmedAt !== undefined) return null;
+    if (profile === null) {
+      await ctx.db.insert("tasteProfiles", {
         userId,
         summary: fixture.summary,
         labels: fixture.labels,
         artists: fixture.topArtists.slice(0, 5),
         revision: 0,
-        confirmedAt: now,
         fingerprint: demoFingerprint(fixture),
-      };
-      if (existingProfile) await ctx.db.patch(existingProfile._id, profile);
-      else await ctx.db.insert("tasteProfiles", profile);
-
-      await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
+      });
     }
-    return { created, updated };
-  }
-}
+    await ctx.runMutation(internal.onboarding.analysis.confirmForUser, { userId });
+    return null;
+  },
+});
 
 async function demoUsers(ctx: MutationCtx): Promise<Doc<"users">[]> {
   const users = await ctx.db

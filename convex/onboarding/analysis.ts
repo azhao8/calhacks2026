@@ -246,6 +246,8 @@ async function finish(ctx: MutationCtx, job: Doc<"analysisJobs">) {
   await ctx.db.patch(job._id, { status: "done", error: undefined, finishedAt: Date.now() });
   const user = await ctx.db.get(job.userId);
   if (user?.onboarding === "analyzing") await ctx.db.patch(job.userId, { onboarding: "needs_review" });
+  // Demo students have nobody to review their summary, so they confirm it the way a student would (§6.7).
+  if (user?.isDemo === true) await confirmProfile(ctx, job.userId);
 }
 
 export const run = internalAction({
@@ -499,7 +501,7 @@ export const embedComplete = internalMutation({
     }
     const user = await ctx.db.get(context.userId);
     if (user?.onboarding !== "ready") return null;
-    // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
+    await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
     return null;
   },
 });

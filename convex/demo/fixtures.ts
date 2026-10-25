@@ -1,5 +1,5 @@
 import type { Doc } from "../_generated/dataModel";
-import { normalizeName } from "../matching/taste";
+import { normalizeName, normalizeTrackKey } from "../lib/normalize";
 
 // Six demo students with fictional first names and generated, Spotify-like listening data (§6.7).
 // Their emails use the reserved .invalid domain, so nobody is ever emailed. They share only phone
@@ -82,7 +82,7 @@ export const DEMO_FIXTURES: DemoFixture[] = [
     gender: "prefer_not_to_say",
     year: "second",
     summary: "Reggaeton and Latin pop with a love for anything you can dance to.",
-    labels: ["reggaeton", "latin pop", "urbano latino"],
+    labels: ["reggaeton", "latin pop", "latin trap"],
     topArtists: ["Bad Bunny", "Karol G", "Rosalía", "Peso Pluma", "Rauw Alejandro", "J Balvin", "Kali Uchis", "Feid", "Tainy", "Dua Lipa"],
     topTracks: [["Tití Me Preguntó", "Bad Bunny"], ["Provenza", "Karol G"], ["Despechá", "Rosalía"], ["Ella Baila Sola", "Peso Pluma"], ["Todo de Ti", "Rauw Alejandro"], ["Normal", "Feid"]],
     likedSongs: [["Mi Gente", "J Balvin"], ["Telepatía", "Kali Uchis"], ["Me Porto Bonito", "Bad Bunny"], ["Levitating", "Dua Lipa"], ["Safaera", "Bad Bunny"]],
@@ -104,8 +104,20 @@ function slug(text: string): string {
   return normalizeName(text).replace(/ /g, "-");
 }
 
+// The same key real students get from their Spotify data (lib/normalize), so demo and real tracks can match.
 export function trackKey(name: string, artist: string): string {
-  return `${normalizeName(name)} | ${normalizeName(artist)}`;
+  return normalizeTrackKey(name, [artist]);
+}
+
+// The same stand-in in the shape of a Spotify fetch, for onboarding's analyzeFixture (no normalized fields:
+// onboarding derives them itself, exactly as it does for real students).
+export function demoListening(fixture: DemoFixture) {
+  const snapshot = demoSnapshot(fixture);
+  return {
+    topArtists: snapshot.topArtists.map(({ spotifyId, name, genres, rank, range }) => ({ spotifyId, name, genres, rank, range })),
+    topTracks: snapshot.topTracks.map(({ spotifyId, name, artistNames, rank, range }) => ({ spotifyId, name, artistNames, rank, range })),
+    likedSongs: snapshot.likedSongs,
+  };
 }
 
 // The generated stand-in for a Spotify fetch, in the tasteSnapshots shape.
