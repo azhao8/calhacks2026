@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import type { Route } from "./routes";
+import type { MeView } from "@/convex/lib/views";
+import { redirectFor, ROUTES, type Route } from "./routes";
 
 // In-app history. Browser history can hold pages from other sites (a link from Gmail, the "ready"
 // email), so "Back" only goes back when the entry before this one is a Melos screen from this page
@@ -87,4 +88,30 @@ export function setFlash(message: string | null, ms = 5000): void {
 
 export function useFlash(): string | null {
   return useSyncExternalStore(subscribe, () => flash, () => null);
+}
+
+// A signed-out deep link (say /plan from a shared link) is remembered for this tab, and after sign
+// in the student lands there if their account may open it; otherwise home picks. Only our own
+// routes are kept, never a full URL, so this can't redirect off Melos.
+const NEXT_KEY = "melos.next";
+
+export function rememberNext(path: string): void {
+  if (!(Object.values(ROUTES) as string[]).includes(path)) return;
+  try {
+    window.sessionStorage.setItem(NEXT_KEY, path);
+  } catch {
+    // Blocked storage: after sign in, home picks the screen.
+  }
+}
+
+export function takeNext(me: MeView): Route {
+  let path: string | null = null;
+  try {
+    path = window.sessionStorage.getItem(NEXT_KEY);
+    window.sessionStorage.removeItem(NEXT_KEY);
+  } catch {
+    return ROUTES.welcome;
+  }
+  const route = (Object.values(ROUTES) as string[]).includes(path ?? "") ? (path as Route) : null;
+  return route !== null && route !== ROUTES.signIn && redirectFor(route, me) === null ? route : ROUTES.welcome;
 }
