@@ -7,8 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { Button } from "@/components/Button";
 import { TextField, inputClasses } from "@/components/TextField";
 import { Icon } from "@/components/Icon";
-import { Action, Badge, ConfirmAction, CopyIcon, Filters, Loading, Muted, Panel, Result, SAME_AS_SCHOOL_WARNING, ShowMore, Warning, ago, useRun } from "./_ui";
-import { sameAsSchoolEmail } from "./format";
+import { Action, Badge, ConfirmAction, CopyIcon, Filters, Loading, Muted, Panel, Result, ShowMore, ago, useRun } from "./_ui";
 
 type List = FunctionReturnType<typeof api.admin.students.list>;
 type Row = List["rows"][number];
@@ -156,7 +155,6 @@ function StudentRow({ row }: { row: Row }) {
           <CopyIcon text={row.spotifyEmail} what={row.firstName ? `${row.firstName}'s Spotify email` : "Spotify email"} />
         </div>
       ) : null}
-      {sameAsSchoolEmail(row.spotifyEmail, row.email) ? <Warning>{SAME_AS_SCHOOL_WARNING}</Warning> : null}
       {open ? (
         <div className="flex flex-col gap-4 rounded-sm bg-surface-raised p-3">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-small">

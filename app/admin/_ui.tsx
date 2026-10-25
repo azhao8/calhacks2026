@@ -289,16 +289,3 @@ export function CopyIcon({ text, what }: { text: string; what: string }) {
     </button>
   );
 }
-
-export const SAME_AS_SCHOOL_WARNING =
-  "Same as school email. Most Spotify accounts use a personal email, so check with the student before adding.";
-
-// A warning in words with an icon, so it never relies on color alone.
-export function Warning({ children }: { children: ReactNode }) {
-  return (
-    <p role="note" className="flex items-start gap-2 rounded-sm border border-danger px-3 py-2 text-small text-ink">
-      <Icon name="alert" className="mt-0.5 shrink-0 text-danger" />
-      <span>{children}</span>
-    </p>
-  );
-}
