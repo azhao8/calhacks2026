@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "convex/_generated/**",
     // Design reference files (read-only, not app code).
     "design/**",
+    // The Apify actor is its own package with its own build and tests.
+    "apify/**",
   ]),
 ]);
 
