@@ -1,8 +1,8 @@
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireUserId } from "./lib/access";
+import { requireVerifiedUser } from "./lib/access";
+import { verifiedViewerId } from "./plans/viewer";
 import { fail } from "./lib/errors";
 import { dayLabel, priceLabel, timeLabel } from "./lib/format";
 import { vPlanView, type PlanView } from "./lib/views";
@@ -75,7 +75,7 @@ export const current = query({
   args: {},
   returns: v.union(v.null(), vPlanView),
   handler: async (ctx): Promise<PlanView | null> => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await verifiedViewerId(ctx);
     if (userId === null) return null;
     const found = await currentSeat(ctx, userId);
     if (found === null) return null;
@@ -83,7 +83,7 @@ export const current = query({
     const event = await ctx.db.get(plan.eventId);
     if (event === null) return null;
     const venue = event.venueId ? await ctx.db.get(event.venueId) : null;
-    const { offset } = await planClock(ctx.db, plan);
+    const { offset, now: planNow } = await planClock(ctx.db, plan);
     const seats = await seatsOf(ctx.db, plan._id);
     const partnerSeat = seats.find((other) => other._id !== seat._id && isActiveSeat(other)) ?? null;
     const partnerUser = partnerSeat ? await ctx.db.get(partnerSeat.userId) : null;
@@ -132,6 +132,16 @@ export const current = query({
     else if (partnerSeat !== null && someoneLeftSeat && seat.seat === "in" && partnerSeat.offeredAt > (seat.respondedAt ?? 0))
       notice = "partner_replaced";
 
+    // The person who gave up the seat; this student already saw the name in the offer.
+    let previousPartnerFirstName: string | null = null;
+    if (notice === "partner_dropped" || notice === "partner_replaced") {
+      const lastOut = seats
+        .filter((other) => other.userId !== userId && other.seat === "out")
+        .sort((a, b) => (b.outAt ?? 0) - (a.outAt ?? 0))[0];
+      const previous = lastOut ? await ctx.db.get(lastOut.userId) : null;
+      previousPartnerFirstName = previous?.firstName ?? null;
+    }
+
     const meetingTimeReached = metAtMeetingTime;
     const eligible =
       metAtMeetingTime && seat.seat === "in" && partnerSeat?.seat === "in";
@@ -165,10 +175,13 @@ export const current = query({
             }
           : null,
       notice,
+      previousPartnerFirstName,
       meeting,
       ticketUrl: meeting ? (event.ticketUrl ?? null) : null,
       marker: revealDay ? plan.marker : null,
       icebreaker: revealDay ? plan.icebreaker : null,
+      // A seat given up now reopens and is refilled only before the cutoff (same clock as reconcile).
+      beforeCutoff: isActivePlan(plan) && planNow < plan.cutoffAt,
       canCantMakeIt: seat.seat === "in" && isActivePlan(plan) && !meetingTimeReached,
       canLeave: plan.status === "set" && meetingTimeReached && seat.leftAt === undefined,
       canShare: eligible,
@@ -180,7 +193,7 @@ export const accept = mutation({
   args: { seatId: v.id("meetupMembers") },
   returns: v.null(),
   handler: async (ctx, { seatId }) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     const seat = await ownSeat(ctx, userId, seatId);
     // Settle anything the clock has already decided (an offer that ran out) before accepting.
     await reconcilePlan(ctx, seat.meetupId);
@@ -193,7 +206,7 @@ export const nextTime = mutation({
   args: { seatId: v.id("meetupMembers") },
   returns: v.null(),
   handler: async (ctx, { seatId }) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     const seat = await ownSeat(ctx, userId, seatId);
     if (seat.seat === "out") return null; // Already given up: repeating is harmless.
     if (seat.seat !== "offered") fail("validation_failed", "Use cantMakeIt for a seat you accepted");
@@ -207,7 +220,7 @@ export const setTicket = mutation({
   args: { seatId: v.id("meetupMembers"), ticket: v.union(v.literal("got"), v.literal("couldnt")) },
   returns: v.null(),
   handler: async (ctx, { seatId, ticket }) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     const seat = await ownSeat(ctx, userId, seatId);
     if (ticket === "got") await setTicketGot(ctx, seat);
     else await giveUpSeat(ctx, seat, "no_ticket");
@@ -219,7 +232,7 @@ export const cantMakeIt = mutation({
   args: { seatId: v.id("meetupMembers") },
   returns: v.null(),
   handler: async (ctx, { seatId }) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     const seat = await ownSeat(ctx, userId, seatId);
     await giveUpSeat(ctx, seat, "cant_make_it");
     return null;
@@ -231,7 +244,7 @@ export const leave = mutation({
   args: { seatId: v.id("meetupMembers") },
   returns: v.null(),
   handler: async (ctx, { seatId }) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     const seat = await ownSeat(ctx, userId, seatId);
     if (seat.leftAt !== undefined) return null;
     const plan = await ctx.db.get(seat.meetupId);

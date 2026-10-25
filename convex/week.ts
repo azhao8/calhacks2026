@@ -1,7 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { requireUser } from "./lib/access";
+import { requireVerifiedUser } from "./lib/access";
+import { verifiedViewerId } from "./plans/viewer";
 import { fail } from "./lib/errors";
 import { dayLabel, distanceLabel, priceLabel, timeLabel } from "./lib/format";
 import { vWeekCard, type WeekCard } from "./lib/views";
@@ -17,7 +17,7 @@ export const mine = query({
   args: {},
   returns: v.array(vWeekCard),
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await verifiedViewerId(ctx);
     if (userId === null) return [];
     const now = Date.now();
     const asks = await ctx.db
@@ -63,7 +63,7 @@ export const answer = mutation({
   args: { askId: v.id("asks"), answer: v.union(v.literal("yes"), v.literal("no")) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await requireVerifiedUser(ctx);
     const ask = await ctx.db.get(args.askId);
     if (ask === null || ask.userId !== user._id) fail("forbidden");
     if (user.onboarding !== "ready") fail("forbidden");

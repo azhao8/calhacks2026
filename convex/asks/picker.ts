@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { z } from "zod";
 import { MATCHING, MODELS, SURPRISE_ME, TIMING } from "../lib/config";
 import { generateJson } from "../services/claude";
-import { aiPool } from "../matching/pools";
+import { aiPool } from "../lib/pools";
 import { itemSets } from "../matching/taste";
 import { eventCutoff } from "../plans/model";
 import { isAdultOnly, knownPrice, performerOverlap, rerankScore, withinArea, withinBudget } from "./rules";

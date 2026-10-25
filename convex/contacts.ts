@@ -1,8 +1,8 @@
 import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { requireUserId } from "./lib/access";
+import { requireVerifiedUser } from "./lib/access";
+import { verifiedViewerId } from "./plans/viewer";
 import { fail } from "./lib/errors";
 import { dayLabel } from "./lib/format";
 import { vShareKind } from "./lib/validators";
@@ -62,7 +62,7 @@ export const share = mutation({
   args: { meetupId: v.id("meetups"), kind: vShareKind, value: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     if ((await eligibility(ctx, userId, args.meetupId)) === null) fail("forbidden");
     const value = normalizeShare(args.kind, args.value);
     if (value === null) fail("validation_failed", args.kind === "phone" ? "Check the phone number" : "Check the handle");
@@ -83,7 +83,7 @@ export const stopSharing = mutation({
   args: { meetupId: v.id("meetups"), kind: vShareKind },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const userId = await requireUserId(ctx);
+    const userId = (await requireVerifiedUser(ctx))._id;
     const now = Date.now();
     for (const share of await activeShares(ctx, userId, args.meetupId)) {
       if (share.kind === args.kind) await ctx.db.patch(share._id, { revokedAt: now });
@@ -97,7 +97,7 @@ export const myShares = query({
   args: { meetupId: v.id("meetups") },
   returns: vMySharesView,
   handler: async (ctx, { meetupId }) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await verifiedViewerId(ctx);
     if (userId === null) return { phone: null, instagram: null };
     const shares = await activeShares(ctx, userId, meetupId);
     return {
@@ -112,7 +112,7 @@ export const list = query({
   args: {},
   returns: v.array(vContactView),
   handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
+    const userId = await verifiedViewerId(ctx);
     if (userId === null) return [];
     const mySeats = await ctx.db
       .query("meetupMembers")

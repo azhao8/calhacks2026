@@ -5,7 +5,7 @@ import { v } from "convex/values";
 import { MODELS } from "../lib/config";
 import { generateJson } from "../services/claude";
 import { HOOK_SYSTEM, hookPrompt, hookSchema, templateHook, validateHook, type HookItem } from "../ai/hooks";
-import { aiPool } from "../matching/pools";
+import { aiPool } from "../lib/pools";
 import { itemSets, normalizeName } from "../matching/taste";
 
 // Hooks and icebreakers for a pair (CLAUDE.md §6.4, §7): the template is written at once, then Claude's

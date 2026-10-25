@@ -75,6 +75,8 @@ describe("offers and withholding", () => {
     expect(view.marker).toBeNull();
     expect(view.icebreaker).toBeNull();
     expect(view.me.offerExpiresAt).not.toBeNull();
+    expect(view.previousPartnerFirstName).toBeNull();
+    expect(view.beforeCutoff).toBe(true);
     // Nothing about the partner beyond the first name.
     expect(JSON.stringify(view)).not.toContain("berkeley.edu");
   });
@@ -183,6 +185,51 @@ describe("offers and withholding", () => {
   });
 });
 
+describe("withholding across states", () => {
+  test("previousPartnerFirstName is null unless a partner dropped; beforeCutoff flips at the cutoff", async () => {
+    const t = await setup();
+    const p = await pairUp(t);
+    const views = async () => [
+      (await asUser(t, p.maya).query(api.plans.current, {}))!,
+      (await asUser(t, p.sam).query(api.plans.current, {}))!,
+    ];
+    for (const view of await views()) expect(view.previousPartnerFirstName).toBeNull(); // offer
+    await asUser(t, p.maya).mutation(api.plans.accept, { seatId: p.mayaSeat });
+    for (const view of await views()) expect(view.previousPartnerFirstName).toBeNull(); // waiting / offer
+    await asUser(t, p.sam).mutation(api.plans.accept, { seatId: p.samSeat });
+    for (const view of await views()) {
+      expect(view.stage).toBe("set");
+      expect(view.previousPartnerFirstName).toBeNull();
+      expect(view.beforeCutoff).toBe(true);
+    }
+    await reconcileAt(t, p.meetupId, CUTOFF - 1);
+    for (const view of await views()) expect(view.beforeCutoff).toBe(true);
+    await reconcileAt(t, p.meetupId, CUTOFF);
+    for (const view of await views()) expect(view.beforeCutoff).toBe(false);
+    await reconcileAt(t, p.meetupId, MEET);
+    await asUser(t, p.sam).mutation(api.plans.leave, { seatId: p.samSeat });
+    for (const view of await views()) {
+      expect(view.previousPartnerFirstName).toBeNull(); // meetup day, partner left
+      expect(view.beforeCutoff).toBe(false);
+    }
+    await reconcileAt(t, p.meetupId, STARTS + 4 * HOUR);
+    for (const view of await views()) {
+      expect(view.stage).toBe("after");
+      expect(view.previousPartnerFirstName).toBeNull();
+      expect(view.beforeCutoff).toBe(false);
+    }
+  });
+
+  test("an unverified account sees no plan and can't change a seat", async () => {
+    const t = await setup();
+    const p = await pairUp(t);
+    await t.run(async (ctx) => ctx.db.patch(p.maya, { verifiedAt: undefined }));
+    expect(await asUser(t, p.maya).query(api.plans.current, {})).toBeNull();
+    expect(await asUser(t, p.maya).query(api.week.mine, {})).toEqual([]);
+    await expect(asUser(t, p.maya).mutation(api.plans.accept, { seatId: p.mayaSeat })).rejects.toThrow(/forbidden/);
+  });
+});
+
 describe("changes of plan", () => {
   test("Next time reopens the seat, refills it from the same event, and frees the decliner at once", async () => {
     const t = await setup();
@@ -207,6 +254,7 @@ describe("changes of plan", () => {
     const mayaView = (await asUser(t, p.maya).query(api.plans.current, {}))!;
     expect(mayaView.partner?.firstName).toBe("Lee");
     expect(mayaView.notice).toBe("partner_replaced");
+    expect(mayaView.previousPartnerFirstName).toBe("Sam");
     // The new person doesn't see the meeting spot until they're in.
     expect((await asUser(t, lee).query(api.plans.current, {}))!.meeting).toBeNull();
 
@@ -239,6 +287,7 @@ describe("changes of plan", () => {
     expect((await plan(t, p.meetupId)).status).toBe("forming");
     const view = (await asUser(t, p.maya).query(api.plans.current, {}))!;
     expect(view.notice).toBe("partner_dropped");
+    expect(view.previousPartnerFirstName).toBe("Sam");
     expect(view.partner).toBeNull();
     expect(view.meeting?.spotName).toBe("Sather Gate");
 
@@ -264,6 +313,8 @@ describe("changes of plan", () => {
     const view = (await asUser(t, p.maya).query(api.plans.current, {}))!;
     expect(view.stage).toBe("called_off");
     expect(view.notice).toBe("nobody_by_cutoff");
+    expect(view.previousPartnerFirstName).toBeNull();
+    expect(view.beforeCutoff).toBe(false);
   });
 
   test("an empty seat at the cutoff calls the plan off", async () => {

@@ -88,9 +88,10 @@ async function seedDemoStudents(ctx: MutationCtx): Promise<{ created: number; up
       if (existingSnapshot) await ctx.db.replace(existingSnapshot._id, snapshot);
       else await ctx.db.insert("tasteSnapshots", snapshot);
 
-      // INTEGRATION: once stream A's taste pipeline is on main, run the snapshot through A's summary
-      // step (Claude summary from the fixed label list, then the Voyage vector) instead of writing the
-      // fixture's summary here. Until then demo students have no vector and match on exact items.
+      // INTEGRATION: once stream A's PR #9 is on main, replace this direct write with
+      // internal.onboarding.analysis.analyzeFixture({ userId, listening }) and then
+      // internal.onboarding.analysis.confirmForUser({ userId }) (Claude summary from the fixed label list,
+      // then the Voyage vector). Until then demo students have no vector and match on exact items.
       const existingProfile = await ctx.db
         .query("tasteProfiles")
         .withIndex("by_userId", (q) => q.eq("userId", userId))
