@@ -340,7 +340,7 @@ export const overrideSpot = internalMutation({
     });
     const meetOffsetMinutes = args.meetOffsetMinutes ?? venue.meetOffsetMinutes ?? TIMING.meetOffsetMinutes;
     // Every show at the venue, and every forming or set plan for them, moves to the team's spot.
-    await moveVenueSpot(ctx, venue, spotId, meetOffsetMinutes, { now: Date.now() });
+    await moveVenueSpot(ctx, venue, spotId, meetOffsetMinutes, { moveSetPlans: true, now: Date.now() });
     return spotId;
   },
 });

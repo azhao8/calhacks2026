@@ -148,15 +148,17 @@ async function chooseSpot(
   return { spotId, meetOffsetMinutes: TIMING.meetOffsetMinutes };
 }
 
-// Moves a venue (and those of its events that used `fromSpotId`, or all of them) to a new meeting spot, carrying
-// the change to every forming or set plan for those events. A spot a plan points to is never deleted, so a plan
-// always keeps its meeting place; when the meeting offset changes, the plans are retimed.
+// Moves a venue (and those of its events that used `fromSpotId`, or all of them) to a new meeting spot.
+// - `moveSetPlans: true` (the team's override, chosen on purpose): forming and set plans move to the new spot.
+// - `moveSetPlans: false` (an automatic replacement): only forming plans move. A set plan's two students were
+//   already shown their spot and time, so the plan keeps both; an event with a set plan keeps its meeting offset.
+// A spot a plan points to is never deleted. When an event's offset changes, its plans are retimed.
 export async function moveVenueSpot(
   ctx: MutationCtx,
   venue: Doc<"venues">,
   toSpotId: Id<"meetingSpots">,
   meetOffsetMinutes: number,
-  options: { onlyFrom?: Id<"meetingSpots">; now: number },
+  options: { onlyFrom?: Id<"meetingSpots">; moveSetPlans: boolean; now: number },
 ): Promise<void> {
   await ctx.db.patch(venue._id, { meetingSpotId: toSpotId, meetOffsetMinutes, updatedAt: options.now });
   const events = await ctx.db
@@ -165,16 +167,20 @@ export async function moveVenueSpot(
     .collect();
   for (const event of events) {
     if (options.onlyFrom !== undefined && event.meetingSpotId !== options.onlyFrom) continue;
-    const retime = event.meetOffsetMinutes !== meetOffsetMinutes;
-    await ctx.db.patch(event._id, { meetingSpotId: toSpotId, meetOffsetMinutes });
-    for (const status of ["forming", "set"] as const) {
-      const plans = await ctx.db
+    const plansFor = (status: "forming" | "set") =>
+      ctx.db
         .query("meetups")
         .withIndex("by_event_status", (q) => q.eq("eventId", event._id).eq("status", status))
         .collect();
-      for (const plan of plans) await ctx.db.patch(plan._id, { meetingSpotId: toSpotId });
+    const forming = await plansFor("forming");
+    const set = await plansFor("set");
+    const keepTiming = !options.moveSetPlans && set.length > 0;
+    const offset = keepTiming ? event.meetOffsetMinutes : meetOffsetMinutes;
+    await ctx.db.patch(event._id, { meetingSpotId: toSpotId, meetOffsetMinutes: offset });
+    for (const plan of options.moveSetPlans ? [...forming, ...set] : forming) {
+      await ctx.db.patch(plan._id, { meetingSpotId: toSpotId });
     }
-    if (retime) await ctx.runMutation(internal.plans.retime.forEvent, { eventId: event._id });
+    if (offset !== event.meetOffsetMinutes) await ctx.runMutation(internal.plans.retime.forEvent, { eventId: event._id });
   }
 }
 
@@ -271,6 +277,7 @@ export const resolve = internalMutation({
           // The old fallback row stays: past plans may still point to it.
           await moveVenueSpot(ctx, venue, chosen.spotId, chosen.meetOffsetMinutes, {
             onlyFrom: venue.meetingSpotId,
+            moveSetPlans: false,
             now: args.now,
           });
         }
