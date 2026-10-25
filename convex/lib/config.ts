@@ -110,3 +110,30 @@ export const SITE = {
   prodUrl: "https://melos.azhao.dev",
   devUrl: "http://127.0.0.1:3000",
 } as const;
+
+// Drops (DECISIONS.md, Oct 25): replace the weekly asks, the separate offer step, and live matching.
+// `enabled` gates the old ask picker and the live wake-up on a yes off; their code stays in place.
+export const DROP = {
+  enabled: true,
+  choosingMs: 2 * HOUR,
+  confirmMs: 24 * HOUR,
+  minLeadMs: 3 * HOUR,
+  horizonMs: 7 * DAY,
+  minChoices: 1,
+  maxChoices: 4,
+  // Picking: sample from the top of the ranking with a softmax, after an MMR pass for variety.
+  sampleTop: 8,
+  softmaxTemperature: 0.1,
+  sameKindPenalty: 0.15,
+  featuredBoost: 0.05,
+  // Demo students tap See more, then Accept, each after a random 3 to 10 seconds.
+  demoStepDelayMs: { min: 3 * SECOND, max: 10 * SECOND },
+  siteUrl: "https://melos.azhao.dev",
+} as const;
+
+export const AUDIENCE = {
+  maxChars: 300,
+  labelsMin: 3,
+  labelsMax: 8,
+  effort: "low",
+} as const;
