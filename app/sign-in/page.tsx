@@ -15,6 +15,7 @@ import { useNow, useOnline } from "@/app/_lib/hooks";
 import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
 import { secondsLeft } from "@/app/_lib/time";
 import { checkSchoolEmail, codeDigits } from "@/app/_lib/validate";
+import { takeNext } from "@/app/_lib/nav";
 import { BackLink } from "@/app/_components/BackLink";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 import { CodeInput } from "./CodeInput";
@@ -41,7 +42,12 @@ export default function SignInPage() {
 
   // Signed in (now, or already): home picks the next screen.
   useEffect(() => {
-    if (me) router.replace(ROUTES.welcome);
+    if (!me) return;
+    const next = takeNext(me);
+    // A remembered deep link loads fresh: Next keeps the signed-out visit to that page alive, and
+    // re-showing it would bounce the student home before the signed-in data arrives.
+    if (next === ROUTES.welcome) router.replace(next);
+    else window.location.replace(next);
   }, [me, router]);
 
   if (me === undefined || me !== null || verified) return <LoadingScreen object="headphones" title={verified ? "Signing you in" : "Loading"} />;
@@ -139,7 +145,7 @@ export default function SignInPage() {
             hint={
               <>
                 Any .edu address works. See our{" "}
-                <Link href={ROUTES.privacy} className="font-semibold text-accent underline underline-offset-3">
+                <Link href={ROUTES.privacy} className="inline-flex min-h-12 items-center font-semibold text-accent underline underline-offset-3">
                   privacy page
                 </Link>
                 .

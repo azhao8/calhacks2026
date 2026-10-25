@@ -67,7 +67,7 @@ export function CodeInput({
   }
 
   return (
-    <div role="group" aria-label="Your 6 digit code" aria-describedby={describedBy} className="grid grid-cols-6 gap-2">
+    <div role="group" aria-label="Your 6 digit code" aria-describedby={describedBy} className="grid grid-cols-6 gap-1 min-[360px]:gap-2">
       {digits.map((digit, i) => (
         <input
           key={i}

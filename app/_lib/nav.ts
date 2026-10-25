@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import type { Route } from "./routes";
+import type { MeView } from "@/convex/lib/views";
+import { redirectFor, ROUTES, type Route } from "./routes";
 
 // In-app history. Browser history can hold pages from other sites (a link from Gmail, the "ready"
 // email), so "Back" only goes back when the entry before this one is a Melos screen from this page
@@ -87,4 +88,36 @@ export function setFlash(message: string | null, ms = 5000): void {
 
 export function useFlash(): string | null {
   return useSyncExternalStore(subscribe, () => flash, () => null);
+}
+
+// A signed-out deep link (say /plan from a shared link) is remembered for this tab, and after sign
+// in the student lands there if their account may open it; otherwise home picks. The path must be
+// one of our own routes, so this can't redirect off Melos; its query string comes along, because
+// some screens read it (/stay-in-touch?meetupId= picks which plan to share with).
+const NEXT_KEY = "melos.next";
+const isRoute = (path: string): path is Route => (Object.values(ROUTES) as string[]).includes(path);
+
+export function rememberNext(path: string, search = ""): void {
+  if (!isRoute(path)) return;
+  try {
+    window.sessionStorage.setItem(NEXT_KEY, search.startsWith("?") ? path + search : path);
+  } catch {
+    // Blocked storage: after sign in, home picks the screen.
+  }
+}
+
+// Where to go after sign in: the remembered route and query, or home.
+export function takeNext(me: MeView): string {
+  let next: string | null = null;
+  try {
+    next = window.sessionStorage.getItem(NEXT_KEY);
+    window.sessionStorage.removeItem(NEXT_KEY);
+  } catch {
+    return ROUTES.welcome;
+  }
+  if (next === null) return ROUTES.welcome;
+  const cut = next.indexOf("?");
+  const path = cut < 0 ? next : next.slice(0, cut);
+  if (!isRoute(path) || path === ROUTES.signIn || redirectFor(path, me) !== null) return ROUTES.welcome;
+  return next;
 }

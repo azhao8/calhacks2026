@@ -37,9 +37,9 @@ export function Meta({ children, className }: { children: ReactNode; className?:
 
 export function MetaItem({ icon, children }: { icon: IconName; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1">
-      <Icon name={icon} />
-      {children}
+    <span className="inline-flex max-w-full min-w-0 items-start gap-1">
+      <Icon name={icon} className="mt-[0.2em] flex-none" />
+      <span className="min-w-0 wrap-break-word">{children}</span>
     </span>
   );
 }

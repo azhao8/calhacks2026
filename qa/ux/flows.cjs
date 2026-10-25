@@ -157,7 +157,7 @@ const flows = {
       await link(page, "Back to About you").click();
       await wait(page);
       out.prefsQ1BackTo = at(page);
-      out.aboutYouPrefill = await page.getByLabel("What email is your Spotify account under?").inputValue().catch(() => null);
+      out.aboutYouPrefill = await page.getByLabel("The email you log in to Spotify with").inputValue().catch(() => null);
       await context.close();
     }
     out.pass =
@@ -411,6 +411,38 @@ const flows = {
     return { buttons };
   },
 
+  // A signed-out deep link comes back after sign in (when the account may open it), and the school
+  // picker starts on the only open school.
+  async "nav-deep-link-after-sign-in"(browser) {
+    const out = {};
+    for (const [name, path, signedInAs, expect] of [
+      ["ready student, /contacts", "/contacts", F.me("ready"), "/contacts"],
+      ["mid-onboarding, /plan", "/plan", F.me("waiting_for_spotify"), "/waiting"],
+    ]) {
+      const { context, page, mock } = await open(browser, visitor({ ...ready(), "me:get": null }));
+      await page.goto(BASE + path);
+      await wait(page, 1000);
+      const bounced = at(page);
+      await link(page, "I already have an account").click();
+      await wait(page);
+      // A real sign in leaves a session in storage; the mock serves the signed-in student from now on.
+      await MockConvex.signIn(context);
+      mock.data["me:get"] = signedInAs;
+      mock.set("me:get", signedInAs);
+      await wait(page, 2000);
+      out[name] = { bounced, landed: at(page), pass: at(page) === expect };
+      await context.close();
+    }
+    {
+      const { context, page } = await open(browser, visitor());
+      await page.goto(BASE + "/school");
+      await wait(page);
+      out.schoolContinueEnabled = await btn(page, "Continue").isEnabled();
+      await context.close();
+    }
+    return out;
+  },
+
   // Menu close goes home, never back through browser history.
   async "nav-menu-close"(browser) {
     const out = {};
@@ -428,6 +460,51 @@ const flows = {
       out[name] = { landed: at(page), pass: at(page) === expect };
       await context.close();
     }
+    return out;
+  },
+
+  // The Spotify email: empty for a new student (never the school email), and fixable from Waiting
+  // and Connect, coming back home with the new address shown live.
+  async "state-spotify-email"(browser) {
+    const out = {};
+    {
+      const { context, page } = await open(browser, onboarding("needs_about_you", { "onboarding:access": { status: "none", refused: false, spotifyEmail: null } }));
+      await page.goto(BASE + "/about-you");
+      await wait(page);
+      out.newStudentField = await page.getByLabel("The email you log in to Spotify with").inputValue();
+      await page.getByLabel("What should we call you?").fill("Sam");
+      await btn(page, "Continue").click();
+      await wait(page, 500);
+      out.emptyError = await page.getByText("Enter the email your Spotify account uses.").isVisible();
+      await page.screenshot({ path: `${SHOTS}/about-you-new.png` });
+      await context.close();
+    }
+    for (const [from, state] of [
+      ["/waiting", "waiting_for_spotify"],
+      ["/connect", "needs_spotify_connect"],
+    ]) {
+      const access = { ...F.access.requested, status: state === "needs_spotify_connect" ? "allowlisted" : "requested", spotifyEmail: "sam@berkeley.edu" };
+      const { context, page, mock } = await open(browser, onboarding(state, { "onboarding:access": access }));
+      mock.handlers["onboarding:saveAboutYou"] = (args, m) => {
+        m.set("onboarding:access", { ...F.access.requested, spotifyEmail: args.spotifyEmail });
+        m.set("me:get", F.me("waiting_for_spotify"));
+      };
+      await page.goto(BASE + from);
+      await wait(page);
+      await page.screenshot({ path: `${SHOTS}/spotify-email-on${from.replace("/", "-")}.png` });
+      await link(page, "Change the Spotify email").click();
+      await wait(page);
+      const prefill = await page.getByLabel("The email you log in to Spotify with").inputValue();
+      await page.getByLabel("The email you log in to Spotify with").fill("sam.spotify@gmail.com");
+      await btn(page, "Save", true).click();
+      await wait(page, 1500);
+      await page.screenshot({ path: `${SHOTS}/spotify-email-saved-from${from.replace("/", "-")}.png` });
+      const after = await text(page);
+      out[from] = { prefill, landed: at(page), showsNew: after.includes("sam.spotify@gmail.com"), saved: /Saved\./.test(after) };
+      out[from].pass = prefill === "sam@berkeley.edu" && out[from].landed === "/waiting" && out[from].showsNew && out[from].saved;
+      await context.close();
+    }
+    out.pass = out.newStudentField === "" && out.emptyError && out["/waiting"].pass && out["/connect"].pass;
     return out;
   },
 
