@@ -1,0 +1,170 @@
+[
+  {
+    "title": "Iestyn Davies, countertenor; Oliver Wass, harp",
+    "kind": "concert",
+    "startsAt": "2026-10-25T15:00:00-07:00",
+    "venue": {
+      "name": "Hertz Hall",
+      "address": "Hertz Hall, Ong & Ong Plaza, Berkeley, CA 94720",
+      "osmId": "way/24024671",
+      "lat": 37.871046,
+      "lng": -122.255714
+    },
+    "price": {
+      "min": 75,
+      "max": null,
+      "source": "listing",
+      "sourceUrl": "https://calperformances.org/events/2026-27/early-music/iestyn-davies-countertenor-oliver-wass-harp/",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://secure.calperformances.org/31676/31843",
+    "freeEntryNote": null,
+    "performers": [
+      "Iestyn Davies",
+      "Oliver Wass"
+    ],
+    "tags": [
+      "Recital",
+      "Early Music"
+    ],
+    "ageLimit": null,
+    "meetingSpot": {
+      "name": "Ong & Ong Plaza",
+      "howToFind": "Meet in the open pedestrian plaza (Ong & Ong Plaza) just south of Hertz Hall's entrance.",
+      "lat": 37.870471,
+      "lng": -122.255091,
+      "osmId": "way/482840643",
+      "isTransitStop": false,
+      "travelMinutes": 0
+    },
+    "sourceUrl": "https://calperformances.org/events/2026-27/early-music/iestyn-davies-countertenor-oliver-wass-harp/",
+    "sourceName": "cal_performances",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T04:57:34.579Z"
+  },
+  {
+    "title": "Iestyn Davies, countertenor Oliver Wass, Baroque triple lever harp and modern harp",
+    "kind": "concert",
+    "startsAt": "2026-10-25T15:00:00-07:00",
+    "venue": {
+      "name": "Hertz Hall",
+      "address": "Hertz Hall, Berkeley, CA 94720",
+      "osmId": "way/24024671",
+      "lat": 37.871046,
+      "lng": -122.255714
+    },
+    "price": {
+      "min": 75,
+      "max": null,
+      "source": "search",
+      "sourceUrl": "https://calperformances.org/events/2026-27/early-music/iestyn-davies-countertenor-oliver-wass-harp/",
+      "checked": [
+        "listing",
+        "ticket_page",
+        "search"
+      ]
+    },
+    "ticketUrl": "https://secure.calperformances.org/31676",
+    "freeEntryNote": null,
+    "performers": [
+      "Iestyn Davies",
+      "Oliver Wass"
+    ],
+    "tags": [
+      "Cal Performances",
+      "Vocal Celebration",
+      "Vocalist",
+      "soloists"
+    ],
+    "ageLimit": null,
+    "meetingSpot": null,
+    "sourceUrl": "https://events.berkeley.edu/calperfs/event/323557-iestyn-davies-countertenor-oliver-wass-baroque",
+    "sourceName": "uc_berkeley_events",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T05:01:20.106Z"
+  },
+  {
+    "title": "Iestyn Davies, countertenor; Oliver Wass, harp",
+    "kind": "concert",
+    "startsAt": "2026-10-25T15:00:00-07:00",
+    "venue": {
+      "name": "Hertz Hall",
+      "address": "Hertz Hall, Ong & Ong Plaza, Berkeley, CA 94720",
+      "osmId": "way/24024671",
+      "lat": 37.871046,
+      "lng": -122.255714
+    },
+    "price": {
+      "min": 75,
+      "max": null,
+      "source": "listing",
+      "sourceUrl": "https://calperformances.org/events/2026-27/early-music/iestyn-davies-countertenor-oliver-wass-harp/",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://secure.calperformances.org/31676/31843",
+    "freeEntryNote": null,
+    "performers": [
+      "Iestyn Davies",
+      "Oliver Wass"
+    ],
+    "tags": [
+      "Recital",
+      "Early Music"
+    ],
+    "ageLimit": null,
+    "meetingSpot": null,
+    "sourceUrl": "https://calperformances.org/events/2026-27/early-music/iestyn-davies-countertenor-oliver-wass-harp/",
+    "sourceName": "web",
+    "sourceKind": "web",
+    "scrapedAt": "2026-10-25T05:01:41.031Z"
+  },
+  {
+    "title": "Ari\u2019el Stachel\u2019s \u201cOther\u201d",
+    "kind": "performance",
+    "startsAt": "2026-10-29T17:30:00-07:00",
+    "venue": {
+      "name": "2121 Allston Way",
+      "address": "2121 Allston Way, Berkeley, CA 94720",
+      "osmId": "way/37060579",
+      "lat": 37.869762,
+      "lng": -122.266885
+    },
+    "price": {
+      "min": 5,
+      "max": 35,
+      "source": "listing",
+      "sourceUrl": "https://events.berkeley.edu/live/events/329784-ariel-stachels-other",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://secure-tickets.berkeley.edu/33648",
+    "freeEntryNote": null,
+    "performers": [
+      "Ari\u2019el Stachel"
+    ],
+    "tags": [
+      "theater",
+      "one-man play",
+      "dramedy"
+    ],
+    "ageLimit": null,
+    "meetingSpot": {
+      "name": "Downtown Berkeley BART plaza",
+      "howToFind": "The Downtown Berkeley BART station entrance plaza on Shattuck Avenue at Center Street, about a minute's walk from 2121 Allston Way.",
+      "lat": 37.870101,
+      "lng": -122.268138,
+      "osmId": "node/6129383336",
+      "isTransitStop": false,
+      "travelMinutes": 0
+    },
+    "sourceUrl": "https://events.berkeley.edu/live/events/329784-ariel-stachels-other",
+    "sourceName": "uc_berkeley_events",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T05:01:33.243Z"
+  }
+]

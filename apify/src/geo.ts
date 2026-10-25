@@ -74,7 +74,8 @@ export class Geocoder {
     const results = (await response.json()) as NominatimResult[];
     const places = results.map((r) => ({
       osmId: `${r.osm_type}/${r.osm_id}`,
-      name: r.name || r.display_name.split(",")[0],
+      // An unnamed result (a bare street address) has no name; it is never a venue name.
+      name: r.name ?? "",
       address: r.display_name,
       lat: Number(r.lat),
       lng: Number(r.lon),

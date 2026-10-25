@@ -106,6 +106,27 @@ export function titlesOverlap(a: string, b: string): boolean {
   return short.length >= 4 && ` ${long} `.includes(` ${short} `);
 }
 
+// Two normalized titles for the same venue and the same start describe one show when one contains the other,
+// they open with the same three words, or most of the shorter one's words appear in the longer one:
+// "Iestyn Davies, countertenor; Oliver Wass, harp" and "Iestyn Davies, countertenor Oliver Wass, Baroque harp".
+export function sameShowTitles(a: string, b: string): boolean {
+  if (titlesOverlap(a, b)) return true;
+  const wordsA = a.split(" ").filter(Boolean);
+  const wordsB = b.split(" ").filter(Boolean);
+  if (wordsA.length >= 3 && wordsB.length >= 3 && wordsA.slice(0, 3).join(" ") === wordsB.slice(0, 3).join(" ")) {
+    return true;
+  }
+  const [shorter, longer] = wordsA.length <= wordsB.length ? [wordsA, wordsB] : [wordsB, wordsA];
+  if (shorter.length < 2) return false;
+  const inLonger = new Set(longer);
+  return shorter.filter((word) => inLonger.has(word)).length / shorter.length >= 0.8;
+}
+
+// A venue "name" that is really a street address, like "2121 Allston Way".
+export function looksLikeAddress(name: string): boolean {
+  return /^\d+[a-z]?(\s|,|$)/i.test(name.trim()) || name.trim().length === 0;
+}
+
 export function isHttpUrl(value: string | null | undefined): value is string {
   if (value === null || value === undefined) return false;
   try {

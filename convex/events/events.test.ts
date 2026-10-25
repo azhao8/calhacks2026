@@ -8,6 +8,7 @@ import type { Id } from "../_generated/dataModel";
 import { apifyWebhook, SECRET_HEADER } from "./webhook";
 import { PULLED_REASON } from "./config";
 import realRun from "./fixtures/uc-theatre-run.json";
+import fullRunDuplicates from "./fixtures/full-run-duplicates.json";
 
 // Outside services are mocked at their convex/services seams.
 const apify = vi.hoisted(() => ({
@@ -313,6 +314,61 @@ describe("a real scout run", () => {
     const pigeons = events.find((e) => e.title === "Pigeons Playing Ping Pong")!;
     // Nov 1, 7 pm Pacific (PST) and "from $35".
     expect(pigeons).toMatchObject({ startsAt: Date.parse("2026-11-02T03:00:00Z"), priceMin: 35, priceMax: null, area: "campus" });
+  });
+});
+
+describe("the first full run's defects", () => {
+  // Items 0, 14, 18 and 16 of Apify run MgpZXJwxokLbeUuqc (all sources), saved as a fixture.
+  test("Cal Performances and the campus calendar describe one Iestyn Davies recital; it publishes once", async () => {
+    vi.setSystemTime(new Date("2026-10-25T05:00:00Z"));
+    const t = await setup();
+    const row = await importRun(t, "MgpZXJwxokLbeUuqc", fullRunDuplicates);
+    const iestyn = (await t.query(internal.events.admin.list, {})).filter((e) => e.title.startsWith("Iestyn Davies"));
+    expect(iestyn).toHaveLength(1);
+    expect(iestyn[0]).toMatchObject({ title: "Iestyn Davies, countertenor; Oliver Wass, harp", priceMin: 75, priceMax: null });
+    expect(row.counts).toMatchObject({ received: 4, published: 2, duplicates: 2, rejected: 0 });
+  });
+
+  test("an address is never a venue's display name once a real name turns up, and the team can rename", async () => {
+    const t = await setup();
+    const venue = { name: "2121 Allston Way", address: "2121 Allston Way, Berkeley, CA 94720", osmId: "way/37060579", lat: 37.869762, lng: -122.266885 };
+    await importRun(t, "a1", [scoutItem({ title: "Other", venue, sourceUrl: "https://events.berkeley.edu/1" })]);
+    expect((await t.query(internal.events.admin.list, {}))[0].venueName).toBe("2121 Allston Way");
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "a2", [scoutItem({ title: "Next", venue: { ...venue, name: "Hall Downtown" }, sourceUrl: "https://events.berkeley.edu/2" })]);
+    const venues = await t.run((ctx) => ctx.db.query("venues").collect());
+    expect(venues).toHaveLength(1);
+    expect(venues[0]).toMatchObject({ name: "Hall Downtown", aliases: ["2121 Allston Way"] });
+    // A later address-only listing doesn't undo the real name.
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "a3", [scoutItem({ title: "Third", venue, sourceUrl: "https://events.berkeley.edu/3" })]);
+    expect((await t.run((ctx) => ctx.db.get(venues[0]._id)))!.name).toBe("Hall Downtown");
+    await t.mutation(internal.events.admin.renameVenue, { venueId: venues[0]._id, name: "The Real Hall" });
+    expect((await t.run((ctx) => ctx.db.get(venues[0]._id)))!).toMatchObject({ name: "The Real Hall", aliases: ["2121 Allston Way", "Hall Downtown"] });
+  });
+
+  test("a map result named only by its address never stands in for a named venue", async () => {
+    const t = await setup();
+    geocode.searchPlaces.mockResolvedValue([{ osmId: "way/5", name: "2121 Allston Way", address: "2121, Allston Way, Berkeley, CA", lat: 37.8697, lng: -122.2668 }]);
+    // The names share nothing, so the event is rejected rather than placed at the wrong venue.
+    await importRun(t, "u1", [scoutItem({ venue: { name: "Hall Downtown", address: "Berkeley, CA", osmId: null, lat: null, lng: null } })]);
+    expect((await t.query(internal.events.admin.list, { status: "rejected" }))[0].rejectReason).toBe("Venue not found on the map");
+  });
+
+  test("mergeDuplicate folds one event into another for good", async () => {
+    const t = await setup();
+    await importRun(t, "d1", [
+      scoutItem({ title: "Show A", price: { min: null, max: null, source: "not_found" }, sourceUrl: "https://x.test/a" }),
+      scoutItem({ title: "Totally different", sourceUrl: "https://x.test/b" }),
+    ]);
+    const [a, b] = await t.query(internal.events.admin.list, {});
+    const keep = a.title === "Show A" ? a : b;
+    const drop = a.title === "Show A" ? b : a;
+    await t.mutation(internal.events.admin.mergeDuplicate, { keepId: keep.eventId, dropId: drop.eventId });
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "d2", [scoutItem({ title: "Totally different", sourceUrl: "https://x.test/b" })]);
+    const published = await t.query(internal.events.admin.list, { status: "published" });
+    expect(published.map((e) => [e.title, e.priceMin])).toEqual([["Show A", 22]]);
   });
 });
 

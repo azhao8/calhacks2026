@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { TIMING } from "../lib/config";
 import { directionsUrl, metersBetween } from "../lib/format";
 import { CATALOG, VENUE_NOT_FOUND } from "./config";
-import { areaFor, distanceFromCampus, normalizeName } from "./checks";
+import { areaFor, distanceFromCampus, looksLikeAddress, normalizeName } from "./checks";
 
 // Venues and meeting spots (CLAUDE.md §6.1). One venue per OpenStreetMap ID; one meeting spot per venue.
 
@@ -171,20 +171,37 @@ export const resolve = internalMutation({
       .unique();
     let venue: Doc<"venues">;
     let created = false;
+    // Students see "{title} at {venue}", so the display name is a real name whenever we have one; a street
+    // address ("2121 Allston Way") is kept as an alias instead.
+    const candidates = [args.name, args.alias ?? ""].map((name) => name.trim()).filter((name) => name.length > 0);
+    const realName = candidates.find((name) => !looksLikeAddress(name));
     if (existing !== null) {
       venue = existing;
-      const known = new Set([existing.name, ...existing.aliases].map(normalizeName));
-      const added = [args.name, args.alias ?? ""].filter((name) => name.length > 0 && !known.has(normalizeName(name)));
-      if (added.length > 0) {
-        await ctx.db.patch(existing._id, { aliases: [...existing.aliases, ...new Set(added)], updatedAt: args.now });
+      const rename = looksLikeAddress(existing.name) && realName !== undefined;
+      const name = rename ? realName! : existing.name;
+      const known = new Set([name].map(normalizeName));
+      const aliases: string[] = [];
+      for (const alias of [...existing.aliases, existing.name, ...candidates]) {
+        if (!known.has(normalizeName(alias))) {
+          known.add(normalizeName(alias));
+          aliases.push(alias);
+        }
+      }
+      if (rename || aliases.length !== existing.aliases.length) {
+        await ctx.db.patch(existing._id, { name, aliases, updatedAt: args.now });
+        venue = { ...existing, name, aliases };
       }
     } else {
       const area = areaFor(args);
       if (area === null) return { ok: false as const, reason: "Venue is outside our areas" };
       const venueId = await ctx.db.insert("venues", {
         osmId: args.osmId,
-        name: args.name,
-        aliases: args.alias && normalizeName(args.alias) !== normalizeName(args.name) ? [args.alias] : [],
+        name: realName ?? args.name,
+        aliases: candidates.filter(
+          (name, i) =>
+            normalizeName(name) !== normalizeName(realName ?? args.name) &&
+            candidates.findIndex((other) => normalizeName(other) === normalizeName(name)) === i,
+        ),
         address: args.address,
         lat: args.lat,
         lng: args.lng,

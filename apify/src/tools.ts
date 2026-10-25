@@ -135,7 +135,7 @@ export function makeTools(ctx: ToolContext, counters: ToolCounters) {
         .map((p) => {
           const distance = near ? ` · ${Math.round(metersBetween(near, p))} m away` : "";
           const hasSpot = ctx.run.venuesWithSpot.has(p.osmId) ? " · already has a meeting spot in this run" : "";
-          return `${p.osmId} · ${p.name} · ${p.category} · ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}${distance}${hasSpot}\n   ${p.address}`;
+          return `${p.osmId} · ${p.name || "(an address, not a named place)"} · ${p.category} · ${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}${distance}${hasSpot}\n   ${p.address}`;
         })
         .join("\n");
     },

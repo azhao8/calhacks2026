@@ -7,7 +7,7 @@ import { directionsUrl, metersBetween } from "../lib/format";
 import { fail } from "../lib/errors";
 import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
-import { CATALOG, PULLED_REASON, STICKY_REASONS } from "./config";
+import { CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
 import { cleanNote, isHttpUrl } from "./checks";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
@@ -148,6 +148,40 @@ export const pull = internalMutation({
     await ctx.db.patch(eventId, { status: "rejected", rejectReason: PULLED_REASON, featured: false });
     // Closes its open asks, withdraws offers, and calls off its plans, in the same transaction.
     await ctx.runMutation(internal.plans.release.forEvent, { eventId });
+    return null;
+  },
+});
+
+// Folds a duplicate into the event it repeats: the duplicate leaves the catalog for good (its asks and plans are
+// released), and the kept event takes a price the duplicate found when it had none.
+export const mergeDuplicate = internalMutation({
+  args: { keepId: v.id("events"), dropId: v.id("events") },
+  returns: v.null(),
+  handler: async (ctx, { keepId, dropId }) => {
+    if (keepId === dropId) fail("validation_failed", "An event can't duplicate itself");
+    const keep = await ctx.db.get(keepId);
+    const drop = await ctx.db.get(dropId);
+    if (keep === null || drop === null) fail("validation_failed", "No such event");
+    if (keep.priceMin === null && keep.priceMax === null && (drop.priceMin !== null || drop.priceMax !== null)) {
+      await ctx.db.patch(keepId, { priceMin: drop.priceMin, priceMax: drop.priceMax, priceSource: drop.priceSource });
+    }
+    await ctx.db.patch(dropId, { status: "rejected", rejectReason: DUPLICATE_REASON, featured: false });
+    await ctx.runMutation(internal.plans.release.forEvent, { eventId: dropId });
+    return null;
+  },
+});
+
+// Gives a venue its real name (students see "{title} at {venue}"); the old name stays as an alias.
+export const renameVenue = internalMutation({
+  args: { venueId: v.id("venues"), name: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { venueId, name }) => {
+    const venue = await ctx.db.get(venueId);
+    if (venue === null) fail("validation_failed", "No such venue");
+    const next = name.trim();
+    if (next.length === 0) fail("validation_failed", "The name is empty");
+    const aliases = [...new Set([...venue.aliases, venue.name])].filter((alias) => alias !== next);
+    await ctx.db.patch(venueId, { name: next, aliases, updatedAt: Date.now() });
     return null;
   },
 });

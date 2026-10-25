@@ -22,7 +22,7 @@ import {
   parseStart,
   priceFields,
   sourceRank,
-  titlesOverlap,
+  sameShowTitles,
 } from "./checks";
 import { scoutItem, type ScoutItem } from "./item";
 import { IMPORT_RETRY, importPool } from "./pool";
@@ -167,7 +167,7 @@ async function findExisting(
   return (
     closest(atVenue.filter((e) => e.sourceUrl === event.sourceUrl && normalizeTitle(e.title) === title)) ??
     closest(atVenue.filter((e) => normalizeTitle(e.title) === title && pacificDay(e.startsAt) === day)) ??
-    closest(atVenue.filter((e) => e.startsAt === event.startsAt && titlesOverlap(normalizeTitle(e.title), title))) ??
+    closest(atVenue.filter((e) => e.startsAt === event.startsAt && sameShowTitles(normalizeTitle(e.title), title))) ??
     null
   );
 }
