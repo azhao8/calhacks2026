@@ -1,0 +1,39 @@
+import { describe, expect, test } from "vitest";
+import { emailDomain, isEduEmail, normalizeEmail } from "./edu";
+import { distanceLabel, priceLabel, timeLabel } from "./format";
+
+describe("edu email check", () => {
+  test("accepts .edu addresses, subdomains included, after trimming and lowercasing", () => {
+    expect(isEduEmail("alex@berkeley.edu")).toBe(true);
+    expect(isEduEmail("  Alex@EECS.Berkeley.EDU ")).toBe(true);
+    expect(isEduEmail("sam@stanford.edu")).toBe(true);
+    expect(normalizeEmail("  Alex@Berkeley.EDU ")).toBe("alex@berkeley.edu");
+    expect(emailDomain("alex@eecs.berkeley.edu")).toBe("eecs.berkeley.edu");
+  });
+
+  test("refuses everything else", () => {
+    expect(isEduEmail("alex@gmail.com")).toBe(false);
+    expect(isEduEmail("alex@berkeley.edu.evil.com")).toBe(false);
+    expect(isEduEmail("alex@edu")).toBe(false);
+    expect(isEduEmail("not an email")).toBe(false);
+  });
+});
+
+describe("display labels", () => {
+  test("prices never invent a value", () => {
+    expect(priceLabel(null, null)).toBe("Price not listed");
+    expect(priceLabel(0, 0)).toBe("Free");
+    expect(priceLabel(22, 22)).toBe("$22");
+    expect(priceLabel(18, 25)).toBe("$18 to $25");
+    expect(priceLabel(0, 15)).toBe("Free to $15");
+  });
+
+  test("times are Pacific and lowercase", () => {
+    // 2026-10-31T03:30:00Z is 8:30 pm on Oct 30 in Pacific daylight time.
+    expect(timeLabel(Date.UTC(2026, 9, 31, 3, 30))).toBe("8:30 pm");
+  });
+
+  test("distance from campus", () => {
+    expect(distanceLabel(965)).toBe("0.6 mi from campus");
+  });
+});
