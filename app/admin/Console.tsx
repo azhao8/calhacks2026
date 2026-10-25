@@ -45,7 +45,7 @@ export function Admin({ email }: { email: string | null }) {
       <div className="sticky top-0 z-10 border-b border-line bg-canvas pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 pt-3">
           <Header email={email} isAdmin />
-          <nav aria-label="Admin sections" className="-mx-4 flex gap-1 overflow-x-auto px-4">
+          <nav aria-label="Admin sections" className="relative -mx-4 flex gap-1 overflow-x-auto px-4">
             {TABS.map(({ key, label }) => (
               <button
                 key={key}
