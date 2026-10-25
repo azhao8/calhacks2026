@@ -12,7 +12,8 @@ import type { Source } from "./sources.js";
 export type SearchResult = { title: string; url: string; description: string };
 export type SearchFn = (query: string) => Promise<SearchResult[]>;
 
-// Shared across every source in a run: one meeting spot per venue, and places the map confirmed.
+// Shared across every source in a run: one meeting spot per venue, places the map confirmed, and the events each
+// source has saved (keyed by source, so sources never block each other).
 export class RunState {
   readonly venuesWithSpot = new Set<string>();
   readonly confirmedPlaces = new Map<string, Place>();
@@ -154,8 +155,10 @@ export function makeTools(ctx: ToolContext, counters: ToolCounters) {
       }
       // Store the start with the right Pacific offset for its date.
       const startsAt = input.startsAt === null ? null : correctPacificOffset(input.startsAt);
-      const key = `${normalize(input.title)}|${startsAt}|${normalize(input.venue.name)}`;
-      if (ctx.run.savedKeys.has(key)) return "Already saved in this run.";
+      // Dedupe within this source only: when two sources list the same show, both go to the import,
+      // which keeps the most official one (and its ticket link and price).
+      const key = `${ctx.source.id}|${normalize(input.title)}|${startsAt}|${normalize(input.venue.name)}`;
+      if (ctx.run.savedKeys.has(key)) return "Already saved from this source.";
       ctx.run.savedKeys.add(key);
       const osmId = input.venue.osmId;
       // A spot is only checked against a venue placed on the map; without one, the main entrance is used.

@@ -4,7 +4,8 @@ import { Geocoder } from "../src/geo.js";
 import type { SaveEventInput } from "../src/schema.js";
 import { selectSources } from "../src/sources.js";
 import { htmlToText, plainToText } from "../src/text.js";
-import { checkEvent, RunState } from "../src/tools.js";
+import { checkEvent, makeTools, RunState } from "../src/tools.js";
+import { PRESET_SOURCES } from "../src/sources.js";
 import { correctPacificOffset } from "../src/time.js";
 import { saveEventInput } from "../src/schema.js";
 import { FOX_SEARCH, stubWebFetch } from "./helpers.js";
@@ -157,5 +158,32 @@ describe("sources", () => {
     const chosen = selectSources(["uc_theatre", "web"], [{ name: "Ashkenaz", url: "https://ashkenaz.com/calendar" }]);
     expect(chosen.map((s) => s.id)).toEqual(["uc_theatre", "web", "ashkenaz"]);
     expect(selectSources(undefined, undefined).length).toBeGreaterThanOrEqual(9);
+  });
+});
+
+describe("save_event across sources", () => {
+  test("two sources can each save the same show; one source can't save it twice", async () => {
+    const run = runWithFox();
+    const saved: { sourceName: string }[] = [];
+    const counters = () => ({ reads: 0, searches: 0, places: 0, saved: 0, refused: 0 });
+    const toolsFor = (id: string) =>
+      makeTools(
+        {
+          source: PRESET_SOURCES.find((s) => s.id === id)!,
+          fetcher: new PoliteFetcher(async () => undefined, stubWebFetch({})),
+          geocoder: new Geocoder(null, stubWebFetch({}), 0),
+          search: async () => [],
+          save: async (item) => void saved.push(item),
+          run,
+          window,
+          maxEvents: 10,
+        },
+        counters(),
+      );
+    const saveEvent = (id: string) => toolsFor(id).find((tool) => tool.name === "save_event")!;
+    expect(await saveEvent("eventbrite").run(event())).toMatch(/^Saved/);
+    expect(await saveEvent("fox_theater").run(event())).toMatch(/^Saved/);
+    expect(await saveEvent("fox_theater").run(event())).toBe("Already saved from this source.");
+    expect(saved.map((item) => item.sourceName)).toEqual(["eventbrite", "fox_theater"]);
   });
 });
