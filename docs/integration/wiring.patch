@@ -1,38 +1,3 @@
-From 78fbfc5aa36e272efb5d8ec2a12ffbfa8df0dd72 Mon Sep 17 00:00:00 2001
-From: Claude <noreply@anthropic.com>
-Date: Sun, 25 Oct 2026 02:35:47 +0000
-Subject: [PATCH] admin: every S17 section behind server-checked ADMIN_EMAILS
- wrappers
-
-Team-only wrappers in convex/admin/ around each stream's internal admin
-functions: the allow-list queue (Mark added, app capacity, add an app),
-events (imports, published, rejected, and missing events; pull, restore,
-feature, edit a price, find events now), matching (run now and the
-inspector with similarity, shared items and their rarity weights), and
-demo controls (seed, reset, demo clock, act as). Every wrapper is
-annotated with the internal function's own return type to avoid a
-circular type through the generated api. A test checks that each one
-refuses a student who isn't on the team list.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_015guTYUBX4Ct5WtjQ9sW1zv
----
- app/admin/page.tsx            | 567 ++++++++++++++++++++++++++++++----
- convex/_generated/api.d.ts    |  10 +
- convex/admin/demo.ts          |  80 +++++
- convex/admin/events.ts        | 114 +++++++
- convex/admin/matching.ts      |  26 ++
- convex/admin/queue.ts         |  34 ++
- convex/admin/wrappers.test.ts |  94 ++++++
- convex/lib/registered.ts      |  19 ++
- 8 files changed, 879 insertions(+), 65 deletions(-)
- create mode 100644 convex/admin/demo.ts
- create mode 100644 convex/admin/events.ts
- create mode 100644 convex/admin/matching.ts
- create mode 100644 convex/admin/queue.ts
- create mode 100644 convex/admin/wrappers.test.ts
- create mode 100644 convex/lib/registered.ts
-
 diff --git a/app/admin/page.tsx b/app/admin/page.tsx
 index 23383c1..29bfa19 100644
 --- a/app/admin/page.tsx
@@ -679,48 +644,6 @@ index 23383c1..29bfa19 100644
 +    </label>
 +  );
  }
-diff --git a/convex/_generated/api.d.ts b/convex/_generated/api.d.ts
-index aac8fbb..5a7bc3e 100644
---- a/convex/_generated/api.d.ts
-+++ b/convex/_generated/api.d.ts
-@@ -9,6 +9,10 @@
-  */
- 
- import type * as admin from "../admin.js";
-+import type * as admin_demo from "../admin/demo.js";
-+import type * as admin_events from "../admin/events.js";
-+import type * as admin_matching from "../admin/matching.js";
-+import type * as admin_queue from "../admin/queue.js";
- import type * as ai_hooks from "../ai/hooks.js";
- import type * as ai_labels from "../ai/labels.js";
- import type * as ai_taste from "../ai/taste.js";
-@@ -36,6 +40,7 @@ import type * as lib_config from "../lib/config.js";
- import type * as lib_edu from "../lib/edu.js";
- import type * as lib_errors from "../lib/errors.js";
- import type * as lib_format from "../lib/format.js";
-+import type * as lib_normalize from "../lib/normalize.js";
- import type * as lib_pools from "../lib/pools.js";
- import type * as lib_validators from "../lib/validators.js";
- import type * as lib_views from "../lib/views.js";
-@@ -84,6 +89,10 @@ import type {
- 
- declare const fullApi: ApiFromModules<{
-   admin: typeof admin;
-+  "admin/demo": typeof admin_demo;
-+  "admin/events": typeof admin_events;
-+  "admin/matching": typeof admin_matching;
-+  "admin/queue": typeof admin_queue;
-   "ai/hooks": typeof ai_hooks;
-   "ai/labels": typeof ai_labels;
-   "ai/taste": typeof ai_taste;
-@@ -111,6 +120,7 @@ declare const fullApi: ApiFromModules<{
-   "lib/edu": typeof lib_edu;
-   "lib/errors": typeof lib_errors;
-   "lib/format": typeof lib_format;
-+  "lib/normalize": typeof lib_normalize;
-   "lib/pools": typeof lib_pools;
-   "lib/validators": typeof lib_validators;
-   "lib/views": typeof lib_views;
 diff --git a/convex/admin/demo.ts b/convex/admin/demo.ts
 new file mode 100644
 index 0000000..0f040b0
@@ -1099,6 +1022,393 @@ index 0000000..ebe20af
 +  expect(await a.query(api.admin.matching.runs, {})).toEqual([]);
 +  expect(await a.query(api.admin.demo.overview, {})).toEqual({ students: [], clockOffsetMs: 0 });
 +});
+diff --git a/convex/demo.test.ts b/convex/demo.test.ts
+index 3430728..2e8dafb 100644
+--- a/convex/demo.test.ts
++++ b/convex/demo.test.ts
+@@ -24,6 +24,8 @@ describe("demo students", () => {
+   test("seeding creates six fictional students with .invalid emails and confirmed taste; it's idempotent", async () => {
+     const t = await setup();
+     expect(await t.mutation(internal.demo.admin.seed, {})).toEqual({ created: 6, updated: 0 });
++    // Claude is unavailable in this file, so the fixture summaries stand in after the fallback wait.
++    await advance(t, 3 * MINUTE);
+     expect(await t.mutation(internal.demo.admin.seed, {})).toEqual({ created: 0, updated: 6 });
+     const users = await demoUsers(t);
+     expect(users).toHaveLength(6);
+diff --git a/convex/demo/admin.ts b/convex/demo/admin.ts
+index 6d38d06..92d46b9 100644
+--- a/convex/demo/admin.ts
++++ b/convex/demo/admin.ts
+@@ -17,7 +17,8 @@ import {
+   setTicketGot,
+ } from "../plans/model";
+ import { reconcilePlan } from "../plans/reconcile";
+-import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoSnapshot } from "./fixtures";
++import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoListening } from "./fixtures";
++import { TIMING } from "../lib/config";
+ 
+ // Demo controls for S17 (§6.7). These touch only demo records. The admin page wraps them in
+ // server-checked ADMIN_EMAILS functions.
+@@ -81,40 +82,57 @@ async function seedDemoStudents(ctx: MutationCtx): Promise<{ created: number; up
+       if (existingPrefs) await ctx.db.patch(existingPrefs._id, prefs);
+       else await ctx.db.insert("preferences", prefs);
+ 
+-      // The generated data stands in for the Spotify fetch.
+-      const snapshot = { userId, source: "demo_fixture" as const, ...demoSnapshot(fixture), fetchedAt: now };
+-      const existingSnapshot = await ctx.db
+-        .query("tasteSnapshots")
+-        .withIndex("by_userId", (q) => q.eq("userId", userId))
+-        .first();
+-      if (existingSnapshot) await ctx.db.replace(existingSnapshot._id, snapshot);
+-      else await ctx.db.insert("tasteSnapshots", snapshot);
+-
+-      // INTEGRATION: once stream A's PR #9 is on main, replace this direct write with
+-      // internal.onboarding.analysis.analyzeFixture({ userId, listening }) and then
+-      // internal.onboarding.analysis.confirmForUser({ userId }) (Claude summary from the fixed label list,
+-      // then the Voyage vector). Until then demo students have no vector and match on exact items.
++      // The generated data stands in for the Spotify fetch: demo students go through the same pipeline as
++      // real ones (Claude summary from the fixed label list, then the Voyage vector), and onboarding confirms
++      // them when the summary is done, which makes them ready and picks their first asks.
+       const existingProfile = await ctx.db
+         .query("tasteProfiles")
+         .withIndex("by_userId", (q) => q.eq("userId", userId))
+         .unique();
+-      const profile = {
++      if (existingProfile?.confirmedAt !== undefined) {
++        await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
++        continue;
++      }
++      await ctx.db.patch(userId, { onboarding: "analyzing" });
++      await ctx.runMutation(internal.onboarding.analysis.analyzeFixture, { userId, listening: demoListening(fixture) });
++      // If Claude can't write the summary in time, the fixture's own summary stands in, so demo fill never waits on it.
++      await ctx.scheduler.runAfter(TIMING.demoProfileFallbackMs, internal.demo.admin.ensureProfile, {
++        userId,
++        key: fixture.key,
++      });
++    }
++    return { created, updated };
++  }
++}
++
++// The fallback for a demo student whose Claude summary didn't finish (for example while the Claude key is
++// missing): the fixture's summary and labels, in the same fingerprint onboarding builds, then the usual confirm.
++export const ensureProfile = internalMutation({
++  args: { userId: v.id("users"), key: v.string() },
++  returns: v.null(),
++  handler: async (ctx, { userId, key }) => {
++    const user = await ctx.db.get(userId);
++    const fixture = DEMO_FIXTURES.find((candidate) => candidate.key === key);
++    if (user === null || user.isDemo !== true || fixture === undefined) return null;
++    const profile = await ctx.db
++      .query("tasteProfiles")
++      .withIndex("by_userId", (q) => q.eq("userId", userId))
++      .unique();
++    if (profile?.confirmedAt !== undefined) return null;
++    if (profile === null) {
++      await ctx.db.insert("tasteProfiles", {
+         userId,
+         summary: fixture.summary,
+         labels: fixture.labels,
+         artists: fixture.topArtists.slice(0, 5),
+         revision: 0,
+-        confirmedAt: now,
+         fingerprint: demoFingerprint(fixture),
+-      };
+-      if (existingProfile) await ctx.db.patch(existingProfile._id, profile);
+-      else await ctx.db.insert("tasteProfiles", profile);
+-
+-      await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
++      });
+     }
+-    return { created, updated };
+-  }
+-}
++    await ctx.runMutation(internal.onboarding.analysis.confirmForUser, { userId });
++    return null;
++  },
++});
+ 
+ async function demoUsers(ctx: MutationCtx): Promise<Doc<"users">[]> {
+   const users = await ctx.db
+diff --git a/convex/demo/fixtures.ts b/convex/demo/fixtures.ts
+index c41c5b6..a5db931 100644
+--- a/convex/demo/fixtures.ts
++++ b/convex/demo/fixtures.ts
+@@ -1,5 +1,5 @@
+ import type { Doc } from "../_generated/dataModel";
+-import { normalizeName } from "../matching/taste";
++import { normalizeName, normalizeTrackKey } from "../lib/normalize";
+ 
+ // Six demo students with fictional first names and generated, Spotify-like listening data (§6.7).
+ // Their emails use the reserved .invalid domain, so nobody is ever emailed. They share only phone
+@@ -82,7 +82,7 @@ export const DEMO_FIXTURES: DemoFixture[] = [
+     gender: "prefer_not_to_say",
+     year: "second",
+     summary: "Reggaeton and Latin pop with a love for anything you can dance to.",
+-    labels: ["reggaeton", "latin pop", "urbano latino"],
++    labels: ["reggaeton", "latin pop", "latin trap"],
+     topArtists: ["Bad Bunny", "Karol G", "Rosalía", "Peso Pluma", "Rauw Alejandro", "J Balvin", "Kali Uchis", "Feid", "Tainy", "Dua Lipa"],
+     topTracks: [["Tití Me Preguntó", "Bad Bunny"], ["Provenza", "Karol G"], ["Despechá", "Rosalía"], ["Ella Baila Sola", "Peso Pluma"], ["Todo de Ti", "Rauw Alejandro"], ["Normal", "Feid"]],
+     likedSongs: [["Mi Gente", "J Balvin"], ["Telepatía", "Kali Uchis"], ["Me Porto Bonito", "Bad Bunny"], ["Levitating", "Dua Lipa"], ["Safaera", "Bad Bunny"]],
+@@ -104,8 +104,20 @@ function slug(text: string): string {
+   return normalizeName(text).replace(/ /g, "-");
+ }
+ 
++// The same key real students get from their Spotify data (lib/normalize), so demo and real tracks can match.
+ export function trackKey(name: string, artist: string): string {
+-  return `${normalizeName(name)} | ${normalizeName(artist)}`;
++  return normalizeTrackKey(name, [artist]);
++}
++
++// The same stand-in in the shape of a Spotify fetch, for onboarding's analyzeFixture (no normalized fields:
++// onboarding derives them itself, exactly as it does for real students).
++export function demoListening(fixture: DemoFixture) {
++  const snapshot = demoSnapshot(fixture);
++  return {
++    topArtists: snapshot.topArtists.map(({ spotifyId, name, genres, rank, range }) => ({ spotifyId, name, genres, rank, range })),
++    topTracks: snapshot.topTracks.map(({ spotifyId, name, artistNames, rank, range }) => ({ spotifyId, name, artistNames, rank, range })),
++    likedSongs: snapshot.likedSongs,
++  };
+ }
+ 
+ // The generated stand-in for a Spotify fetch, in the tasteSnapshots shape.
+diff --git a/convex/demoPipeline.test.ts b/convex/demoPipeline.test.ts
+new file mode 100644
+index 0000000..8c58326
+--- /dev/null
++++ b/convex/demoPipeline.test.ts
+@@ -0,0 +1,52 @@
++/// <reference types="vite/client" />
++import { afterEach, expect, test, vi } from "vitest";
++import { internal } from "./_generated/api";
++import { DEMO_FIXTURES } from "./demo/fixtures";
++import { TASTE_LABELS } from "./ai/labels";
++import { EMBEDDING } from "./lib/config";
++import { advance, setup } from "./testing.helpers";
++
++// Demo students go through the same Claude summary and Voyage vector as real students (§6.7), and
++// onboarding confirms them when the summary is done: well before the fixture fallback would fire.
++
++const SUMMARY = "Warm, lyric heavy indie with a soft spot for live folk.";
++
++vi.mock("./services/claude", () => ({
++  generateJson: vi.fn(async () => ({
++    summary: SUMMARY,
++    labels: TASTE_LABELS.slice(0, 3),
++    // validateTaste keeps only names in each student's own data, so every student keeps their own.
++    artists: DEMO_FIXTURES.map((fixture) => fixture.topArtists[0]),
++  })),
++}));
++
++vi.mock("./services/voyage", () => ({
++  embed: vi.fn(async (texts: string[]) => texts.map(() => Array.from({ length: EMBEDDING.dimensions }, () => 0.01))),
++}));
++
++afterEach(() => {
++  vi.useRealTimers();
++});
++
++test("seeded demo students get a Claude summary and a vector through onboarding, then become ready", async () => {
++  const t = await setup();
++  await t.mutation(internal.demo.admin.seed, {});
++
++  // Well inside the fallback window: only the real pipeline can have confirmed them.
++  await advance(t, 30_000);
++
++  const { users, profiles } = await t.run(async (ctx) => ({
++    users: (await ctx.db.query("users").collect()).filter((user) => user.isDemo),
++    profiles: await ctx.db.query("tasteProfiles").collect(),
++  }));
++  expect(users).toHaveLength(6);
++  expect(users.every((user) => user.onboarding === "ready")).toBe(true);
++  const demoProfiles = profiles.filter((profile) => users.some((user) => user._id === profile.userId));
++  expect(demoProfiles).toHaveLength(6);
++  for (const profile of demoProfiles) {
++    expect(profile.summary).toBe(SUMMARY);
++    expect(profile.confirmedAt).toEqual(expect.any(Number));
++    expect(profile.embedding).toHaveLength(EMBEDDING.dimensions);
++    expect(profile.artists.length).toBeGreaterThan(0);
++  }
++});
+diff --git a/convex/events/admin.ts b/convex/events/admin.ts
+index 2c4dc69..9b4fb5e 100644
+--- a/convex/events/admin.ts
++++ b/convex/events/admin.ts
+@@ -146,8 +146,8 @@ export const pull = internalMutation({
+     const event = await ctx.db.get(eventId);
+     if (event === null) fail("validation_failed", "No such event");
+     await ctx.db.patch(eventId, { status: "rejected", rejectReason: PULLED_REASON, featured: false });
+-    // INTEGRATION: close asks and release plans for the pulled event (idempotent):
+-    // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId })
++    // Closes its open asks, withdraws offers, and calls off its plans, in the same transaction.
++    await ctx.runMutation(internal.plans.release.forEvent, { eventId });
+     return null;
+   },
+ });
+@@ -222,8 +222,8 @@ export const edit = internalMutation({
+       await ctx.scheduler.runAfter(0, internal.events.admin.reembed, { eventId });
+     }
+     if (patch.startsAt !== undefined || patch.meetOffsetMinutes !== undefined) {
+-      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
+-      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId })
++      // Plans on this event move their meeting time and cutoff, and reconcile right away.
++      await ctx.runMutation(internal.plans.retime.forEvent, { eventId });
+     }
+     return null;
+   },
+diff --git a/convex/events/imports.ts b/convex/events/imports.ts
+index 0dc7cc2..1c691dc 100644
+--- a/convex/events/imports.ts
++++ b/convex/events/imports.ts
+@@ -238,8 +238,8 @@ export const upsertEvent = internalMutation({
+       const wasPublished = existing.status === "published";
+       await ctx.db.patch(existing._id, { ...seen, status: "rejected", rejectReason, featured: false });
+       if (wasPublished) {
+-        // INTEGRATION: stream C releases seats and closes asks for an event that left the catalog:
+-        // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId: existing._id })
++        // It left the catalog (now 21+): close its asks, withdraw offers, and call off its plans.
++        await ctx.runMutation(internal.plans.release.forEvent, { eventId: existing._id });
+       }
+       return { outcome: "rejected" as const, eventId: existing._id, needsEmbedding: false };
+     }
+@@ -282,8 +282,8 @@ export const upsertEvent = internalMutation({
+       ...(textChanged ? { embedding: undefined } : {}),
+     });
+     if (timeChanged && !wasRejected) {
+-      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
+-      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId: existing._id })
++      // Plans on this event move their meeting time and cutoff, and reconcile right away.
++      await ctx.runMutation(internal.plans.retime.forEvent, { eventId: existing._id });
+     }
+     const outcome = wasRejected ? "published" : priceChanged || timeChanged ? "updated" : "duplicate";
+     return {
+@@ -358,7 +358,7 @@ export const finish = internalMutation({
+   handler: async (ctx, { importId, counts, errors }) => {
+     await ctx.db.patch(importId, { status: "done", counts, errors: errors.slice(0, 50), finishedAt: Date.now() });
+     if (counts.published > 0) {
+-      // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
++      await ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
+     }
+     return null;
+   },
+diff --git a/convex/http.ts b/convex/http.ts
+index 1816e5b..373a0ec 100644
+--- a/convex/http.ts
++++ b/convex/http.ts
+@@ -1,8 +1,12 @@
+ import { httpRouter } from "convex/server";
+ import { auth } from "./auth";
++import { apifyWebhook } from "./events/webhook";
+ 
+ const http = httpRouter();
+ 
+ auth.addHttpRoutes(http);
+ 
++// Apify calls this when an event scout run succeeds (§6.1); the handler checks the shared secret.
++http.route({ path: "/apify/webhook", method: "POST", handler: apifyWebhook });
++
+ export default http;
+diff --git a/convex/integration.test.ts b/convex/integration.test.ts
+new file mode 100644
+index 0000000..a8de9bc
+--- /dev/null
++++ b/convex/integration.test.ts
+@@ -0,0 +1,52 @@
++import { describe, expect, test } from "vitest";
++import { DEMO_FIXTURES, demoFingerprint, demoSnapshot } from "./demo/fixtures";
++import { fingerprint } from "./onboarding/snapshot";
++import { normalizeName, normalizeTrackKey } from "./lib/normalize";
++import { normalizeName as matchingNormalizeName } from "./matching/taste";
++import { TASTE_LABELS } from "./ai/labels";
++import { validateHook } from "./ai/hooks";
++
++// Cross-stream contracts that no single stream's tests can see.
++
++describe("demo and real students compare alike", () => {
++  test("matching uses the same name normalization as onboarding", () => {
++    for (const name of ["The Beatles", "Beyoncé", "AC/DC", "米津玄師", "Simon & Garfunkel"]) {
++      expect(matchingNormalizeName(name)).toBe(normalizeName(name));
++    }
++    expect(normalizeName("米津玄師")).not.toBe("");
++  });
++
++  test("a demo fingerprint equals the one onboarding builds from the same listening data", () => {
++    for (const fixture of DEMO_FIXTURES) {
++      const demo = demoFingerprint(fixture);
++      const real = fingerprint(demoSnapshot(fixture), fixture.labels);
++      expect(new Set(demo.topArtists)).toEqual(new Set(real.topArtists));
++      expect(new Set(demo.likedArtists)).toEqual(new Set(real.likedArtists));
++      expect(new Set(demo.tracks)).toEqual(new Set(real.tracks));
++    }
++  });
++
++  test("track keys from demo data match real ones", () => {
++    const [name, artist] = DEMO_FIXTURES[0].topTracks[0];
++    expect(demoSnapshot(DEMO_FIXTURES[0]).topTracks[0].normalizedKey).toBe(normalizeTrackKey(name, [artist]));
++  });
++});
++
++describe("demo fixtures follow onboarding's rules", () => {
++  test("every demo label is on the fixed label list", () => {
++    for (const fixture of DEMO_FIXTURES) {
++      for (const label of fixture.labels) expect(TASTE_LABELS, `${fixture.key}: ${label}`).toContain(label);
++    }
++  });
++});
++
++describe("hooks name only what both students share", () => {
++  test("a genre from the fixed list that neither student has is refused", () => {
++    // What plans/hooks builds: every label on the fixed list plus the pair's own items.
++    const known = new Set([...TASTE_LABELS.map(normalizeName), normalizeName("Big Thief")]);
++    const shared = [{ kind: "artist" as const, name: "Big Thief" }];
++    const icebreaker = "Which Big Thief song would you play first?";
++    expect(validateHook({ hook: "You both have Big Thief on repeat, plus a soft spot for jazz.", icebreaker }, shared, known)).toBeNull();
++    expect(validateHook({ hook: "You both have Big Thief on repeat.", icebreaker }, shared, known)).not.toBeNull();
++  });
++});
+diff --git a/convex/lib/config.ts b/convex/lib/config.ts
+index 118d7fb..4b88d4c 100644
+--- a/convex/lib/config.ts
++++ b/convex/lib/config.ts
+@@ -17,6 +17,8 @@ export const TIMING = {
+   nextTimeCooldownMs: 0,
+   demoReplyDelayMs: { min: 5 * SECOND, max: 20 * SECOND },
+   demoTicketDelayMs: 1 * MINUTE,
++  // A demo student whose Claude summary isn't done by then gets its fixture summary instead (§6.7).
++  demoProfileFallbackMs: 2 * MINUTE,
+   meetOffsetMinutes: 30,
+   cutoffBeforeMeetMs: 2 * HOUR,
+   completionAfterStartMs: 4 * HOUR,
+diff --git a/convex/lib/normalize.ts b/convex/lib/normalize.ts
+new file mode 100644
+index 0000000..8839034
+--- /dev/null
++++ b/convex/lib/normalize.ts
+@@ -0,0 +1,24 @@
++// Normalized names for exact shared items (§6.3). The one shared copy: every fingerprint, demo or real, and every
++// comparison against one (pair scores, performer overlap, hook validation) uses these, so all students compare alike.
++
++// "Beyoncé" → "beyonce", "The Beatles" → "beatles", "AC/DC" → "ac dc".
++export function normalizeName(name: string): string {
++  return name
++    .normalize("NFKD")
++    .replace(/[̀-ͯ]/g, "")
++    .toLowerCase()
++    .replace(/&/g, " and ")
++    .replace(/[^\p{L}\p{N}]+/gu, " ")
++    .trim()
++    .replace(/^the /, "");
++}
++
++// A track is the same song when its title (minus "remastered" style suffixes) and lead artist match.
++export function normalizeTrackKey(title: string, artistNames: string[]): string {
++  const base = title.replace(/\s+[-–—]\s+.*$/, "").replace(/\s*[([].*?[)\]]\s*/g, " ");
++  return `${normalizeName(base)}|${normalizeName(artistNames[0] ?? "")}`;
++}
++
++export function uniqueSorted(values: Iterable<string>): string[] {
++  return [...new Set([...values].filter((value) => value.length > 0))].sort();
++}
 diff --git a/convex/lib/registered.ts b/convex/lib/registered.ts
 new file mode 100644
 index 0000000..f35bcbb
@@ -1124,6 +1434,186 @@ index 0000000..f35bcbb
 +      : F extends RegisteredAction<FunctionVisibility, DefaultFunctionArgs, infer R>
 +        ? Awaited<R>
 +        : never;
--- 
-2.43.0
-
+diff --git a/convex/matching/names.ts b/convex/matching/names.ts
+index cc6e150..2f361c3 100644
+--- a/convex/matching/names.ts
++++ b/convex/matching/names.ts
+@@ -2,6 +2,7 @@ import type { Id } from "../_generated/dataModel";
+ import type { DatabaseReader } from "../_generated/server";
+ import type { HookItem } from "../ai/hooks";
+ import { normalizeName, type SharedItem } from "./taste";
++import { normalizeTrackKey } from "../lib/normalize";
+ 
+ // Fingerprints hold normalized names; hooks show the names as Spotify spells them.
+ export async function hookItems(
+@@ -26,11 +27,15 @@ export async function hookItems(
+     for (const track of snapshot.topTracks) tracks.set(track.normalizedKey, track.name);
+     for (const song of snapshot.likedSongs) {
+       for (const name of song.artistNames) if (!artists.has(normalizeName(name))) artists.set(normalizeName(name), name);
++      // Liked songs are in the fingerprint's tracks too, under the same key onboarding builds.
++      const key = normalizeTrackKey(song.name, song.artistNames);
++      if (!tracks.has(key)) tracks.set(key, song.name);
+     }
+   }
+   return shared.map((item) => {
+     if (item.kind === "artist") return { kind: item.kind, name: artists.get(item.name) ?? item.name };
+-    if (item.kind === "track") return { kind: item.kind, name: tracks.get(item.name) ?? item.name.split(" | ")[0] };
++    // A key is "title|artist"; without a spelling on file, show the title, never the raw key.
++    if (item.kind === "track") return { kind: item.kind, name: tracks.get(item.name) ?? item.name.split("|")[0] };
+     return { kind: item.kind, name: item.name };
+   });
+ }
+diff --git a/convex/matching/taste.ts b/convex/matching/taste.ts
+index fd675c0..d08d99e 100644
+--- a/convex/matching/taste.ts
++++ b/convex/matching/taste.ts
+@@ -8,16 +8,8 @@ export type ItemKind = "artist" | "track" | "label";
+ export type SharedItem = { kind: ItemKind; name: string; weight: number };
+ export type Fingerprint = Doc<"tasteProfiles">["fingerprint"];
+ 
+-// INTEGRATION: must match stream A's normalization of artist and track names in the fingerprint.
+-export function normalizeName(name: string): string {
+-  return name
+-    .normalize("NFKD")
+-    .replace(/[̀-ͯ]/g, "")
+-    .toLowerCase()
+-    .replace(/&/g, " and ")
+-    .replace(/[^a-z0-9]+/g, " ")
+-    .trim();
+-}
++// Shared with onboarding, so demo and real fingerprints compare alike.
++export { normalizeName } from "../lib/normalize";
+ 
+ // Built once per fingerprint object, so scoring every pair in a pool doesn't rebuild them.
+ const setCache = new WeakMap<Fingerprint, Record<ItemKind, Set<string>>>();
+diff --git a/convex/onboarding/analysis.ts b/convex/onboarding/analysis.ts
+index 75c8ff8..9d8d4f8 100644
+--- a/convex/onboarding/analysis.ts
++++ b/convex/onboarding/analysis.ts
+@@ -221,6 +221,8 @@ async function finish(ctx: MutationCtx, job: Doc<"analysisJobs">) {
+   await ctx.db.patch(job._id, { status: "done", error: undefined, finishedAt: Date.now() });
+   const user = await ctx.db.get(job.userId);
+   if (user?.onboarding === "analyzing") await ctx.db.patch(job.userId, { onboarding: "needs_review" });
++  // Demo students have nobody to review their summary, so they confirm it the way a student would (§6.7).
++  if (user?.isDemo === true) await confirmProfile(ctx, job.userId);
+ }
+ 
+ export const run = internalAction({
+@@ -460,7 +462,7 @@ export const embedComplete = internalMutation({
+   handler: async (ctx, { context }) => {
+     const user = await ctx.db.get(context.userId);
+     if (user?.onboarding !== "ready") return null;
+-    // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
++    await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
+     return null;
+   },
+ });
+diff --git a/convex/onboarding/normalize.ts b/convex/onboarding/normalize.ts
+index ed46401..93d7337 100644
+--- a/convex/onboarding/normalize.ts
++++ b/convex/onboarding/normalize.ts
+@@ -1,23 +1 @@
+-// Normalized names for exact shared items (§6.3). Every fingerprint is built here, so all students compare alike.
+-
+-// "Beyoncé" → "beyonce", "The Beatles" → "beatles", "AC/DC" → "ac dc".
+-export function normalizeName(name: string): string {
+-  return name
+-    .normalize("NFKD")
+-    .replace(/[̀-ͯ]/g, "")
+-    .toLowerCase()
+-    .replace(/&/g, " and ")
+-    .replace(/[^\p{L}\p{N}]+/gu, " ")
+-    .trim()
+-    .replace(/^the /, "");
+-}
+-
+-// A track is the same song when its title (minus "remastered" style suffixes) and lead artist match.
+-export function normalizeTrackKey(title: string, artistNames: string[]): string {
+-  const base = title.replace(/\s+[-–—]\s+.*$/, "").replace(/\s*[([].*?[)\]]\s*/g, " ");
+-  return `${normalizeName(base)}|${normalizeName(artistNames[0] ?? "")}`;
+-}
+-
+-export function uniqueSorted(values: Iterable<string>): string[] {
+-  return [...new Set([...values].filter((value) => value.length > 0))].sort();
+-}
++export { normalizeName, normalizeTrackKey, uniqueSorted } from "../lib/normalize";
+diff --git a/convex/plans/hooks.ts b/convex/plans/hooks.ts
+index 9a7e2a6..c6c4354 100644
+--- a/convex/plans/hooks.ts
++++ b/convex/plans/hooks.ts
+@@ -7,6 +7,7 @@ import { generateJson } from "../services/claude";
+ import { HOOK_SYSTEM, hookPrompt, hookSchema, templateHook, validateHook, type HookItem } from "../ai/hooks";
+ import { aiPool } from "../lib/pools";
+ import { itemSets, normalizeName } from "../matching/taste";
++import { TASTE_LABELS } from "../ai/labels";
+ 
+ // Hooks and icebreakers for a pair (CLAUDE.md §6.4, §7): the template is written at once, then Claude's
+ // version replaces it if it validates and the pair hasn't changed in the meantime.
+@@ -32,9 +33,10 @@ export async function setPairHook(ctx: MutationCtx, meetupId: Id<"meetups">, ite
+   const event = plan ? await ctx.db.get(plan.eventId) : null;
+   if (plan === null || event === null || items.length === 0) return;
+ 
+-  // Every artist and track either student has, so the validator can reject unshared names.
++  // Every artist and track either student has, plus every label on the fixed list, so the validator can
++  // reject any name or genre the two don't share (a label neither has can't slip in either).
+   const { key, userIds } = await pairKey(ctx, meetupId);
+-  const known = new Set<string>();
++  const known = new Set<string>(TASTE_LABELS.map(normalizeName));
+   for (const userId of userIds) {
+     const profile = await ctx.db
+       .query("tasteProfiles")
+diff --git a/convex/plans/release.ts b/convex/plans/release.ts
+index 96a3aa9..93b0a01 100644
+--- a/convex/plans/release.ts
++++ b/convex/plans/release.ts
+@@ -5,7 +5,7 @@ import { reconcilePlan } from "./reconcile";
+ 
+ // Spotify disconnect (S16): gives up any seat the student was offered or holds (it reopens for the
+ // partner) and closes their open asks, so no new asks or offers reach them.
+-// INTEGRATION: stream A's settings.disconnectSpotify calls this.
++// stream A's settings.disconnectSpotify calls this.
+ export const forUser = internalMutation({
+   args: { userId: v.id("users") },
+   returns: v.object({ seatsReleased: v.number(), asksClosed: v.number() }),
+@@ -49,7 +49,7 @@ export const forUser = internalMutation({
+ 
+ // The team pulled an event (S17): open asks for it close, and every plan for it that is still forming
+ // or set is called off. An offer is withdrawn, not declined, so it goes out as no_answer.
+-// INTEGRATION: stream B's convex/events/admin.ts calls this when an event is pulled.
++// stream B's convex/events/admin.ts calls this when an event is pulled.
+ export const forEvent = internalMutation({
+   args: { eventId: v.id("events") },
+   returns: v.object({ asksClosed: v.number(), plansCalledOff: v.number(), offersWithdrawn: v.number() }),
+diff --git a/convex/plans/retime.ts b/convex/plans/retime.ts
+index 6496601..7e0b5a3 100644
+--- a/convex/plans/retime.ts
++++ b/convex/plans/retime.ts
+@@ -7,7 +7,7 @@ import { scheduleAskCloses } from "../asks/close";
+ // An event's start time or meeting offset changed: every plan still forming or set gets the new
+ // meeting time and cutoff, is reconciled at once (offers now past the cutoff expire, an empty seat past
+ // it calls the plan off), and has its time boundaries rescheduled. Reconcile reads now(forDemo).
+-// INTEGRATION: stream B's convex/events/imports.ts and admin edits call this after changing the times.
++// stream B's convex/events/imports.ts and admin edits call this after changing the times.
+ export const forEvent = internalMutation({
+   args: { eventId: v.id("events") },
+   returns: v.object({ plansRetimed: v.number() }),
+diff --git a/convex/settings.ts b/convex/settings.ts
+index aa4af39..c3997a3 100644
+--- a/convex/settings.ts
++++ b/convex/settings.ts
+@@ -1,4 +1,5 @@
+ import { mutation } from "./_generated/server";
++import { internal } from "./_generated/api";
+ import { v } from "convex/values";
+ import { requireVerifiedUser } from "./lib/access";
+ import { accessFor } from "./onboarding/apps";
+@@ -30,7 +31,8 @@ export const disconnectSpotify = mutation({
+       user.onboarding === "ready";
+     if (reachedConnect) await ctx.db.patch(userId, { onboarding: "needs_spotify_connect" });
+ 
+-    // INTEGRATION: await ctx.runMutation(internal.plans.release.forUser, { userId }); gives up any seat (it reopens) and closes asks.
++    // Gives up any seat (it reopens for the partner) and closes asks, in the same transaction.
++    await ctx.runMutation(internal.plans.release.forUser, { userId });
+     return null;
+   },
+ });
