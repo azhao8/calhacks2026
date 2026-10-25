@@ -167,6 +167,8 @@ const scenarios = [
   { id: "drop-deciding-fail", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.deciding }), handlers: { "drops:accept": () => { throw fail("offer_expired"); } }, script: "tapDropAccept" },
   { id: "drop-accepted", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.accepted }), variants: ALL },
   { id: "drop-done", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.done }) },
+  { id: "drop-called-off", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.none, "plans:current": F.plans.calledOff }) },
+  { id: "drop-after", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.choosing, "plans:current": F.plans.after, "contacts:shareable": [{ meetupId: "meetup_1", partnerFirstName: "Maya", eventTitle: "Indie folk night", startsAt: Date.UTC(2026, 9, 30, 3, 0) }] }) },
   { id: "drop-loading", screen: "Drop", path: "/drop", data: ready({ "drops:mine": hold }) },
 ];
 
