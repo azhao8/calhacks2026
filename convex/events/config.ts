@@ -28,7 +28,8 @@ export const PULLED_REASON = "Pulled by the team";
 export const ADULT_REASON = "21+ event";
 export const VENUE_NOT_FOUND = "Venue not found on the map";
 // Rejections no later import can undo; the team can restore a pulled event.
-export const STICKY_REASONS = new Set<string>([PULLED_REASON, ADULT_REASON]);
+export const DUPLICATE_REASON = "Duplicate of another event";
+export const STICKY_REASONS = new Set<string>([PULLED_REASON, ADULT_REASON, DUPLICATE_REASON]);
 
 // "Most official source wins" when two sources describe the same event. Higher wins.
 export const SOURCE_RANK: Record<string, number> = {

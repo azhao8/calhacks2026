@@ -5,6 +5,8 @@ import {
   isHttpUrl,
   placeMatches,
   titlesOverlap,
+  sameShowTitles,
+  looksLikeAddress,
   basicRejectReason,
   dedupeKey,
   eventDocument,
@@ -133,6 +135,16 @@ describe("review fixes", () => {
     expect(placeMatches(scraped, { name: "The Starry Plough Pub", address: "3101, Shattuck Avenue, Berkeley, CA" })).toBe(true);
     expect(placeMatches(scraped, { name: "Starry Plough", address: "Dublin, Ireland" })).toBe(false);
     expect(placeMatches({ name: "Fox Theater", address: "" }, { name: "Fox Theater", address: "Oakland" })).toBe(true);
+  });
+
+  test("same-show titles: the Iestyn Davies pair, and unrelated shows stay apart", () => {
+    const a = normalizeTitle("Iestyn Davies, countertenor; Oliver Wass, harp");
+    const b = normalizeTitle("Iestyn Davies, countertenor Oliver Wass, Baroque triple lever harp and modern harp");
+    expect(sameShowTitles(a, b)).toBe(true);
+    expect(sameShowTitles(normalizeTitle("Big Thief"), normalizeTitle("Khruangbin"))).toBe(false);
+    expect(sameShowTitles(normalizeTitle("Jazz night"), normalizeTitle("Folk night"))).toBe(false);
+    expect(looksLikeAddress("2121 Allston Way")).toBe(true);
+    expect(looksLikeAddress("The UC Theatre")).toBe(false);
   });
 
   test("titles overlap only on whole words", () => {
