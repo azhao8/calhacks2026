@@ -3,7 +3,7 @@
 import { useDeferredValue, useState, type FormEvent } from "react";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { FunctionReturnType } from "convex/server";
+import { makeFunctionReference, type FunctionReturnType } from "convex/server";
 import { priceLabel } from "@/convex/lib/format";
 import { Button } from "@/components/Button";
 import { TextField } from "@/components/TextField";
@@ -645,6 +645,8 @@ export function DemoTab() {
         <Result error={error} done={done} />
       </Panel>
 
+      <AddDemoStudents students={overview?.students} />
+
       <Panel
         title="Demo clock"
         lead={
@@ -696,6 +698,63 @@ export function DemoTab() {
         )}
       </Panel>
     </div>
+  );
+}
+
+// Stream C's generator. Referenced by name so this page builds before or after its PR lands.
+const generateDemoStudents = makeFunctionReference<"mutation", { count: number }, { created: number; firstNames: string[] }>("admin/demo:generate");
+const MAX_GENERATE = 50;
+
+function AddDemoStudents({ students }: { students: { onboarding: string | null }[] | undefined }) {
+  const generate = useMutation(generateDemoStudents);
+  const { busy, error, done, run, setDone, setError } = useRun();
+  const [count, setCount] = useState("5");
+  const ready = students?.filter((student) => student.onboarding === "ready").length ?? 0;
+  return (
+    <Panel
+      title="Add demo students"
+      lead={
+        students === undefined
+          ? "Loading"
+          : `${students.length} demo ${students.length === 1 ? "student" : "students"}, ${ready} ready.`
+      }
+    >
+      <form
+        className="flex flex-col gap-3"
+        onSubmit={async (e: FormEvent) => {
+          e.preventDefault();
+          const n = Number(count);
+          if (!(Number.isInteger(n) && n >= 1 && n <= MAX_GENERATE)) {
+            setError(`Choose a whole number from 1 to ${MAX_GENERATE}.`);
+            return;
+          }
+          await run("generate", async () => {
+            const result = await generate({ count: n });
+            setDone(`Added ${result.created}: ${result.firstNames.join(", ")}`);
+          });
+        }}
+      >
+        <TextField
+          label="How many demo students"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={MAX_GENERATE}
+          value={count}
+          onChange={(e) => setCount(e.target.value)}
+        />
+        <div className="flex flex-col gap-1">
+          <Button type="submit" variant="secondary" loading={busy === "generate"} className="self-start">
+            Add demo students
+          </Button>
+          <p className="text-caption text-ink-muted">
+            Adds new demo students with fresh names and music. Each one gets a taste summary, so they&apos;re ready in about a minute. Existing demo
+            students stay.
+          </p>
+        </div>
+        <Result error={error} done={done} />
+      </form>
+    </Panel>
   );
 }
 
