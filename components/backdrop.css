@@ -1,0 +1,99 @@
+/*
+  Backdrop illustration (design/components/bundle.css, .ml-backdrop and .ml-o-*). The layers and
+  thermal objects are fixed artwork, so they live here as one stylesheet instead of long arbitrary
+  Tailwind classes. Every color is a design token; sizes match the design. Imported by
+  app/globals.css. Nothing here animates, so reduced motion needs no override.
+*/
+@layer components {
+  .backdrop {
+    background:
+      radial-gradient(90% 45% at 10% 0%, var(--backdrop-bloom) 0%, transparent 70%),
+      linear-gradient(
+        180deg,
+        var(--backdrop-sky) 0%,
+        var(--backdrop-sky-2) 28%,
+        var(--backdrop-horizon) 44%,
+        var(--backdrop-lake) 60%,
+        var(--backdrop-ground) 80%,
+        var(--backdrop-deep) 100%
+      );
+  }
+  .backdrop > * { position: absolute; }
+  .backdrop__haze {
+    left: -15%; top: 30%; width: 135%; height: 20%; opacity: 0.75; filter: blur(34px);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--streak-cool-2) 40%, transparent), color-mix(in srgb, var(--backdrop-sky) 25%, transparent) 60%, transparent);
+  }
+  .backdrop__streak {
+    left: -23%; top: 41%; width: 145%; height: 14%; filter: blur(26px); transform: rotate(-4deg);
+    background: linear-gradient(90deg, var(--streak-warm) 0%, var(--streak-warm-2) 16%, var(--streak-cool) 42%, var(--streak-cool-2) 62%, transparent 92%);
+  }
+  .backdrop__core {
+    left: -15%; top: 46.5%; width: 120%; height: 3.5%; opacity: 0.85; filter: blur(9px); transform: rotate(-4deg);
+    background: linear-gradient(90deg, var(--streak-core-hot) 0%, var(--streak-warm) 30%, var(--streak-core-cool) 55%, transparent 90%);
+  }
+  .backdrop__floor {
+    left: 0; right: 0; top: 51%; bottom: 0;
+    background: linear-gradient(180deg, transparent, var(--backdrop-floor) 40%, transparent);
+  }
+  .backdrop__cast {
+    left: 31%; top: 55.5%; width: 77%; height: 10.7%; border-radius: 50%; opacity: 0.9;
+    background: var(--backdrop-cast); filter: blur(26px); transform: skewX(-24deg);
+  }
+  .backdrop__stage { left: 36%; top: 32%; width: 240px; height: 230px; filter: blur(var(--object-blur)) saturate(1.25); }
+  .backdrop__stage div { position: absolute; }
+  .backdrop__vignette { inset: 0; background: linear-gradient(180deg, transparent 55%, var(--backdrop-vignette) 100%); }
+  .backdrop__grain { inset: 0; background: url("/grain.png") 0 0 / 256px 256px; mix-blend-mode: overlay; opacity: var(--grain-opacity); }
+  .backdrop--quiet::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--backdrop-deep) 55%, transparent); }
+
+  .thermal-hot {
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--thermal-white) 0%, var(--thermal-yellow) 18%, var(--thermal-amber) 34%, var(--thermal-red) 52%, var(--thermal-green) 72%, var(--thermal-deep) 100%);
+  }
+
+  /* speaker */
+  .obj-speaker .a { left: 50px; top: 10px; width: 150px; height: 205px; border-radius: 14px; background: linear-gradient(180deg, var(--thermal-green), var(--thermal-deep)); box-shadow: inset 0 0 0 7px var(--thermal-red), inset 0 0 0 14px var(--thermal-orange), inset 0 18px 0 14px var(--thermal-yellow); }
+  .obj-speaker .b { left: 100px; top: 40px; width: 50px; height: 50px; }
+  .obj-speaker .c { left: 70px; top: 100px; width: 110px; height: 110px; }
+  /* headphones */
+  .obj-headphones .a { left: 40px; top: 20px; width: 170px; height: 160px; box-sizing: border-box; border: 20px solid var(--thermal-orange); border-bottom: 0; border-radius: 95px 95px 0 0; box-shadow: 0 -4px 0 0 var(--thermal-red), inset 0 6px 0 0 var(--thermal-yellow); }
+  .obj-headphones .b, .obj-headphones .c { top: 120px; width: 66px; height: 96px; border-radius: 30px; }
+  .obj-headphones .b { left: 22px; }
+  .obj-headphones .c { left: 162px; }
+  /* cassette */
+  .obj-cassette .a { left: 14px; top: 60px; width: 216px; height: 136px; border-radius: 16px; transform: rotate(-8deg); background: linear-gradient(180deg, var(--thermal-white), var(--thermal-yellow) 26%, var(--thermal-amber) 58%, var(--thermal-red) 86%, var(--thermal-green)); box-shadow: inset 0 70px 0 -46px var(--thermal-deep); }
+  .obj-cassette .b { left: 70px; top: 104px; width: 36px; height: 36px; box-sizing: border-box; border: 8px solid var(--thermal-green); border-radius: 50%; background: var(--thermal-yellow); transform: rotate(-8deg); }
+  .obj-cassette .c { left: 142px; top: 94px; width: 36px; height: 36px; box-sizing: border-box; border: 8px solid var(--thermal-green); border-radius: 50%; background: var(--thermal-amber); }
+  /* ticket */
+  .obj-ticket .a { left: 10px; top: 70px; width: 224px; height: 116px; border-radius: 12px; transform: rotate(-14deg); background: linear-gradient(90deg, var(--thermal-green), var(--thermal-red) 22%, var(--thermal-amber) 30%, var(--thermal-yellow) 46%, var(--thermal-white) 58%, var(--thermal-yellow) 72%, var(--thermal-orange) 92%, var(--thermal-red)); }
+  .obj-ticket .b { left: 66px; top: 60px; width: 0; height: 130px; border-left: 4px dashed var(--thermal-deep); transform: rotate(-14deg); }
+  /* two records */
+  .obj-records .a, .obj-records .b { width: 160px; height: 160px; border-radius: 50%; }
+  .obj-records .a { left: 0; top: 50px; box-shadow: 0 0 0 5px var(--thermal-orange); background: radial-gradient(circle, var(--thermal-white) 5%, var(--thermal-red) 6% 20%, var(--thermal-deep) 22%, var(--thermal-green) 48%, var(--thermal-deep) 52%, var(--thermal-green) 76%, var(--thermal-deep)); }
+  .obj-records .b { left: 86px; top: 20px; box-shadow: 0 0 0 5px var(--thermal-yellow); background: radial-gradient(circle, var(--thermal-white) 5%, var(--thermal-yellow) 6%, var(--thermal-amber) 20%, var(--thermal-deep) 22%, var(--thermal-green) 48%, var(--thermal-deep) 52%, var(--thermal-green) 76%, var(--thermal-deep)); }
+  /* microphone */
+  .obj-mic .a { left: 116px; top: 80px; width: 12px; height: 140px; border-radius: 6px; background: var(--thermal-green); transform: rotate(10deg); }
+  .obj-mic .b { left: 70px; top: 200px; width: 120px; height: 24px; border-radius: 50%; background: var(--thermal-red); }
+  .obj-mic .c { left: 110px; top: 0; width: 84px; height: 110px; border-radius: 42px; transform: rotate(18deg); }
+  /* radio */
+  .obj-radio .a { left: 10px; top: 80px; width: 220px; height: 130px; border-radius: 20px; background: linear-gradient(180deg, var(--thermal-green), var(--thermal-deep)); box-shadow: inset 0 8px 0 0 var(--thermal-yellow), inset 0 0 0 6px var(--thermal-red); }
+  .obj-radio .b { left: 30px; top: 110px; width: 100px; height: 76px; border-radius: 10px; background: repeating-linear-gradient(90deg, var(--thermal-orange) 0 6px, var(--thermal-deep) 6px 12px); }
+  .obj-radio .c { left: 146px; top: 110px; width: 68px; height: 68px; }
+}
+
+/* Canvas (design .ml-canvas): the dark grain gradient for sheets and fallback states. */
+@layer components {
+  .canvas__glow {
+    background:
+      radial-gradient(60% 45% at 20% 18%, var(--canvas-glow-a) 0%, transparent 70%),
+      radial-gradient(55% 40% at 85% 55%, var(--canvas-glow-b) 0%, transparent 72%),
+      radial-gradient(70% 18% at 30% 72%, color-mix(in srgb, var(--canvas-glow-c) 35%, transparent) 0%, transparent 70%);
+  }
+  .canvas__slot {
+    -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%);
+  }
+  .canvas__grain {
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+}
