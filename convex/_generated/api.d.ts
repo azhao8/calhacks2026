@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as admin_demo from "../admin/demo.js";
+import type * as admin_drops from "../admin/drops.js";
 import type * as admin_events from "../admin/events.js";
 import type * as admin_matching from "../admin/matching.js";
 import type * as admin_queue from "../admin/queue.js";
@@ -27,6 +28,10 @@ import type * as demo_admin from "../demo/admin.js";
 import type * as demo_behavior from "../demo/behavior.js";
 import type * as demo_fixtures from "../demo/fixtures.js";
 import type * as demo_generate from "../demo/generate.js";
+import type * as drops from "../drops.js";
+import type * as drops_cycle from "../drops/cycle.js";
+import type * as drops_model from "../drops/model.js";
+import type * as drops_views from "../drops/views.js";
 import type * as events_admin from "../events/admin.js";
 import type * as events_checks from "../events/checks.js";
 import type * as events_config from "../events/config.js";
@@ -96,6 +101,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   "admin/demo": typeof admin_demo;
+  "admin/drops": typeof admin_drops;
   "admin/events": typeof admin_events;
   "admin/matching": typeof admin_matching;
   "admin/queue": typeof admin_queue;
@@ -113,6 +119,10 @@ declare const fullApi: ApiFromModules<{
   "demo/behavior": typeof demo_behavior;
   "demo/fixtures": typeof demo_fixtures;
   "demo/generate": typeof demo_generate;
+  drops: typeof drops;
+  "drops/cycle": typeof drops_cycle;
+  "drops/model": typeof drops_model;
+  "drops/views": typeof drops_views;
   "events/admin": typeof events_admin;
   "events/checks": typeof events_checks;
   "events/config": typeof events_config;
