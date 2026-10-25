@@ -178,11 +178,12 @@ function ActivePlanBanner() {
 // An offer that ran out or got "Next time" in the last day, said once (plans.lastEnded).
 function LastEndedNotice() {
   const entry = useLastEnded();
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed || !shouldShowEnded(entry)) return null;
+  // The plan dismissed on this screen; a newer entry for another plan still shows.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  if (!entry || entry.meetupId === dismissed || !shouldShowEnded(entry)) return null;
   const dismiss = () => {
-    markEndedSeen(entry!.meetupId);
-    setDismissed(true);
+    markEndedSeen(entry.meetupId);
+    setDismissed(entry.meetupId);
   };
   return (
     <Card>
