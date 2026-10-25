@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "./theme.css";
 @import "../components/backdrop.css";
-@import "./_components/device-frame.css";
 
 /* design/ is a read-only reference the app never loads, so its files are not scanned for classes. */
 @source not "../design";

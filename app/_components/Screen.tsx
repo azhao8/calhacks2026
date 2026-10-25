@@ -13,8 +13,6 @@ import { ROUTES } from "@/app/_lib/routes";
 // A full screen on the Backdrop (design/docs/backgrounds.md): the top bar with the wordmark and
 // either the step count (onboarding) or the menu, then `top` in the sky and `children` in the lower
 // part over the vignette. Content is 480 wide at most, centered, with the 16px gutter and safe areas.
-// Height and safe areas come from --app-height, --safe-top and --safe-bottom (device-frame.css), so
-// the same screen fills a phone or the demo phone frame.
 export function Screen({
   object = "none",
   quiet,
@@ -34,9 +32,9 @@ export function Screen({
 }) {
   const online = useOnline();
   return (
-    <div className="relative isolate min-h-(--app-height)">
+    <div className="relative isolate min-h-dvh">
       <Backdrop object={object} quiet={quiet} fixed />
-      <div className="relative z-1 mx-auto flex min-h-(--app-height) w-full max-w-120 flex-col justify-between gap-8 px-4 pt-[max(1.5rem,var(--safe-top))] pb-[max(2rem,var(--safe-bottom))]">
+      <div className="relative z-1 mx-auto flex min-h-dvh w-full max-w-120 flex-col justify-between gap-8 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
         <div className="flex flex-col gap-4">
           <header className="flex min-h-12 items-center justify-between gap-3">
             <Link href={ROUTES.welcome} aria-label="Melos home" className="inline-flex min-h-12 items-center">

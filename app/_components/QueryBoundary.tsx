@@ -16,7 +16,7 @@ export class QueryBoundary extends Component<{ children: ReactNode; title?: stri
   render() {
     if (this.state.error !== null) {
       return (
-        <div className="mx-auto flex min-h-(--app-height) max-w-120 items-center px-4">
+        <div className="mx-auto flex min-h-dvh max-w-120 items-center px-4">
           <StateView
             kind="error"
             title={this.props.title ?? "We couldn't load this"}
