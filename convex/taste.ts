@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { fail } from "./lib/errors";
 import { vAnalysisView, vTasteView } from "./lib/views";
-import { requireVerifiedUser } from "./onboarding/guard";
+import { requireVerifiedUser } from "./lib/access";
 import { confirmProfile, jobFor, profileFor, startJob, startRevision } from "./onboarding/analysis";
 
 // Stream A (onboarding). S08 analysis and S09 taste review.

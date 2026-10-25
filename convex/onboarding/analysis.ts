@@ -9,7 +9,7 @@ import { vAnalysisStatus } from "../lib/validators";
 import { summarizeTaste, reviseTaste, type TasteResult } from "../ai/taste";
 import { embed } from "../services/voyage";
 import { fetchListening, SpotifyAuthError, SpotifyRefusedError } from "../services/spotify";
-import { aiPool } from "./pools";
+import { aiPool } from "../lib/pools";
 import { distinctArtistCount, fingerprint, tasteDocument, tasteInput, toSnapshotFields } from "./snapshot";
 import { accessToken, markRefused } from "./tokens";
 

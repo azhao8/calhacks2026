@@ -1,6 +1,6 @@
 import { mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { requireVerifiedUser } from "./onboarding/guard";
+import { requireVerifiedUser } from "./lib/access";
 import { accessFor } from "./onboarding/apps";
 
 // Stream A (onboarding) owns this file.

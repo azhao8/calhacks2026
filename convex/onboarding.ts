@@ -6,7 +6,7 @@ import { normalizeEmail } from "./lib/edu";
 import { SURPRISE_ME } from "./lib/config";
 import { vArea, vGenderSelf, vMeetWho, vYear } from "./lib/validators";
 import { vAccessView, vPreferencesView } from "./lib/views";
-import { requireVerifiedUser } from "./onboarding/guard";
+import { requireVerifiedUser } from "./lib/access";
 import { accessFor, pickApp } from "./onboarding/apps";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";

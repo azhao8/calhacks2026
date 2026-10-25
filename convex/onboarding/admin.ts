@@ -5,7 +5,7 @@ import { SITE, SPOTIFY } from "../lib/config";
 import { vAccessStatus } from "../lib/validators";
 import { sendEmail } from "../services/resend";
 import { appUsage, assignWaitingRequests } from "./apps";
-import { emailPool } from "./pools";
+import { emailPool } from "../lib/pools";
 
 // S17 allow-list queue internals. The admin page wraps these with requireAdmin (ADMIN_EMAILS, server-side).
 
