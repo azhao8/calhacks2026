@@ -12,11 +12,11 @@ import { MatchCard, MelosNumber, SharedLine } from "@/components/MatchCard";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useNow, useOnline } from "@/app/_lib/hooks";
 import { isActivePlan, ROUTES } from "@/app/_lib/routes";
+import { markEndedSeen } from "@/app/_lib/lastEnded";
 import { afterLeavingText, cantMakeItDetail, couldntGetOneDetail, partnerNoticeText, type Ended } from "@/app/_lib/planCopy";
 import { offerExpiryText } from "@/app/_lib/time";
 import { Confirm } from "@/app/_components/Confirm";
 import { Optional } from "@/app/_components/Optional";
-import { SafetyNote } from "@/app/_components/Safety";
 import { ShareablePrompt } from "@/app/_components/ShareablePrompt";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
@@ -97,7 +97,7 @@ function Offer({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void }) {
       </Optional>
       <MatchCard stage="invite" title={name ? `${name} can make it too.` : "A seat is open for you."} when={when(plan)} price={plan.event.priceLabel}>
         <p className="text-headline">{eventLine(plan)}</p>
-        <SharedLine>{plan.hook}</SharedLine>
+        {plan.hook ? <SharedLine>{plan.hook}</SharedLine> : null}
         {expiry ? <p className="text-small text-ink-muted">{expiry}</p> : null}
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
           <Button block loading={busy === "accept"} disabled={busy === "next" || expired || !online} onClick={() => run("accept", () => accept({ seatId: plan.seatId }))}>
@@ -108,7 +108,7 @@ function Offer({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void }) {
             block
             loading={busy === "next"}
             disabled={busy === "accept" || !online}
-            onClick={() => run("next", () => nextTime({ seatId: plan.seatId }), () => onEnded({ kind: "next_time", beforeCutoff: plan.beforeCutoff }))}
+            onClick={() => run("next", () => nextTime({ seatId: plan.seatId }), () => onEnded({ kind: "next_time", meetupId: plan.meetupId, beforeCutoff: plan.beforeCutoff }))}
           >
             Next time
           </Button>
@@ -152,7 +152,7 @@ function TicketBlock({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => voi
           disabled={!online}
           onYes={() => {
             const beforeCutoff = plan.beforeCutoff;
-            void run("couldnt", () => setTicket({ seatId: plan.seatId, ticket: "couldnt" }), () => onEnded({ kind: "no_ticket", beforeCutoff }));
+            void run("couldnt", () => setTicket({ seatId: plan.seatId, ticket: "couldnt" }), () => onEnded({ kind: "no_ticket", meetupId: plan.meetupId, beforeCutoff }));
           }}
           onNo={() => setConfirming(false)}
         />
@@ -192,7 +192,7 @@ function CantMakeIt({ plan, onEnded, label }: { plan: Plan; onEnded: (e: Ended) 
           disabled={!online}
           onYes={() => {
             const beforeCutoff = plan.beforeCutoff;
-            void run("cant", () => cantMakeIt({ seatId: plan.seatId }), () => onEnded({ kind: "cant_make_it", beforeCutoff }));
+            void run("cant", () => cantMakeIt({ seatId: plan.seatId }), () => onEnded({ kind: "cant_make_it", meetupId: plan.meetupId, beforeCutoff }));
           }}
           onNo={() => setConfirming(false)}
         />
@@ -241,7 +241,7 @@ function PlanSet({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void })
       </Optional>
       <MatchCard stage={waiting ? "invite" : "confirmed"} eyebrow={waiting ? "Your plan" : undefined} title={title} when={when(plan)} price={plan.event.priceLabel}>
         <p className="text-headline">{eventLine(plan)}</p>
-        <SharedLine>{plan.hook}</SharedLine>
+        {plan.hook ? <SharedLine>{plan.hook}</SharedLine> : null}
         {waiting && plan.meeting === null ? <p className="text-small text-ink-muted">The meeting spot shows here once you&apos;re both in.</p> : null}
         <MeetingSpot plan={plan} />
         {plan.meeting ? <TicketBlock plan={plan} onEnded={onEnded} /> : null}
@@ -310,13 +310,17 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
         </Button>
       ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
-      <SafetyNote id="safety" list="meetup_day" />
     </Screen>
   );
 }
 
 function AfterLeaving({ ended }: { ended: Ended }) {
   const { title, body } = afterLeavingText(ended);
+  // This screen already says "No problem. We will keep looking." for Next time, so the week's
+  // lastEnded notice shouldn't repeat it for the same plan.
+  useEffect(() => {
+    if (ended.kind === "next_time") markEndedSeen(ended.meetupId);
+  }, [ended]);
   return (
     <Screen object="radio" menu>
       <Panel className="flex flex-col gap-2">

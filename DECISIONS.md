@@ -157,3 +157,9 @@ Entry format:
 - Why: the owner asked to manage every Spotify app from the admin page without setting Convex variables by hand while onboarding real students tonight. The secret is stored like student Spotify tokens already are: plain in a table no query returns.
 - Replaces: BASELINE — client secrets only in Convex environment variables (`CLAUDE.md` §8.5 `spotifyApps`, §8.9, §8.10).
 - Affects: S07 (connect), S17 (Spotify tab); `convex/schema.ts`, `convex/onboarding/admin.ts`, `convex/admin/queue.ts`, `convex/services/spotify.ts`.
+
+## 2026-10-25 00:35 PT · azhao8 · No safety or emergency content in the app
+- Changed: the "Need help?" block on meetup day (S13) and the safety section in the menu (S16) are removed, along with the safety resources list in the app (`app/_lib/safety.ts`) and its component. The menu's "Tell us about a problem" note stays. `docs/safety-resources.md` stays as a reference.
+- Why: the owner's decision: this is a hackathon demo build, and the owner asked to remove the emergency content from the app.
+- Replaces: the S13 "Need help?" (verified UC Berkeley safety resources and emergency information) and the S16 "safety resources" text in `CLAUDE.md` §5, and the open item for verified safety resources in §13.
+- Affects: S13, S16; `app/plan/page.tsx`, `app/menu/page.tsx`.

@@ -244,3 +244,80 @@ describe("smaller fixes", () => {
     expect(await plansFor(t, e2)).toHaveLength(1);
   });
 });
+
+describe("G7 and G6b", () => {
+  test("the hook is withheld while the other seat is open, and returns with the new partner", async () => {
+    const t = await setup();
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const maya = await makeStudent(t, { firstName: "Maya" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const p = await pairOn(t, maya, sam, eventId);
+    expect((await asUser(t, maya).query(api.plans.current, {}))!.hook).toBe("You both have Big Thief on repeat.");
+    await asUser(t, maya).mutation(api.plans.accept, { seatId: p.seatOf(maya) });
+    await asUser(t, sam).mutation(api.plans.accept, { seatId: p.seatOf(sam) });
+    await asUser(t, sam).mutation(api.plans.cantMakeIt, { seatId: p.seatOf(sam) });
+    const searching = (await asUser(t, maya).query(api.plans.current, {}))!;
+    expect(searching.partner).toBeNull();
+    expect(searching.hook).toBeNull();
+
+    // An offer whose partner declined first: no partner, no hook either.
+    const e2 = await makeEvent(t, { title: "E2", startsAt: STARTS + DAY });
+    const kai = await makeStudent(t, { firstName: "Kai" });
+    const lu = await makeStudent(t, { firstName: "Lu" });
+    const q = await pairOn(t, kai, lu, e2);
+    await asUser(t, lu).mutation(api.plans.nextTime, { seatId: q.seatOf(lu) });
+    const offer = (await asUser(t, kai).query(api.plans.current, {}))!;
+    expect(offer.stage).toBe("offer");
+    expect(offer.hook).toBeNull();
+
+    await advance(t, 1000);
+    const lee = await makeStudent(t, { firstName: "Lee" });
+    await makeAsk(t, lee, eventId);
+    await t.mutation(internal.matching.run.forEvent, { eventId, trigger: "seat_open" });
+    const refilled = (await asUser(t, maya).query(api.plans.current, {}))!;
+    expect(refilled.partner?.firstName).toBe("Lee");
+    expect(refilled.hook).toBe("You both have Big Thief on repeat.");
+  });
+
+  test("lastEnded returns the latest Next time or no answer within 24 hours, and nothing else", async () => {
+    const t = await setup();
+    const maya = await makeStudent(t, { firstName: "Maya" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    expect(await asUser(t, maya).query(api.plans.lastEnded, {})).toBeNull();
+    expect(await t.query(api.plans.lastEnded, {})).toBeNull(); // signed out
+
+    // Next time.
+    const e1 = await makeEvent(t, { title: "E1", startsAt: STARTS });
+    const p1 = await pairOn(t, maya, sam, e1);
+    await asUser(t, maya).mutation(api.plans.nextTime, { seatId: p1.seatOf(maya) });
+    const first = (await asUser(t, maya).query(api.plans.lastEnded, {}))!;
+    expect(first.meetupId).toBe(p1.meetupId);
+    expect(first.outReason).toBe("next_time");
+    expect(Object.keys(first).sort()).toEqual(["meetupId", "outAt", "outReason"]);
+    // The partner's own record isn't affected by Maya's.
+    expect(await asUser(t, sam).query(api.plans.lastEnded, {})).toBeNull();
+
+    // A later offer that runs out replaces it.
+    await advance(t, 1000);
+    const e2 = await makeEvent(t, { title: "E2", startsAt: STARTS + DAY });
+    const lee = await makeStudent(t, { firstName: "Lee" });
+    const p2 = await pairOn(t, maya, lee, e2);
+    await advance(t, 2 * HOUR + MINUTE);
+    const second = (await asUser(t, maya).query(api.plans.lastEnded, {}))!;
+    expect(second.meetupId).toBe(p2.meetupId);
+    expect(second.outReason).toBe("no_answer");
+
+    // I can't make it isn't included.
+    const kai = await makeStudent(t, { firstName: "Kai" });
+    const ana = await makeStudent(t, { firstName: "Ana" });
+    const e3 = await makeEvent(t, { title: "E3", startsAt: STARTS + 2 * DAY });
+    const p3 = await pairOn(t, kai, ana, e3);
+    await asUser(t, kai).mutation(api.plans.accept, { seatId: p3.seatOf(kai) });
+    await asUser(t, kai).mutation(api.plans.cantMakeIt, { seatId: p3.seatOf(kai) });
+    expect(await asUser(t, kai).query(api.plans.lastEnded, {})).toBeNull();
+
+    // After 24 hours it's gone.
+    vi.setSystemTime(Date.now() + 24 * HOUR + MINUTE);
+    expect(await asUser(t, maya).query(api.plans.lastEnded, {})).toBeNull();
+  });
+});

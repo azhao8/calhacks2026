@@ -1,6 +1,9 @@
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
+import type { ActionCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { SIGN_IN } from "./lib/config";
+import { fail } from "./lib/errors";
 import { normalizeEmail } from "./lib/edu";
 import { sendEmail } from "./services/resend";
 import { createOrUpdateUser, generateCode, OTP_PROVIDER_ID } from "./onboarding/signIn";
@@ -11,16 +14,24 @@ const ResendOTP = Email({
   maxAge: SIGN_IN.codeTtlSeconds,
   generateVerificationToken: async () => generateCode(),
   // The callback validated and stored normalizeEmail(input); the code goes to exactly that address.
-  sendVerificationRequest: async ({ identifier, token }) => {
-    await sendEmail({
-      to: normalizeEmail(identifier),
-      subject: `Your Melos code is ${token}`,
-      text: [
-        `Your Melos code is ${token}.`,
-        "It works for 15 minutes.",
-        "If you didn't ask for it, you can ignore this email.",
-      ].join("\n\n"),
-    });
+  // Convex Auth passes the action ctx as a second argument.
+  sendVerificationRequest: async ({ identifier, token }, ctx?: unknown) => {
+    try {
+      await sendEmail({
+        to: normalizeEmail(identifier),
+        subject: `Your Melos code is ${token}`,
+        text: [
+          `Your Melos code is ${token}.`,
+          "It works for 15 minutes.",
+          "If you didn't ask for it, you can ignore this email.",
+        ].join("\n\n"),
+      });
+    } catch (error) {
+      // Nothing went out, so the stored code mustn't start the 30 second wait.
+      console.error("Sign-in code email failed", error);
+      await (ctx as ActionCtx).runMutation(internal.onboarding.codes.discardCode, { email: identifier });
+      fail("retryable", "We couldn't send your code. Try again.");
+    }
   },
 });
 

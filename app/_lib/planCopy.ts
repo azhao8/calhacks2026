@@ -3,9 +3,10 @@ import type { PlanView } from "@/convex/lib/views";
 // Plan copy that depends on the cutoff (CLAUDE.md §3, §6.5). Before the cutoff a seat given up is
 // refilled; after it nobody new is added, so the copy never promises a replacement then.
 
-type Plan = Pick<PlanView, "stage" | "notice" | "partner" | "previousPartnerFirstName" | "beforeCutoff" | "hook">;
+// hook is null when there's no active partner seat (for example between a drop and the refill).
+type Plan = Pick<PlanView, "stage" | "notice" | "partner" | "previousPartnerFirstName" | "beforeCutoff"> & { hook: string | null };
 
-export type Ended = { kind: "next_time" | "cant_make_it" | "no_ticket"; beforeCutoff: boolean };
+export type Ended = { kind: "next_time" | "cant_make_it" | "no_ticket"; beforeCutoff: boolean; meetupId: string };
 
 const TOO_CLOSE = "It's too close to the show to find someone new.";
 
@@ -18,7 +19,8 @@ export function partnerNoticeText(plan: Plan): string | null {
       ? `${lead}We're finding someone else who's going.`
       : "Your plan is still on. We're finding someone else who's going. You don't need to do anything.";
   }
-  if (plan.notice === "partner_replaced" && plan.partner) return `${plan.partner.firstName} is coming instead. ${plan.hook}`;
+  if (plan.notice === "partner_replaced" && plan.partner)
+    return plan.hook ? `${plan.partner.firstName} is coming instead. ${plan.hook}` : `${plan.partner.firstName} is coming instead.`;
   if (plan.notice === "partner_left" && plan.partner) return `${plan.partner.firstName} had to head out. Enjoy the show.`;
   return null;
 }

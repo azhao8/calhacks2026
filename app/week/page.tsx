@@ -12,7 +12,8 @@ import { getFlag, setFlag } from "@/app/_lib/device";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { isActivePlan, ROUTES } from "@/app/_lib/routes";
-import { useWeek } from "@/app/_lib/views";
+import { LAST_ENDED_LINE, markEndedSeen, shouldShowEnded } from "@/app/_lib/lastEnded";
+import { useLastEnded, useWeek } from "@/app/_lib/views";
 import { Optional } from "@/app/_components/Optional";
 import { ShareablePrompt, stayInTouchHref } from "@/app/_components/ShareablePrompt";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
@@ -30,6 +31,9 @@ export default function WeekPage() {
   const notices = (
     <>
       {isActivePlan(plan) ? <ActivePlanBanner /> : null}
+      <Optional>
+        <LastEndedNotice />
+      </Optional>
       <PlanNotices plan={plan} />
       {/* Without stream C's shareable query, fall back to the completed plan's own prompt. */}
       <Optional fallback={plan && plan.stage === "after" && plan.canShare ? <AfterSharePrompt plan={plan} /> : null}>
@@ -168,5 +172,27 @@ function ActivePlanBanner() {
         Open your plan
       </Link>
     </Panel>
+  );
+}
+
+// An offer that ran out or got "Next time" in the last day, said once (plans.lastEnded).
+function LastEndedNotice() {
+  const entry = useLastEnded();
+  // The plan dismissed on this screen; a newer entry for another plan still shows.
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  if (!entry || entry.meetupId === dismissed || !shouldShowEnded(entry)) return null;
+  const dismiss = () => {
+    markEndedSeen(entry.meetupId);
+    setDismissed(entry.meetupId);
+  };
+  return (
+    <Card>
+      <p role="status" className="text-body text-ink">
+        {LAST_ENDED_LINE}
+      </p>
+      <Button variant="secondary" block onClick={dismiss}>
+        Got it
+      </Button>
+    </Card>
   );
 }
