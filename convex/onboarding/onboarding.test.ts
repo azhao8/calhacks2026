@@ -354,6 +354,14 @@ describe("Spotify connect", () => {
     expect(await errorCode(b.as.action(api.spotify.completeConnect, { code: "good", state: stateA, redirectUri }))).toBe("forbidden");
     const [body, sig] = stateA.split(".");
     expect(await errorCode(a.as.action(api.spotify.completeConnect, { code: "good", state: `${body}x.${sig}`, redirectUri }))).toBe("forbidden");
+    // The exchange must use the same callback address as the consent, and only our two addresses are allowed.
+    expect(
+      await errorCode(a.as.action(api.spotify.completeConnect, { code: "good", state: stateA, redirectUri: "https://melos.azhao.dev/spotify/callback" })),
+    ).toBe("forbidden");
+    for (const bad of ["https://melos.azhao.dev.evil.com/spotify/callback", "http://localhost:3000/spotify/callback", "https://melos.azhao.dev/spotify/callback/"]) {
+      expect(await errorCode(a.as.action(api.spotify.connectUrl, { redirectUri: bad }))).toBe("validation_failed");
+      expect(await errorCode(a.as.action(api.spotify.completeConnect, { code: "good", state: stateA, redirectUri: bad }))).toBe("validation_failed");
+    }
     vi.advanceTimersByTime(16 * 60 * 1000);
     expect(await errorCode(a.as.action(api.spotify.completeConnect, { code: "good", state: stateA, redirectUri }))).toBe("forbidden");
     await t.run(async (ctx) => {

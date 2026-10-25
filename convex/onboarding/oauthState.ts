@@ -1,9 +1,9 @@
-// The Spotify OAuth state: binds the student, the app, and an expiry, signed with HMAC-SHA256 keyed by
+// The Spotify OAuth state: binds the student, the app, the redirect address, and an expiry, signed with HMAC-SHA256 keyed by
 // SPOTIFY_STATE_SECRET, so a callback can't be replayed later or crossed between students (§8.8).
 
 export const STATE_TTL_MS = 15 * 60 * 1000;
 
-export type OAuthState = { userId: string; appId: string; expiresAt: number; nonce: string };
+export type OAuthState = { userId: string; appId: string; redirectUri: string; expiresAt: number; nonce: string };
 
 function secret(): string {
   const value = process.env.SPOTIFY_STATE_SECRET;
@@ -33,9 +33,9 @@ async function key(): Promise<CryptoKey> {
   );
 }
 
-export async function signState(userId: string, appId: string, now: number): Promise<string> {
+export async function signState(userId: string, appId: string, redirectUri: string, now: number): Promise<string> {
   const nonce = toBase64Url(crypto.getRandomValues(new Uint8Array(12)));
-  const payload: OAuthState = { userId, appId, expiresAt: now + STATE_TTL_MS, nonce };
+  const payload: OAuthState = { userId, appId, redirectUri, expiresAt: now + STATE_TTL_MS, nonce };
   const body = toBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
   const signature = new Uint8Array(await crypto.subtle.sign("HMAC", await key(), new TextEncoder().encode(body)));
   return `${body}.${toBase64Url(signature)}`;
@@ -60,6 +60,7 @@ export async function verifyState(state: string, now: number): Promise<OAuthStat
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(body))) as OAuthState;
     if (typeof payload.userId !== "string" || typeof payload.appId !== "string") return null;
+    if (typeof payload.redirectUri !== "string") return null;
     if (typeof payload.expiresAt !== "number" || payload.expiresAt < now) return null;
     return payload;
   } catch {

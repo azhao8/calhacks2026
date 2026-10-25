@@ -17,11 +17,10 @@ import type { ConnectContext } from "./onboarding/connect";
 
 // Stream A (onboarding). Spotify redirects to {site}/spotify/callback; that page passes code and state to completeConnect.
 
-// Only our own callback pages, registered on every Spotify app (§8.9).
+// Exactly our own callback pages, registered on every Spotify app (§8.9).
+const ALLOWED_REDIRECTS: readonly string[] = [SITE.prodUrl, SITE.devUrl].map((site) => `${site}${SPOTIFY.callbackPath}`);
 function allowedRedirect(redirectUri: string): boolean {
-  const sites: string[] = [SITE.prodUrl, SITE.devUrl];
-  if (process.env.SITE_URL) sites.push(process.env.SITE_URL.replace(/\/$/, ""));
-  return sites.some((site) => redirectUri === `${site}${SPOTIFY.callbackPath}`);
+  return ALLOWED_REDIRECTS.includes(redirectUri);
 }
 
 // S07: the Spotify consent URL for the student's assigned app, with a signed state.
@@ -34,7 +33,7 @@ export const connectUrl = action({
     if (!allowedRedirect(redirectUri)) fail("validation_failed", "Unknown Spotify callback address.");
     const target: ConnectContext = await ctx.runQuery(internal.onboarding.connect.connectContext, { userId });
     if (!target.ok) fail(target.code);
-    const state = await signState(userId, target.appId, Date.now());
+    const state = await signState(userId, target.appId, redirectUri, Date.now());
     return authorizeUrl({ clientId: target.clientId, redirectUri, state });
   },
 });
@@ -52,6 +51,8 @@ export const completeConnect = action({
     if (payload === null || payload.userId !== userId) fail("forbidden", "That Spotify link expired. Try connecting again.");
     const target: ConnectContext = await ctx.runQuery(internal.onboarding.connect.connectContext, { userId });
     if (!target.ok) fail(target.code);
+    // The exchange must use the same address the consent used.
+    if (payload.redirectUri !== redirectUri) fail("forbidden", "That Spotify link expired. Try connecting again.");
     if (target.appId !== payload.appId) fail("forbidden", "That Spotify link expired. Try connecting again.");
 
     let tokens;

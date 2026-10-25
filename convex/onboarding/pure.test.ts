@@ -63,8 +63,8 @@ describe("signed OAuth state", () => {
   test("round trips, and refuses tampering and expiry", async () => {
     process.env.SPOTIFY_STATE_SECRET = "secret";
     const now = 1_000_000;
-    const state = await signState("user1", "app1", now);
-    expect(await verifyState(state, now + 1000)).toMatchObject({ userId: "user1", appId: "app1" });
+    const state = await signState("user1", "app1", "http://127.0.0.1:3000/spotify/callback", now);
+    expect(await verifyState(state, now + 1000)).toMatchObject({ userId: "user1", appId: "app1", redirectUri: "http://127.0.0.1:3000/spotify/callback" });
     expect(await verifyState(state, now + 16 * 60 * 1000)).toBeNull();
     const [body, sig] = state.split(".");
     const forged = btoa(JSON.stringify({ userId: "user2", appId: "app1", expiresAt: now + 60000, nonce: "n" })).replace(/=+$/, "");
