@@ -139,3 +139,9 @@ Entry format:
 - Why: the stage demo pairs the two team phones on a real event; a rehearsal earlier that night would otherwise block that pair for 7 days and hand each phone a demo partner instead.
 - Replaces: BASELINE — the repeat-pair block for every pair (§6.4, §6.6) and the scope of "Reset demo" (§6.7).
 - Affects: `CLAUDE.md` §6.4, §6.6, §6.7; S17 demo controls.
+
+## 2026-10-24 21:37 PT · azhao8 · No account deletion flow or address for the hackathon
+- Changed: Melos shows no account-deletion control or address. The privacy page stays: it says what we read from Spotify and why, as Spotify's developer policy requires. Disconnecting Spotify still deletes every Spotify-derived record (tokens, snapshot, taste profile, vector).
+- Why: the owner judged account deletion unnecessary for a hackathon build; the Spotify data rules are met by disconnect.
+- Replaces: OPEN — the account deletion workflow and address (§5 S16, §13 open items).
+- Affects: S16 menu and the privacy page copy.
