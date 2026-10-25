@@ -34,7 +34,7 @@ export default function Home() {
 
   return (
     <Screen object="speaker">
-      <ScreenTitle eyebrow="For UC Berkeley students" display lead={<p className="text-ink">Meet students who share your taste and go to shows together.</p>}>
+      <ScreenTitle eyebrow="For UC Berkeley students" inkEyebrow display lead={<p className="text-ink">Meet students who share your taste and go to shows together.</p>}>
         Your Spotify, turned into plans
       </ScreenTitle>
       <div className="flex flex-col gap-2">

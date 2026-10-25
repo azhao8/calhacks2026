@@ -41,7 +41,10 @@ export default function PreferencesPage() {
   // Saved answers, so opening this from the menu starts where the student left off.
   const saved = usePreferences(ready ? undefined : "skip");
   if (gate.status === "loading" || gate.me === null || saved === undefined) return <LoadingScreen object="headphones" />;
-  return <Questions me={gate.me} saved={saved} />;
+  // Next keeps visited pages alive (cacheComponents), so without a key a student coming back after
+  // "Surprise me" would see the answers and spinner they left. Keyed on the saved answers, the
+  // questions start over from what was saved.
+  return <Questions key={JSON.stringify(saved)} me={gate.me} saved={saved} />;
 }
 
 const TOTAL = 5;
@@ -69,6 +72,9 @@ function Questions({ me, saved }: { me: NonNullable<MeView>; saved: PreferencesV
     setError(null);
     try {
       await call();
+      // Clear the spinner even when the saved answers didn't change (Surprise me twice), because
+      // this page stays alive after we leave it.
+      setBusy(null);
       done();
     } catch (e) {
       setError(errorCopy(e, { fallback: "We couldn't save your answers. Try again." }));

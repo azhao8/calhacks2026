@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { ConvexClientProvider } from "./ConvexClientProvider";
+import { DeviceFrame } from "./_components/DeviceFrame";
 import { QueryBoundary } from "./_components/QueryBoundary";
 import { ThemeSync } from "./_components/ThemeSync";
 import { fontVariables } from "./fonts";
@@ -23,12 +24,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" data-theme="berkeley" className={fontVariables}>
       <body>
-        <ConvexClientProvider>
-          <QueryBoundary>
-            <ThemeSync />
-            {children}
-          </QueryBoundary>
-        </ConvexClientProvider>
+        <DeviceFrame>
+          <ConvexClientProvider>
+            <QueryBoundary>
+              <ThemeSync />
+              {children}
+            </QueryBoundary>
+          </ConvexClientProvider>
+        </DeviceFrame>
       </body>
     </html>
   );

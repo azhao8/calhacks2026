@@ -1,0 +1,89 @@
+/*
+  The demo phone (app/_components/DeviceFrame.tsx). In a window at least 640 wide and 640 tall
+  (a laptop or projector), the app sits inside an iPhone 15 Pro with its Dynamic Island. Smaller
+  windows and the admin page get no frame: every wrapper is display: contents.
+
+  Screens size themselves with --app-height and pad for --safe-top and --safe-bottom: the window
+  and the device's safe areas by default, the phone's screen and island inside the frame. The
+  phone's screen is also the containing block for fixed elements, so the Backdrop stays still
+  inside the glass while the content scrolls under it.
+*/
+
+:root {
+  --app-height: 100dvh;
+  --safe-top: env(safe-area-inset-top);
+  --safe-bottom: env(safe-area-inset-bottom);
+}
+
+.device-stage,
+.device-phone,
+.device-screen,
+.device-scroll {
+  display: contents;
+}
+
+.device-island {
+  display: none;
+}
+
+@media (min-width: 640px) and (min-height: 640px) {
+  .device-stage[data-frame="on"] {
+    /* A length, not a percentage, so nested min-heights inside the screen resolve. */
+    --phone-height: min(876px, calc(100dvh - 2 * var(--space-6)));
+    display: grid;
+    min-height: 100dvh;
+    place-items: center;
+    padding: var(--space-6);
+  }
+
+  /* A 393 × 852 screen in a 12px bezel, scaled down to fit a shorter window. */
+  [data-frame="on"] .device-phone {
+    display: block;
+    position: relative;
+    height: var(--phone-height);
+    aspect-ratio: 417 / 876;
+    padding: 12px;
+    border-radius: 60px;
+    /* Hardware black, not a UI color, so it isn't a design token. */
+    background: black;
+    box-shadow:
+      0 0 0 1px var(--line-strong),
+      var(--shadow-card);
+  }
+
+  [data-frame="on"] .device-screen {
+    --app-height: calc(var(--phone-height) - 24px);
+    --safe-top: 54px;
+    --safe-bottom: 34px;
+    display: block;
+    position: relative;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 48px;
+    background: var(--canvas);
+    contain: layout paint;
+  }
+
+  [data-frame="on"] .device-scroll {
+    display: block;
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  /* The Dynamic Island: 126 × 37 on the 393 wide screen, 11 below its top edge. */
+  [data-frame="on"] .device-island {
+    display: block;
+    position: absolute;
+    top: calc(12px + 1.3%);
+    left: 50%;
+    z-index: 10;
+    width: calc((100% - 24px) * 0.32);
+    aspect-ratio: 126 / 37;
+    translate: -50% 0;
+    border-radius: var(--radius-pill);
+    background: black;
+    pointer-events: none;
+  }
+}

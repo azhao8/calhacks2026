@@ -17,7 +17,7 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
 // What Melos reads and why (CLAUDE.md §1 Spotify rules, §8.4). Public, plain, on the dark canvas.
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-120 flex-col gap-8 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
+    <div className="mx-auto flex min-h-(--app-height) w-full max-w-120 flex-col gap-8 px-4 pt-[max(1.5rem,var(--safe-top))] pb-[max(2rem,var(--safe-bottom))]">
       <header className="flex min-h-12 items-center">
         <Link href="/" aria-label="Melos home" className="inline-flex min-h-12 items-center">
           <Wordmark />
