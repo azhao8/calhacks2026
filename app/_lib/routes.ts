@@ -21,6 +21,7 @@ export const ROUTES = {
   menu: "/menu", // S16
   privacy: "/privacy",
   admin: "/admin", // S17
+  drop: "/drop", // Drop
 } as const;
 
 export type Route = (typeof ROUTES)[keyof typeof ROUTES];
@@ -83,6 +84,7 @@ const SIGNED_IN_SCREENS: Partial<Record<Route, (state: Onboarding) => boolean>> 
   [ROUTES.taste]: (s) => s === "needs_review" || s === "ready",
   [ROUTES.week]: (s) => s === "ready",
   [ROUTES.plan]: (s) => s === "ready",
+  [ROUTES.drop]: (s) => s === "ready",
   // Sharing and contacts outlive a Spotify disconnect, which sends onboarding back to Connect.
   [ROUTES.stayInTouch]: (s) => atLeast(s, "needs_spotify_connect"),
   [ROUTES.contacts]: (s) => atLeast(s, "needs_spotify_connect"),
