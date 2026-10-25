@@ -4,7 +4,13 @@ import { v } from "convex/values";
 import { requireAdmin } from "../lib/access";
 import { demoClockOffsetMs } from "../lib/clock";
 import { heldSeats } from "../plans/model";
-import type { actAs as actAsFn, reset as resetFn, seed as seedFn, setClockOffset as setClockOffsetFn } from "../demo/admin";
+import type {
+  actAs as actAsFn,
+  generate as generateFn,
+  reset as resetFn,
+  seed as seedFn,
+  setClockOffset as setClockOffsetFn,
+} from "../demo/admin";
 import type { ReturnsOf } from "../lib/registered";
 
 // S17 demo controls (§6.7). They touch only demo records; the internal functions enforce that too.
@@ -47,6 +53,15 @@ export const seed = mutation({
   handler: async (ctx): Promise<ReturnsOf<typeof seedFn>> => {
     await requireAdmin(ctx);
     return await ctx.runMutation(internal.demo.admin.seed, {});
+  },
+});
+
+// Adds 1 to 50 new demo students with unique names and generated listening data.
+export const generate = mutation({
+  args: { count: v.number() },
+  handler: async (ctx, { count }): Promise<ReturnsOf<typeof generateFn>> => {
+    await requireAdmin(ctx);
+    return await ctx.runMutation(internal.demo.admin.generate, { count });
   },
 });
 

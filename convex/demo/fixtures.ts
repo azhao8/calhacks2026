@@ -93,11 +93,15 @@ export function demoEmail(key: string): string {
   return `${key}@melos.invalid`;
 }
 
-// (510) 555-0101 to (510) 555-0106: all inside the reserved 555-0100 to 555-0199 range.
+// (510) 555-0101 to (510) 555-0106 for the six fixtures; generated students get 555-0107 to 555-0199,
+// chosen from their key. All inside the reserved 555-0100 to 555-0199 range.
 export function demoPhone(key: string): string | null {
   const index = DEMO_FIXTURES.findIndex((fixture) => fixture.key === key);
-  if (index < 0) return null;
-  return `(510) 555-01${String(index + 1).padStart(2, "0")}`;
+  if (index >= 0) return `(510) 555-01${String(index + 1).padStart(2, "0")}`;
+  if (!key.startsWith("gen-")) return null;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  return `(510) 555-01${String(7 + (hash % 93)).padStart(2, "0")}`;
 }
 
 function slug(text: string): string {
