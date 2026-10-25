@@ -415,6 +415,13 @@ export default defineSchema({
     .index("by_drop_state", ["dropId", "state"])
     .index("by_user", ["userId"]),
 
+  // Audience profile jobs in flight, so overlapping backfills don't pay for the same event twice.
+  audienceJobs: defineTable({
+    eventId: v.id("events"),
+    sourceKey: v.string(),
+    queuedAt: v.number(),
+  }).index("by_event", ["eventId"]),
+
   demoSettings: defineTable({
     clockOffsetMs: v.number(),
     updatedAt: v.number(),

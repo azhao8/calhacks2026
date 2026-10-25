@@ -566,3 +566,14 @@ describe("End choosing restarts the 24 hours", () => {
     expect(await plans()).toBe(before);
   });
 });
+
+describe("audience jobs in flight", () => {
+  test("overlapping backfills queue one job per event version, and retry after an hour", async () => {
+    const { t } = await world();
+    await makeEvent(t, { startsAt: START });
+    expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(1);
+    expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(0);
+    vi.advanceTimersByTime(HOUR + 1000);
+    expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(1);
+  });
+});
