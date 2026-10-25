@@ -169,9 +169,12 @@ describe("the drop cycle", () => {
 
     await advance(t, DROP.choosingMs + 1000);
     expect((await admin.query(api.admin.drops.status, {})).drop?.status).toBe("confirming");
-    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "accepted", endsAt: drop.matchAt });
+    // Choosing ended: the 24 hours to accept run from then.
+    const confirming = (await admin.query(api.admin.drops.status, {})).drop!;
+    expect(confirming.matchAt).toBeGreaterThanOrEqual(drop.matchAt);
+    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "accepted", phase: "confirming", endsAt: confirming.matchAt });
 
-    await advance(t, DROP.confirmMs);
+    await advance(t, confirming.matchAt - Date.now() + 1000);
     const status = await admin.query(api.admin.drops.status, {});
     expect(status.drop?.status).toBe("matched");
     const view2 = await asUser(t, sam).query(api.drops.mine, {});
@@ -206,7 +209,7 @@ describe("the drop cycle", () => {
     const text = JSON.stringify(view);
     expect(text).not.toContain("Show");
     expect(text).not.toContain("UC Theatre");
-    expect(Object.keys(view).sort()).toEqual(["card", "endsAt", "kind"]);
+    expect(Object.keys(view).sort()).toEqual(["card", "endsAt", "kind", "phase"]);
     if (view.kind === "choosing") expect(Object.keys(view.card).sort()).toEqual(["price", "startsAt"]);
 
     // A plan Eve isn't in is forbidden to her.
@@ -451,7 +454,7 @@ describe("quiet drops", () => {
     await advance(t, 1000);
     await asUser(t, sam).mutation(api.drops.seeMore, {});
     await asUser(t, sam).mutation(api.drops.accept, {});
-    await advance(t, DROP.choosingMs + DROP.confirmMs);
+    await advance(t, DROP.choosingMs + DROP.confirmMs + 4 * HOUR);
     expect((await entryOf(t, sam))!.state).toBe("matched");
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
@@ -525,5 +528,41 @@ describe("review fixes", () => {
     if (view.kind !== "reveal") throw new Error("expected a reveal");
     const { steps } = await asUser(t, ids[0]).query(api.drops.reveal, { meetupId: view.meetupId });
     expect(steps.find((s) => s.kind === "song")).toEqual({ kind: "song", title: "Not", artist: "Big Thief" });
+  });
+});
+
+describe("End choosing restarts the 24 hours", () => {
+  test("matchAt moves to End choosing + 24h, the stale job no-ops, and the phase shows", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: "d", email: "d@demo.invalid" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    await startDrop(t, admin);
+    const original = (await admin.query(api.admin.drops.status, {})).drop!;
+    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "choosing", phase: "choosing" });
+    await asUser(t, sam).mutation(api.drops.seeMore, {});
+    await asUser(t, sam).mutation(api.drops.accept, {});
+    await advance(t, 10 * 60_000);
+    const endedAt = Date.now();
+    await admin.mutation(api.admin.drops.endChoosing, {});
+    await advance(t, 1000);
+    const moved = (await admin.query(api.admin.drops.status, {})).drop!;
+    expect(moved.status).toBe("confirming");
+    expect(moved.matchAt).toBeGreaterThanOrEqual(endedAt + DROP.confirmMs);
+    expect(moved.matchAt).toBeLessThan(endedAt + DROP.confirmMs + 2000);
+    expect(moved.choosingEndsAt).toBeLessThan(original.choosingEndsAt);
+    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "accepted", phase: "confirming", endsAt: moved.matchAt, matchAt: moved.matchAt });
+    // A scheduled match run before matchAt does nothing.
+    await t.mutation(internal.drops.cycle.match, { dropId: (await entryOf(t, sam))!.dropId });
+    expect((await admin.query(api.admin.drops.status, {})).drop!.status).toBe("confirming");
+    expect((await entryOf(t, sam))!.state).toBe("accepted");
+    await advance(t, moved.matchAt - Date.now() + 1000);
+    expect((await admin.query(api.admin.drops.status, {})).drop!.status).toBe("matched");
+    expect((await entryOf(t, sam))!.state).toBe("matched");
+    // The original job at start + 2h + 24h then finds the drop matched and does nothing.
+    const plans = async () => t.run(async (ctx) => (await ctx.db.query("meetups").collect()).length);
+    const before = await plans();
+    await advance(t, original.matchAt - Date.now() + 1000);
+    expect(await plans()).toBe(before);
   });
 });

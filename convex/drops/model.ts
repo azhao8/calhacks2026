@@ -15,6 +15,10 @@ function endsAt(drop: Drop): number {
   return drop.status === "choosing" ? drop.choosingEndsAt : drop.matchAt;
 }
 
+function phase(drop: Drop): "choosing" | "confirming" {
+  return drop.status === "choosing" ? "choosing" : "confirming";
+}
+
 async function eventDetails(db: DatabaseReader, eventId: Id<"events">) {
   const event = await db.get(eventId);
   if (event === null) return null;
@@ -54,22 +58,22 @@ export async function dropView(db: DatabaseReader, userId: Id<"users">): Promise
   switch (entry.state) {
     case "choosing": {
       const event = await db.get(entry.choices[entry.index]);
-      if (event === null) return { kind: "done", endsAt: endsAt(drop) };
-      return { kind: "choosing", endsAt: endsAt(drop), card: { startsAt: event.startsAt, price: eventPriceLabel(event) } };
+      if (event === null) return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
+      return { kind: "choosing", phase: phase(drop), endsAt: endsAt(drop), card: { startsAt: event.startsAt, price: eventPriceLabel(event) } };
     }
     case "deciding": {
       const event = await eventDetails(db, entry.eventId!);
-      if (event === null) return { kind: "done", endsAt: endsAt(drop) };
-      return { kind: "deciding", endsAt: endsAt(drop), acceptBy: drop.matchAt, event };
+      if (event === null) return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
+      return { kind: "deciding", phase: phase(drop), endsAt: endsAt(drop), acceptBy: drop.matchAt, event };
     }
     case "accepted": {
       const event = await eventDetails(db, entry.eventId!);
-      if (event === null) return { kind: "done", endsAt: endsAt(drop) };
-      return { kind: "accepted", endsAt: endsAt(drop), matchAt: drop.matchAt, event };
+      if (event === null) return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
+      return { kind: "accepted", phase: phase(drop), endsAt: endsAt(drop), matchAt: drop.matchAt, event };
     }
     case "passed":
     case "declined":
-      return { kind: "done", endsAt: endsAt(drop) };
+      return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
     default:
       return { kind: "none" };
   }
