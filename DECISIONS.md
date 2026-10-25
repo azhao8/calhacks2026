@@ -121,3 +121,9 @@ Entry format:
 - Why: isolated local backends are blocked in cloud sessions, the owner works from a phone, and a branch build must never push branch code to the production deployment.
 - Replaces: BASELINE — one local Convex deployment per worktree (the 17:05 PT entry). Implements `CLAUDE.md` §8.1 "Preview deploys are off".
 - Affects: `README.md`, `docs/setup.md`, `docs/stage1-briefs.md`, `vercel.json`; no screens or data contracts.
+
+## 2026-10-24 19:18 PT · azhao8 · Spotify redirect addresses come from config; shared pools and guard
+- Changed: `spotifyApps` doesn't store a `redirectUri`. Every app registers the same two addresses (§8.9), so the server builds them from config (`SITE` plus `SPOTIFY.callbackPath`) and accepts only those two, bound into the signed OAuth state. Every stream uses one Workpool client per pool from `convex/lib/pools.ts` (the email pool runs 2 at a time for Resend's free-plan rate) and the shared `requireVerifiedUser` guard in `convex/lib/access.ts`. The `.edu` check normalizes Unicode (NFKC) first and accepts printable ASCII only, so the address that passes is exactly the one stored and sent to.
+- Why: one source for the redirect addresses; two clients for the same pool would fight over its settings; and `@auth/core` below 0.41.3 had a critical advisory about validating email before Unicode normalization.
+- Replaces: BASELINE — `spotifyApps.redirectUri` in §8.5.
+- Affects: S03, S07; `CLAUDE.md` §8.5 `spotifyApps`, §8.9; `convex/lib/`.
