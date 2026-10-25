@@ -551,6 +551,35 @@ const flows = {
     return out;
   },
 
+  // The loading equalizer: each bar has its own delay and pace, so the bars aren't in step.
+  async "state-loading-equalizer"(browser) {
+    const out = {};
+    for (const motion of ["no-preference", "reduce"]) {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 }, reducedMotion: motion });
+      const mock = new MockConvex({ data: visitor({ "me:get": MockConvex.hold }) });
+      await mock.attach(context);
+      const page = await context.newPage();
+      await page.goto(BASE + "/");
+      await wait(page, 1300);
+      const bars = await page.evaluate(() =>
+        [...document.querySelectorAll('[aria-busy="true"] [aria-hidden="true"] > span')].map((el) => {
+          const s = getComputedStyle(el);
+          return { delay: s.animationDelay, duration: s.animationDuration, height: Math.round(el.getBoundingClientRect().height), running: el.getAnimations().some((a) => a.playState === "running") };
+        }),
+      );
+      out[motion] = bars;
+      await context.close();
+    }
+    const moving = out["no-preference"];
+    out.pass =
+      moving.length === 4 &&
+      new Set(moving.map((b) => b.delay)).size === 4 &&
+      new Set(moving.map((b) => b.duration)).size === 4 &&
+      new Set(moving.map((b) => b.height)).size > 1 &&
+      out.reduce.every((b) => !b.running);
+    return out;
+  },
+
   // Disconnect Spotify from the menu: what happens next, and is there a way to reconnect?
   async "state-disconnect"(browser) {
     const { context, page, mock } = await open(browser, ready());

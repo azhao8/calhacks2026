@@ -13,6 +13,13 @@ const DEFAULTS: Record<StateKind, { title: string; body: string; action?: string
 
 // Loading, empty, error and offline states in one voice (design/components/StateView).
 // Loading shows equalizer bars that hold still under reduced motion.
+const EQ_BARS = [
+  { delay: "0s", duration: "0.9s" },
+  { delay: "-0.3s", duration: "1.1s" },
+  { delay: "-0.6s", duration: "1s" },
+  { delay: "-0.15s", duration: "1.2s" },
+];
+
 export function StateView({
   kind,
   title,
@@ -52,14 +59,13 @@ export function StateView({
     >
       {kind === "loading" ? (
         <div aria-hidden="true" className="flex h-8 items-end gap-1.25">
-          {["[animation-delay:0s]", "[animation-delay:-.3s]", "[animation-delay:-.6s]", "[animation-delay:-.15s]"].map((delay, i) => (
+          {/* Each bar has its own delay and pace, so they read as an equalizer rather than moving
+              together. Inline, because the animate-eq shorthand would reset a class's delay to 0. */}
+          {EQ_BARS.map((bar, i) => (
             <span
-              key={delay}
-              className={cx(
-                "w-1.5 rounded-pill bg-accent motion-safe:animate-eq",
-                i % 2 === 0 ? "motion-reduce:h-full" : "motion-reduce:h-[60%]",
-                delay,
-              )}
+              key={i}
+              style={{ animationDelay: bar.delay, animationDuration: bar.duration }}
+              className={cx("w-1.5 rounded-pill bg-accent motion-safe:animate-eq", i % 2 === 0 ? "motion-reduce:h-full" : "motion-reduce:h-[60%]")}
             />
           ))}
         </div>
