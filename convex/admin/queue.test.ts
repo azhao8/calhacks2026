@@ -294,3 +294,19 @@ test("200 requests: the page gets one filtered, searchable page at a time", asyn
   expect(search.rows.map((row) => row.spotifyEmail)).toEqual(["s199@gmail.com"]);
   expect((await admin.query(api.admin.queue.list, { search: "S42@GMAIL" })).total).toBe(1);
 });
+
+test("connect refuses before Spotify consent when the app has no secret, and works once one is saved", async () => {
+  const { t, team, admin } = await setup();
+  vi.stubEnv("SPOTIFY_STATE_SECRET", "test-state-secret");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const appId = await addApp(t, team, "melos-nosecret");
+  const { userId } = await request(t, { email: "n@berkeley.edu", appId, status: "allowlisted", onboarding: "needs_spotify_connect" });
+  const redirectUri = "http://127.0.0.1:3000/spotify/callback";
+  await expect(as(t, userId).action(api.spotify.connectUrl, { redirectUri })).rejects.toThrow(/retryable/);
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining("melos-nosecret has no client secret"));
+
+  await admin.mutation(api.admin.queue.setAppSecret, { appId, secret: SECRET });
+  const url = new URL(await as(t, userId).action(api.spotify.connectUrl, { redirectUri }));
+  expect(url.searchParams.get("client_id")).toBe("client-melos-nosecret");
+  expect(url.toString()).not.toContain(SECRET);
+});

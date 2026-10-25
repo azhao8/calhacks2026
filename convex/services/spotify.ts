@@ -33,6 +33,10 @@ export function clientSecret(app: { label: string; secret: string | null }): str
   return secret;
 }
 
+export function hasClientSecret(app: { label: string; secret: string | null }): boolean {
+  return Boolean(app.secret || process.env[SPOTIFY.secretEnvName(app.label)]);
+}
+
 // "Check app": Spotify's client credentials grant. It touches no user and needs no allow-list,
 // so it only tells us whether Spotify accepts this client ID and secret pair.
 export async function checkClientCredentials(clientId: string, secret: string): Promise<"accepted" | "rejected"> {

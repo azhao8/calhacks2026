@@ -8,6 +8,7 @@ import {
   authorizeUrl,
   currentUserId,
   exchangeCode,
+  hasClientSecret,
   SpotifyAuthError,
   SpotifyRefusedError,
 } from "./services/spotify";
@@ -33,6 +34,11 @@ export const connectUrl = action({
     if (!allowedRedirect(redirectUri)) fail("validation_failed", "Unknown Spotify callback address.");
     const target: ConnectContext = await ctx.runQuery(internal.onboarding.connect.connectContext, { userId });
     if (!target.ok) fail(target.code);
+    // Without a client secret the token exchange can't work, so don't send the student through consent.
+    if (!hasClientSecret(target)) {
+      console.error(`Spotify app ${target.label} has no client secret; add it on the admin page`);
+      fail("retryable", "Spotify isn't set up for your account yet. We've let the team know. Try again later.");
+    }
     const state = await signState(userId, target.appId, redirectUri, Date.now());
     return authorizeUrl({ clientId: target.clientId, redirectUri, state });
   },
@@ -66,6 +72,7 @@ export const completeConnect = action({
         await markRefused(ctx, userId);
         fail("spotify_refused", "Spotify hasn't let us in yet.");
       }
+      console.error(`Spotify connect failed for app ${target.label}:`, error);
       if (error instanceof SpotifyAuthError) fail("validation_failed", "Spotify didn't accept that sign-in. Try again.");
       fail("retryable", "We couldn't reach Spotify. Try again.");
     }
