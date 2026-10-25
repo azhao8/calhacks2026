@@ -206,7 +206,7 @@ export const open = internalMutation({
       created += 1;
       if (!user.isDemo) notify.push(user._id);
     }
-    await sendToReal(ctx, notify, EMAILS.open.subject, EMAILS.open.text);
+    if (!drop.quiet) await sendToReal(ctx, notify, EMAILS.open.subject, EMAILS.open.text);
     return created;
   },
 });
@@ -259,7 +259,7 @@ export async function matchFor(ctx: MutationCtx, dropId: Id<"drops">): Promise<v
   }
   const matched = await matchDrop(ctx, drop._id);
   await ctx.db.patch(drop._id, { status: "matched", matchedAt: now, matchAt: Math.min(drop.matchAt, now) });
-  await sendToReal(ctx, matched, EMAILS.matched.subject, EMAILS.matched.text);
+  if (!drop.quiet) await sendToReal(ctx, matched, EMAILS.matched.subject, EMAILS.matched.text);
 }
 
 export const match = internalMutation({
@@ -272,7 +272,7 @@ export const match = internalMutation({
 });
 
 // Admin: Start drop. Inserts the drop and schedules every phase; entries are created right after.
-export async function startDrop(ctx: MutationCtx, by: string): Promise<Id<"drops">> {
+export async function startDrop(ctx: MutationCtx, by: string, quiet = false): Promise<Id<"drops">> {
   if (!dropsEnabled()) fail("validation_failed", "Drops are turned off (DROP_ENABLED=false).");
   if ((await openDrop(ctx.db)) !== null) fail("validation_failed", "A drop is already open.");
   const now = Date.now();
@@ -284,6 +284,7 @@ export async function startDrop(ctx: MutationCtx, by: string): Promise<Id<"drops
     choosingEndsAt,
     matchAt,
     startedBy: by,
+    ...(quiet ? { quiet: true } : {}),
   });
   await ctx.scheduler.runAfter(0, internal.drops.cycle.open, { dropId });
   await ctx.scheduler.runAt(choosingEndsAt, internal.drops.cycle.endChoosing, { dropId });
@@ -299,9 +300,10 @@ export async function requestEndChoosing(ctx: MutationCtx): Promise<void> {
 }
 
 // Admin: Match now. Closes choosing, ends the 24 hours, and matches at once.
-export async function requestMatchNow(ctx: MutationCtx): Promise<void> {
+export async function requestMatchNow(ctx: MutationCtx, quiet = false): Promise<void> {
   const drop = await openDrop(ctx.db);
   if (drop === null) fail("validation_failed", "No drop is open right now.");
+  if (quiet && !drop.quiet) await ctx.db.patch(drop._id, { quiet: true });
   await ctx.scheduler.runAfter(0, internal.drops.cycle.match, { dropId: drop._id });
 }
 
