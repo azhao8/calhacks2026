@@ -163,3 +163,9 @@ Entry format:
 - Why: the owner's decision: this is a hackathon demo build, and the owner asked to remove the emergency content from the app.
 - Replaces: the S13 "Need help?" (verified UC Berkeley safety resources and emergency information) and the S16 "safety resources" text in `CLAUDE.md` §5, and the open item for verified safety resources in §13.
 - Affects: S13, S16; `app/plan/page.tsx`, `app/menu/page.tsx`.
+
+## 2026-10-25 01:15 PT · azhao8 · The team can delete students and wipe data from the admin page
+- Changed: S17 gains a Students tab that lists every account (real, demo, team) and can permanently delete one student with all their data (seats are given up first so a partner's plan refills; sign-in records, Spotify data, taste, asks, seats, shares, help notes and matcher decisions go too; never the signed-in admin). A Danger zone tab can delete all students, all events (with their asks, plans, seats, shares and matcher logs), or everything, each only after typing an exact phrase that the server also checks. Team accounts, Spotify apps and secrets, schools, venues and meeting spots are always kept.
+- Why: the owner asked for it, for this hackathon demo build, to remove test accounts and reset the app from the admin page.
+- Replaces: CONFIRMED (owner) — the §6.7 rule that only "Reset demo" touches data and never deletes a real student's records; deletion is now an explicit, confirmed team action. Also OPEN — account deletion (§5 S16), on the team side only; students still have no self-service deletion.
+- Affects: S17; every table that holds student or event data; `convex/admin/students.ts`.

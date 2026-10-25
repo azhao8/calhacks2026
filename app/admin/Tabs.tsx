@@ -12,7 +12,7 @@ import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, S
 import { eventFormValues, eventPatch, parseLatLng, type EventFormValues } from "./format";
 import type { StudentFocus } from "./Spotify";
 
-export type TabKey = "action" | "spotify" | "events" | "matching" | "help" | "demo" | "funnel";
+export type TabKey = "action" | "spotify" | "events" | "matching" | "help" | "demo" | "funnel" | "students" | "danger";
 
 // ---- Needs action ----
 

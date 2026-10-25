@@ -8,17 +8,20 @@ import { Button } from "@/components/Button";
 import { cx } from "@/components/cx";
 import { Icon } from "@/components/Icon";
 import { SpotifyTab, type StudentFocus } from "./Spotify";
+import { DangerTab, StudentsTab } from "./Students";
 import { DemoTab, EventsTab, FunnelList, FunnelTab, HelpTab, MatchingTab, NeedsActionTab, type TabKey } from "./Tabs";
 
 // The signed-in S17 page: a sticky header with who is signed in, tabs with live counts, one tab at a time.
 const TABS: { key: TabKey; label: string }[] = [
   { key: "action", label: "Needs action" },
+  { key: "students", label: "Students" },
   { key: "spotify", label: "Spotify" },
   { key: "events", label: "Events" },
   { key: "matching", label: "Matching" },
   { key: "help", label: "Help" },
   { key: "demo", label: "Demo" },
   { key: "funnel", label: "Funnel" },
+  { key: "danger", label: "Danger zone" },
 ];
 const isTab = (value: string | null): value is TabKey => TABS.some((tab) => tab.key === value);
 
@@ -97,6 +100,8 @@ export function Admin({ email }: { email: string | null }) {
         {tab === "help" ? <HelpTab /> : null}
         {tab === "demo" ? <DemoTab /> : null}
         {tab === "funnel" ? <FunnelTab onStage={() => setStage(true)} /> : null}
+        {tab === "students" ? <StudentsTab /> : null}
+        {tab === "danger" ? <DangerTab /> : null}
       </main>
     </div>
   );

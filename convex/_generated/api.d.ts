@@ -13,6 +13,7 @@ import type * as admin_demo from "../admin/demo.js";
 import type * as admin_events from "../admin/events.js";
 import type * as admin_matching from "../admin/matching.js";
 import type * as admin_queue from "../admin/queue.js";
+import type * as admin_students from "../admin/students.js";
 import type * as ai_hooks from "../ai/hooks.js";
 import type * as ai_labels from "../ai/labels.js";
 import type * as ai_taste from "../ai/taste.js";
@@ -97,6 +98,7 @@ declare const fullApi: ApiFromModules<{
   "admin/events": typeof admin_events;
   "admin/matching": typeof admin_matching;
   "admin/queue": typeof admin_queue;
+  "admin/students": typeof admin_students;
   "ai/hooks": typeof ai_hooks;
   "ai/labels": typeof ai_labels;
   "ai/taste": typeof ai_taste;
