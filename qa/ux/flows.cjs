@@ -538,8 +538,13 @@ const flows = {
       await wait(page, 1500);
       await page.screenshot({ path: `${SHOTS}/spotify-email-saved-from${from.replace("/", "-")}.png` });
       const after = await text(page);
-      out[from] = { prefill, landed: at(page), showsNew: after.includes("sam.spotify@gmail.com"), saved: /Saved\./.test(after) };
-      out[from].pass = prefill === "sam@berkeley.edu" && out[from].landed === "/waiting" && out[from].showsNew && out[from].saved;
+      const landed = at(page);
+      // Change again: the kept-alive form must be ready to save, not stuck on its spinner.
+      await link(page, "Change the Spotify email").click();
+      await wait(page);
+      const saveReadyAgain = await btn(page, "Save", true).isEnabled();
+      out[from] = { prefill, landed, showsNew: after.includes("sam.spotify@gmail.com"), saved: /Saved\./.test(after), saveReadyAgain };
+      out[from].pass = prefill === "sam@berkeley.edu" && out[from].landed === "/waiting" && out[from].showsNew && out[from].saved && saveReadyAgain;
       await context.close();
     }
     out.pass = out.newStudentField === "" && out.emptyError && out.sameEmail.pass && out.sameEmailFromWaiting.pass && out["/waiting"].pass && out["/connect"].pass;

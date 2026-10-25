@@ -65,6 +65,9 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
     setSaving(true);
     try {
       await save({ firstName: name.value, spotifyEmail: mail.value });
+      // Next keeps this page alive, and Change on Waiting opens it again: clear the spinner so Save
+      // works on the next visit.
+      setSaving(false);
       if (firstTime) {
         router.replace(ROUTES.preferences);
       } else {
