@@ -23,6 +23,9 @@ export async function createOrUpdateUser(
   const raw = typeof args.profile.email === "string" ? args.profile.email : "";
   const email = normalizeEmail(raw);
   if (!isEduEmail(email)) fail("not_edu_email", "Melos is only open to students with a .edu email right now.");
+  // Convex Auth keys the account and the failed-try limit on the raw address, so only the normalized form
+  // may request a code; otherwise case variants of one address would each get their own 10 tries.
+  if (args.type === "email" && raw !== email) fail("validation_failed", "Enter your email in lowercase, without spaces.");
 
   const userId = args.existingUserId ?? (await userByEmail(ctx, email));
 

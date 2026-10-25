@@ -71,7 +71,7 @@ describe("sign-in with a .edu email code", () => {
     const t = await setup();
     const started = await t.action(api.auth.signIn, {
       provider: "resend-otp",
-      params: { email: "Alex@EECS.Berkeley.edu" },
+      params: { email: "alex@eecs.berkeley.edu" },
     });
     expect(started.started).toBe(true);
     expect(sent).toHaveLength(1);
@@ -92,7 +92,7 @@ describe("sign-in with a .edu email code", () => {
 
     const result = await t.action(api.auth.signIn, {
       provider: "resend-otp",
-      params: { email: "Alex@EECS.Berkeley.edu", code },
+      params: { email: "alex@eecs.berkeley.edu", code },
     });
     expect(result.tokens).not.toBeNull();
     await t.run(async (ctx) => {
@@ -109,8 +109,13 @@ describe("sign-in with a .edu email code", () => {
 
   test("the address stored and emailed is exactly the normalized one that was validated", async () => {
     const t = await setup();
-    // Fullwidth letters fold to ASCII under NFKC before the check.
-    await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: " Alex@Berkeley.\uFF45\uFF44\uFF55 " } });
+    // Only the normalized form may request a code (the UI normalizes first). Fullwidth letters, case, and
+    // spaces are refused with nothing stored or sent, so one inbox can't collect several accounts and try limits.
+    expect(
+      await errorCode(t.action(api.auth.signIn, { provider: "resend-otp", params: { email: " Alex@Berkeley.\uFF45\uFF44\uFF55 " } })),
+    ).toBe("validation_failed");
+    expect(sent).toHaveLength(0);
+    await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "alex@berkeley.edu" } });
     expect(sent.map((m) => m.to)).toEqual(["alex@berkeley.edu"]);
     await t.run(async (ctx) => {
       const [user] = await ctx.db.query("users").collect();
