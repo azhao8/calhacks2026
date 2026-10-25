@@ -265,6 +265,41 @@ describe("import", () => {
   });
 });
 
+describe("review regressions", () => {
+  test("team-edited fields stay locked, and other fields still update", async () => {
+    const t = await setup();
+    await importRun(t, "l1", [scoutItem()]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    await t.mutation(internal.events.admin.edit, { eventId: event.eventId, patch: { ticketUrl: "https://www.ticketmaster.com/real", priceMin: 20, priceMax: 20 } });
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "l2", [scoutItem({ performers: ["Big Thief", "Opener"], price: { min: 40, max: 40, source: "listing", sourceUrl: null } })]);
+    const [after] = await t.query(internal.events.admin.list, {});
+    expect(after).toMatchObject({ ticketUrl: "https://www.ticketmaster.com/real", priceMin: 20, priceMax: 20, performers: ["Big Thief", "Opener"] });
+    expect(after.teamFields.sort()).toEqual(["priceMax", "priceMin", "ticketUrl"]);
+  });
+
+  test("a venue the scout didn't place gets the main entrance, not the agent's spot", async () => {
+    const t = await setup();
+    geocode.searchPlaces.mockResolvedValue([FOX]);
+    await importRun(t, "s1", [scoutItem({ venue: { name: "Fox Theater", address: "Oakland, CA", osmId: null, lat: null, lng: null } })]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    expect(event.meetingSpot?.name).toBe("Main entrance of Fox Theater");
+    expect(event.meetingSpot?.howToFind).toBe("Out front of the main entrance of Fox Theater on 1807 Telegraph Ave.");
+  });
+
+  test("a venue missing from the map is looked up once, not on every run", async () => {
+    const t = await setup();
+    const unknown = (title: string) =>
+      scoutItem({ title, sourceUrl: `https://x.test/${title}`, venue: { name: "Nowhere Hall", address: "Berkeley, CA", osmId: null, lat: null, lng: null } });
+    await importRun(t, "g1", [unknown("A"), unknown("B")]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "g2", [unknown("C")]);
+    expect(geocode.searchPlaces).toHaveBeenCalledTimes(1);
+    const rows = await t.query(internal.events.admin.list, { status: "rejected" });
+    expect(rows.map((r) => r.rejectReason)).toEqual(["Venue not found on the map", "Venue not found on the map", "Venue not found on the map"]);
+  });
+});
+
 describe("venues and meeting spots", () => {
   async function resolve(t: Awaited<ReturnType<typeof setup>>, args: Record<string, unknown>) {
     return await t.mutation(internal.events.venues.resolve, {

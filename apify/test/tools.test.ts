@@ -5,6 +5,8 @@ import type { SaveEventInput } from "../src/schema.js";
 import { selectSources } from "../src/sources.js";
 import { htmlToText, plainToText } from "../src/text.js";
 import { checkEvent, RunState } from "../src/tools.js";
+import { correctPacificOffset } from "../src/time.js";
+import { saveEventInput } from "../src/schema.js";
 import { FOX_SEARCH, stubWebFetch } from "./helpers.js";
 
 const window = { from: Date.parse("2026-10-25T00:00:00-07:00"), to: Date.parse("2026-11-08T00:00:00-08:00") };
@@ -15,7 +17,7 @@ function event(overrides: Partial<SaveEventInput> = {}): SaveEventInput {
     kind: "concert",
     startsAt: "2026-10-30T20:00:00-07:00",
     venue: { name: "Fox Theater", address: "Oakland", osmId: "way/222", lat: 37.808, lng: -122.2703 },
-    price: { min: 45, max: 89, source: "listing", sourceUrl: null },
+    price: { min: 45, max: 89, source: "listing", sourceUrl: null, checked: ["listing"] },
     ticketUrl: "https://tickets.test/k",
     freeEntryNote: null,
     performers: [],
@@ -32,6 +34,8 @@ function runWithFox(): RunState {
   run.confirmedPlaces.set("way/222", { osmId: "way/222", name: "Fox Theater", address: "", lat: 37.808, lng: -122.2703, category: "" });
   run.confirmedPlaces.set("node/9", { osmId: "node/9", name: "Fox Theater marquee", address: "", lat: 37.8082, lng: -122.2702, category: "" });
   run.confirmedPlaces.set("node/10", { osmId: "node/10", name: "Lake Merritt", address: "", lat: 37.8015, lng: -122.2573, category: "" });
+  run.confirmedPlaces.set("node/11", { osmId: "node/11", name: "Somewhere far", address: "", lat: 37.83, lng: -122.29, category: "railway/station" });
+  run.confirmedPlaces.set("node/12", { osmId: "node/12", name: "The Bar", address: "", lat: 37.8079, lng: -122.2705, category: "amenity/bar" });
   return run;
 }
 
@@ -49,9 +53,9 @@ describe("save_event checks", () => {
 
   test("prices are found with a source or explicitly not found", () => {
     const run = runWithFox();
-    expect(checkEvent(event({ price: { min: 10, max: null, source: "not_found", sourceUrl: null } }), { run, window })).toMatch(/not_found/);
-    expect(checkEvent(event({ price: { min: null, max: null, source: "listing", sourceUrl: null } }), { run, window })).toMatch(/needs min or max/);
-    expect(checkEvent(event({ price: { min: null, max: null, source: "not_found", sourceUrl: null } }), { run, window })).toBeNull();
+    expect(checkEvent(event({ price: { min: 10, max: null, source: "not_found", sourceUrl: null, checked: [] } }), { run, window })).toMatch(/not_found/);
+    expect(checkEvent(event({ price: { min: null, max: null, source: "listing", sourceUrl: null, checked: [] } }), { run, window })).toMatch(/needs min or max/);
+    expect(checkEvent(event({ price: { min: null, max: null, source: "not_found", sourceUrl: null, checked: ["listing", "ticket_page", "search"] } }), { run, window })).toBeNull();
   });
 
   test("venues and spots must come from the map", () => {
@@ -63,6 +67,24 @@ describe("save_event checks", () => {
     // Lake Merritt is confirmed but about 1.3 km away.
     expect(checkEvent(event({ meetingSpot: { ...spot, lat: 37.8015, lng: -122.2573 } }), { run, window })).toMatch(/within 250 m/);
     expect(checkEvent(event({ meetingSpot: { ...spot, lat: 37.8015, lng: -122.2573, isTransitStop: true, travelMinutes: 12 } }), { run, window })).toBeNull();
+    // A "transit stop" more than 1.5 km away, and a bar, are refused.
+    expect(checkEvent(event({ meetingSpot: { ...spot, lat: 37.83, lng: -122.29, isTransitStop: true, travelMinutes: 5 } }), { run, window })).toMatch(/within 1500 m/);
+    expect(checkEvent(event({ meetingSpot: { ...spot, lat: 37.8079, lng: -122.2705 } }), { run, window })).toMatch(/bar, pub/);
+  });
+});
+
+describe("start times", () => {
+  test("a summer offset after the November clock change is corrected", () => {
+    expect(correctPacificOffset("2026-11-05T20:00:00-07:00")).toBe("2026-11-05T20:00:00-08:00");
+    expect(correctPacificOffset("2026-10-29T20:00-08:00")).toBe("2026-10-29T20:00:00-07:00");
+    expect(correctPacificOffset("2026-11-21T20:30:00Z")).toBe("2026-11-21T20:30:00Z");
+    expect(correctPacificOffset("2026-11-05T20:00:00")).toBeNull();
+    expect(checkEvent(event({ startsAt: "2026-11-05T20:00:00-07:00" }), { run: runWithFox(), window })).toBeNull();
+  });
+
+  test("ticket links must be http or https", () => {
+    expect(saveEventInput.safeParse({ ...event(), ticketUrl: "javascript:alert(1)" }).success).toBe(false);
+    expect(saveEventInput.safeParse(event()).success).toBe(true);
   });
 });
 

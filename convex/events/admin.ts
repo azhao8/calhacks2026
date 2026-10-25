@@ -7,7 +7,8 @@ import { directionsUrl, metersBetween } from "../lib/format";
 import { fail } from "../lib/errors";
 import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
-import { CATALOG, PULLED_REASON } from "./config";
+import { CATALOG, PULLED_REASON, STICKY_REASONS } from "./config";
+import { cleanNote, isHttpUrl } from "./checks";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
 
@@ -73,6 +74,7 @@ const vListedEvent = v.object({
   missingSince: v.union(v.number(), v.null()),
   flaggedMissing: v.boolean(),
   pulled: v.boolean(),
+  teamFields: v.array(v.string()),
 });
 
 // Published, rejected (with reasons), and flagged-missing events, soonest first.
@@ -87,11 +89,6 @@ export const list = internalQuery({
   handler: async (ctx, { status, flaggedOnly, includePast, limit }) => {
     const now = Date.now();
     const statuses = status ? [status] : (["published", "rejected", "scraped"] as const);
-    const latestImport = await ctx.db
-      .query("eventImports")
-      .order("desc")
-      .filter((q) => q.eq(q.field("status"), "done"))
-      .first();
     const out = [];
     for (const s of statuses) {
       const rows = await ctx.db
@@ -99,12 +96,8 @@ export const list = internalQuery({
         .withIndex("by_status_startsAt", (q) => (includePast ? q.eq("status", s) : q.eq("status", s).gt("startsAt", now)))
         .take(500);
       for (const event of rows) {
-        // Missing from two runs in a row: it was already missing before the latest run.
-        const flagged =
-          event.status === "published" &&
-          event.missingSince !== undefined &&
-          latestImport !== null &&
-          event.missingSince < latestImport.receivedAt;
+        // Missing from two runs in a row where its source ran.
+        const flagged = event.status === "published" && (event.missedRuns ?? 0) >= CATALOG.missingRunsToFlag;
         if (flaggedOnly && !flagged) continue;
         const venue = event.venueId ? await ctx.db.get(event.venueId) : null;
         const spotId = event.meetingSpotId ?? venue?.meetingSpotId;
@@ -136,6 +129,7 @@ export const list = internalQuery({
           missingSince: event.missingSince ?? null,
           flaggedMissing: flagged,
           pulled: event.rejectReason === PULLED_REASON,
+          teamFields: event.teamFields ?? [],
         });
       }
     }
@@ -158,14 +152,16 @@ export const pull = internalMutation({
   },
 });
 
-// Undo a pull: the event is published again.
+// Undo a pull (or a 21+ rejection the team checked by hand): the event is published again.
 export const restore = internalMutation({
   args: { eventId: v.id("events") },
   returns: v.null(),
   handler: async (ctx, { eventId }) => {
     const event = await ctx.db.get(eventId);
     if (event === null) fail("validation_failed", "No such event");
-    if (event.rejectReason !== PULLED_REASON) fail("validation_failed", "Only a pulled event can be restored");
+    if (event.rejectReason === undefined || !STICKY_REASONS.has(event.rejectReason)) {
+      fail("validation_failed", "Only a pulled or 21+ event can be restored");
+    }
     await ctx.db.patch(eventId, { status: "published", rejectReason: undefined });
     return null;
   },
@@ -206,15 +202,19 @@ export const edit = internalMutation({
     const event = await ctx.db.get(eventId);
     if (event === null) fail("validation_failed", "No such event");
     const { ticketUrl, freeEntryNote, ...rest } = patch;
+    if (ticketUrl && !isHttpUrl(ticketUrl)) fail("validation_failed", "The ticket link must be an http or https URL");
     const next = { ...rest } as Record<string, unknown>;
     if (ticketUrl !== undefined) next.ticketUrl = ticketUrl ?? undefined;
-    if (freeEntryNote !== undefined) next.freeEntryNote = freeEntryNote ?? undefined;
+    if (freeEntryNote !== undefined) next.freeEntryNote = cleanNote(freeEntryNote);
     if (patch.priceMin !== undefined || patch.priceMax !== undefined) {
       const min = patch.priceMin !== undefined ? patch.priceMin : event.priceMin;
       const max = patch.priceMax !== undefined ? patch.priceMax : event.priceMax;
       if (min !== null && max !== null && min > max) fail("validation_failed", "Minimum price is above maximum");
-      next.priceSource = min === null && max === null ? "not_found" : `team${editedBy ? ` ${editedBy}` : ""}`;
+      next.priceSource = `team${editedBy ? ` ${editedBy}` : ""}`;
     }
+    // Every field the team edits is locked: later imports leave it alone.
+    const edited = Object.keys(patch).filter((field) => field !== "meetOffsetMinutes");
+    next.teamFields = [...new Set([...(event.teamFields ?? []), ...edited])];
     const textChanged = ["title", "kind", "performers", "tags"].some((field) => field in rest);
     if (textChanged) next.embedding = undefined;
     await ctx.db.patch(eventId, next);

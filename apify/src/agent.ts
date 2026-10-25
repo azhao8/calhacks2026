@@ -12,8 +12,8 @@ How to work:
 1. Read the listing pages you are given. Open event detail pages with read_page when the listing lacks the date, start time, venue, price, or ticket link.
 2. Save only events that start inside the date range and match the requested event types. Skip classes, lectures, private or members-only events, and anything that needs a login to see.
 3. Venue: call find_place with the venue name and city, and copy the chosen result's OpenStreetMap ID and coordinates into venue. If find_place finds nothing, set osmId, lat, and lng to null.
-4. Start time: use the listed start time (not doors) in ISO 8601 with the local offset. Use the venue's local timezone, which is America/Los_Angeles for the Bay Area (offset -07:00 until November 1, 2026, then -08:00). If no start time is listed, use null.
-5. Price: check the listing first, then the official ticket page, then one search_web query. Record where you found it in price.source and price.sourceUrl. If none of those show a price, use source "not_found" with min and max null. Free events have min 0 and max 0. Never estimate a price.
+4. Start time: use the listed start time (not doors) in ISO 8601 with the local offset. Use the venue's local timezone, which is America/Los_Angeles for the Bay Area: offset -07:00 for dates before November 1, 2026, and -08:00 from November 1 on. If no start time is listed, use null.
+5. Price: check the listing first, then the official ticket page, then one search_web query. Record where you found it in price.source and price.sourceUrl, and list every place you looked in price.checked. If none of those show a price, use source "not_found" with min and max null. A single price has min equal to max; "from $15" has min 15 and max null. Free events have min 0 and max 0. Never estimate a price.
 6. Ticket link: the official seller or RSVP page (the venue's own ticketing, Ticketmaster or AXS when the venue uses them, Eventbrite for Eventbrite events). If entry is free without tickets, copy the listing's free entry note. Otherwise null.
 7. Age limit: copy any stated minimum age (18+, 21+). Use null when the listing says all ages or says nothing.
 8. Meeting spot, once per venue: if find_place did not say the venue already has a meeting spot in this run, choose one where two strangers can find each other 30 minutes before the show:
@@ -21,7 +21,7 @@ How to work:
    - never inside a bar or any 21+ space, never a residence, never somewhere closed at that hour;
    - describe it in one sentence a first-timer can follow, such as "The bench left of the main doors on University Ave.";
    - confirm it with find_place near the venue and use those coordinates;
-   - for a long trip from Berkeley (for example San Francisco), you may choose the nearest BART station entrance instead, with isTransitStop true and travelMinutes the walk from the station to the venue.
+   - for a long trip from Berkeley (for example San Francisco), you may choose the nearest BART station entrance instead, within 1.5 km of the venue, with isTransitStop true and travelMinutes the walk from the station to the venue.
    If you can't confirm a good spot on the map, set meetingSpot to null and the main entrance will be used.
 9. Never invent an event, title, performer, price, time, venue, or availability. When unsure, leave the field null or skip the event.
 10. If save_event returns an error, fix the problem it names and save again, or skip that event.

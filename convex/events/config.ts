@@ -3,6 +3,9 @@
 export const CATALOG = {
   // A meeting spot must be confirmed on the map within this distance of the venue, unless it is a transit stop.
   spotMaxMeters: 250,
+  // A transit stop may replace the nearby spot only for a venue this far from campus, and only this close to it.
+  transitVenueMinMeters: 5000,
+  transitStopMaxMeters: 1500,
   // An agent spot this close to a team-seeded spot reuses the team spot.
   teamSpotReuseMeters: 60,
   // Upcoming events missing from two runs in a row are flagged, never deleted.
@@ -22,6 +25,10 @@ export const AREAS = {
 } as const;
 
 export const PULLED_REASON = "Pulled by the team";
+export const ADULT_REASON = "21+ event";
+export const VENUE_NOT_FOUND = "Venue not found on the map";
+// Rejections no later import can undo; the team can restore a pulled event.
+export const STICKY_REASONS = new Set<string>([PULLED_REASON, ADULT_REASON]);
 
 // "Most official source wins" when two sources describe the same event. Higher wins.
 export const SOURCE_RANK: Record<string, number> = {

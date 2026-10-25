@@ -3,7 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { TIMING } from "../lib/config";
 import { directionsUrl, metersBetween } from "../lib/format";
-import { CATALOG } from "./config";
+import { CATALOG, VENUE_NOT_FOUND } from "./config";
 import { areaFor, distanceFromCampus, normalizeName } from "./checks";
 
 // Venues and meeting spots (CLAUDE.md §6.1). One venue per OpenStreetMap ID; one meeting spot per venue.
@@ -38,6 +38,33 @@ export const findByName = internalQuery({
   },
 });
 
+// Map misses are cached as the rejected rows themselves: an event already rejected because its venue (keyed by
+// name) wasn't on the map means the same lookup isn't repeated on the next run.
+export const isKnownMiss = internalQuery({
+  args: { venueName: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { venueName }) => {
+    const prefix = `name:${normalizeName(venueName)}|`;
+    const rows = await ctx.db
+      .query("events")
+      .withIndex("by_dedupeKey", (q) => q.gte("dedupeKey", prefix).lt("dedupeKey", `${prefix}\uffff`))
+      .take(20);
+    return rows.some((row) => row.rejectReason === VENUE_NOT_FOUND);
+  },
+});
+
+// "Fox Theater, 1807, Telegraph Avenue, Uptown, Oakland, ..." gives "1807 Telegraph Avenue".
+export function streetOf(address: string, venueName: string): string {
+  const name = normalizeName(venueName);
+  const parts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && normalizeName(part) !== name);
+  if (parts.length === 0 || !/\d/.test(parts[0])) return "";
+  if (/^\d+[a-z]?$/i.test(parts[0]) && parts[1]) return `${parts[0]} ${parts[1]}`;
+  return parts[0];
+}
+
 async function nearbyTeamSpot(
   ctx: MutationCtx,
   point: { lat: number; lng: number },
@@ -66,9 +93,13 @@ async function chooseSpot(
   const area = venue.area;
   if (proposed !== null) {
     const meters = metersBetween(proposed, venue);
-    const ok = proposed.isTransitStop || meters <= CATALOG.spotMaxMeters;
+    const transitOk =
+      proposed.isTransitStop &&
+      venue.distanceFromCampusMeters >= CATALOG.transitVenueMinMeters &&
+      meters <= CATALOG.transitStopMaxMeters;
+    const ok = meters <= CATALOG.spotMaxMeters || transitOk;
     if (ok) {
-      const meetOffsetMinutes = TIMING.meetOffsetMinutes + (proposed.isTransitStop ? proposed.travelMinutes : 0);
+      const meetOffsetMinutes = TIMING.meetOffsetMinutes + (transitOk ? proposed.travelMinutes : 0);
       const team = await nearbyTeamSpot(ctx, proposed);
       if (team !== null) return { spotId: team._id, meetOffsetMinutes };
       const spotId = await ctx.db.insert("meetingSpots", {
@@ -87,7 +118,7 @@ async function chooseSpot(
   }
   const spotId = await ctx.db.insert("meetingSpots", {
     name: `Main entrance of ${venue.name}`,
-    howToFind: `Out front of the main entrance of ${venue.name}${venue.address ? `, ${venue.address.split(",").slice(0, 2).join(",")}` : ""}.`,
+    howToFind: `Out front of the main entrance of ${venue.name}${streetOf(venue.address, venue.name) ? ` on ${streetOf(venue.address, venue.name)}` : ""}.`,
     lat: venue.lat,
     lng: venue.lng,
     osmId: venue.osmId,
@@ -107,6 +138,8 @@ export const resolve = internalMutation({
     address: v.string(),
     lat: v.number(),
     lng: v.number(),
+    // The map's own name for the venue, kept as an alias.
+    alias: v.optional(v.string()),
     spot: v.union(vSpotInput, v.null()),
     now: v.number(),
   },
@@ -123,9 +156,10 @@ export const resolve = internalMutation({
     let created = false;
     if (existing !== null) {
       venue = existing;
-      const known = [existing.name, ...existing.aliases].map(normalizeName);
-      if (!known.includes(normalizeName(args.name))) {
-        await ctx.db.patch(existing._id, { aliases: [...existing.aliases, args.name], updatedAt: args.now });
+      const known = new Set([existing.name, ...existing.aliases].map(normalizeName));
+      const added = [args.name, args.alias ?? ""].filter((name) => name.length > 0 && !known.has(normalizeName(name)));
+      if (added.length > 0) {
+        await ctx.db.patch(existing._id, { aliases: [...existing.aliases, ...new Set(added)], updatedAt: args.now });
       }
     } else {
       const area = areaFor(args);
@@ -133,7 +167,7 @@ export const resolve = internalMutation({
       const venueId = await ctx.db.insert("venues", {
         osmId: args.osmId,
         name: args.name,
-        aliases: [],
+        aliases: args.alias && normalizeName(args.alias) !== normalizeName(args.name) ? [args.alias] : [],
         address: args.address,
         lat: args.lat,
         lng: args.lng,

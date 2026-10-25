@@ -41,14 +41,30 @@ export const saveEventInput = z.object({
   venue: placeInput,
   price: z.object({
     min: z.number().min(0).nullable().describe("Lowest ticket price in US dollars; 0 for free; null if not found"),
-    max: z.number().min(0).nullable().describe("Highest ticket price in US dollars; null if not found"),
+    max: z
+      .number()
+      .min(0)
+      .nullable()
+      .describe('Highest ticket price in US dollars; the same as min for a single price; null if not found or the listing only says "from $X"'),
     source: z
       .enum(["listing", "ticket_page", "search", "not_found"])
       .describe("Where the price was found; not_found only after checking the listing, the ticket page, and a search"),
     sourceUrl: z.string().nullable().describe("The page the price came from; null if not_found"),
+    checked: z
+      .array(z.enum(["listing", "ticket_page", "search"]))
+      .describe("Every place you looked for the price, in order"),
   }),
-  ticketUrl: z.string().nullable().describe("The official ticket or RSVP link; null if none"),
-  freeEntryNote: z.string().nullable().describe('A clear free entry note from the listing, like "Free, no tickets required"'),
+  ticketUrl: z
+    .string()
+    .url()
+    .refine((url) => /^https?:\/\//i.test(url), "Must be an http or https link")
+    .nullable()
+    .describe("The official ticket or RSVP link (http or https); null if none"),
+  freeEntryNote: z
+    .string()
+    .max(160)
+    .nullable()
+    .describe('A short plain free entry note from the listing, like "Free, no tickets required"'),
   performers: z.array(z.string()).describe("Performers or teams, as listed"),
   tags: z.array(z.string()).describe("A few short genre or type tags taken from the listing"),
   ageLimit: z.number().int().nullable().describe("Minimum age if stated (18, 21); null for all ages or not stated"),

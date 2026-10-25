@@ -3,6 +3,7 @@ import { z } from "zod";
 import { GEO, LIMITS } from "./config.js";
 import { pageForModel, type PoliteFetcher } from "./fetcher.js";
 import { metersBetween, type Geocoder, type Place } from "./geo.js";
+import { correctPacificOffset } from "./time.js";
 import { saveEventInput, type SaveEventInput, type ScoutItem } from "./schema.js";
 import type { Source } from "./sources.js";
 
@@ -32,6 +33,8 @@ export type ToolContext = {
 
 export type ToolCounters = { reads: number; searches: number; places: number; saved: number; refused: number };
 
+const UNSAFE_SPOT = /(^|\/)(bar|pub|nightclub|biergarten|residential|house|apartments|dormitory)($|\/)/;
+
 function normalize(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
@@ -39,10 +42,11 @@ function normalize(text: string): string {
 // Checks the model's event against the rules it can't be trusted to keep. Returns an error for the model, or null.
 export function checkEvent(input: SaveEventInput, ctx: Pick<ToolContext, "run" | "window">): string | null {
   if (input.startsAt !== null) {
-    if (!/T\d{2}:\d{2}/.test(input.startsAt) || !/(Z|[+-]\d{2}:?\d{2})$/.test(input.startsAt)) {
+    const corrected = correctPacificOffset(input.startsAt);
+    if (corrected === null) {
       return "startsAt must be ISO 8601 with a time and the local offset, like 2026-10-29T20:00:00-07:00, or null if the listing has no start time.";
     }
-    const start = Date.parse(input.startsAt);
+    const start = Date.parse(corrected);
     if (Number.isNaN(start)) return "startsAt isn't a valid date.";
     if (start < ctx.window.from || start > ctx.window.to) {
       return "This event is outside the date range. Don't save it.";
@@ -64,9 +68,18 @@ export function checkEvent(input: SaveEventInput, ctx: Pick<ToolContext, "run" |
   }
   const spot = input.meetingSpot;
   if (spot !== null && input.venue.osmId !== null && !ctx.run.venuesWithSpot.has(input.venue.osmId)) {
-    const confirmed = [...ctx.run.confirmedPlaces.values()].some((place) => metersBetween(place, spot) <= 60);
-    if (!confirmed) return "The meeting spot must be confirmed on the map: call find_place for it and use those coordinates.";
+    const nearby = [...ctx.run.confirmedPlaces.values()]
+      .map((place) => ({ place, meters: metersBetween(place, spot) }))
+      .filter((entry) => entry.meters <= 60)
+      .sort((a, b) => a.meters - b.meters);
+    if (nearby.length === 0) return "The meeting spot must be confirmed on the map: call find_place for it and use those coordinates.";
+    if (UNSAFE_SPOT.test(nearby[0].place.category)) {
+      return "The map says that spot is a bar, pub, nightclub, or residence. Choose a public spot, or set meetingSpot to null.";
+    }
     const meters = metersBetween({ lat: input.venue.lat!, lng: input.venue.lng! }, spot);
+    if (spot.isTransitStop && meters > GEO.transitStopMaxMeters) {
+      return `That transit stop is ${Math.round(meters)} m from the venue; a transit stop must be within ${GEO.transitStopMaxMeters} m. Choose a closer spot, or set meetingSpot to null.`;
+    }
     if (!spot.isTransitStop && meters > GEO.spotMaxMeters) {
       return `The meeting spot is ${Math.round(meters)} m from the venue; it must be within ${GEO.spotMaxMeters} m (about a 3 minute walk). Choose a closer spot, or set meetingSpot to null to use the main entrance.`;
     }
@@ -139,17 +152,22 @@ export function makeTools(ctx: ToolContext, counters: ToolCounters) {
         counters.refused += 1;
         return `Error: ${problem}`;
       }
-      const key = `${normalize(input.title)}|${input.startsAt}|${normalize(input.venue.name)}`;
+      // Store the start with the right Pacific offset for its date.
+      const startsAt = input.startsAt === null ? null : correctPacificOffset(input.startsAt);
+      const key = `${normalize(input.title)}|${startsAt}|${normalize(input.venue.name)}`;
       if (ctx.run.savedKeys.has(key)) return "Already saved in this run.";
       ctx.run.savedKeys.add(key);
       const osmId = input.venue.osmId;
-      let meetingSpot = input.meetingSpot;
+      // A spot is only checked against a venue placed on the map; without one, the main entrance is used.
+      let meetingSpot = osmId === null ? null : input.meetingSpot;
       if (osmId !== null) {
         if (ctx.run.venuesWithSpot.has(osmId)) meetingSpot = null;
         else if (meetingSpot !== null) ctx.run.venuesWithSpot.add(osmId);
       }
       await ctx.save({
         ...input,
+        startsAt,
+        freeEntryNote: input.freeEntryNote?.replace(/\s+/g, " ").trim().slice(0, 160) || null,
         meetingSpot,
         sourceName: ctx.source.id,
         sourceKind: ctx.source.kind,

@@ -33,6 +33,7 @@ export const GEO = {
   // Nominatim allows at most 1 request per second.
   minIntervalMs: 1100,
   spotMaxMeters: 250,
+  transitStopMaxMeters: 1500,
   cacheStore: "melos-geocode-cache",
 } as const;
 

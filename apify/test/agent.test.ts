@@ -18,7 +18,7 @@ describe("the scout agent with a scripted model", () => {
       kind: "concert",
       startsAt: "2026-10-30T20:00:00-07:00",
       venue: { name: "Fox Theater", address: "1807 Telegraph Ave, Oakland, CA", osmId: "way/222", lat: 37.808, lng: -122.2703 },
-      price: { min: 45, max: 89, source: "listing", sourceUrl: null },
+      price: { min: 45, max: 89, source: "listing", sourceUrl: null, checked: ["listing"] },
       ticketUrl: "https://www.ticketmaster.com/event/khruangbin",
       freeEntryNote: null,
       performers: ["Khruangbin"],

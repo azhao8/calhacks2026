@@ -35,8 +35,11 @@ export const scoutItem = z.object({
     // Where the price was found, or "not_found" after checking the listing, the ticket page, and a search.
     source: z.enum(["listing", "ticket_page", "search", "not_found"]),
     sourceUrl: z.string().nullable().default(null),
+    // Where the scout looked, e.g. ["listing", "ticket_page", "search"]; recorded when nothing was found.
+    checked: z.array(z.string()).default([]),
   }),
-  ticketUrl: z.string().url().nullable(),
+  // Checked on import: only an http(s) link counts as a ticket or RSVP link.
+  ticketUrl: z.string().nullable(),
   freeEntryNote: z.string().nullable().default(null),
   performers: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),

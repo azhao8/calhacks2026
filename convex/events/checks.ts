@@ -1,7 +1,7 @@
 import type { Area } from "../lib/validators";
 import { PLACES } from "../lib/config";
 import { metersBetween } from "../lib/format";
-import { AREAS, SOURCE_RANK } from "./config";
+import { ADULT_REASON, AREAS, SOURCE_RANK } from "./config";
 import type { ScoutItem } from "./item";
 
 // Pure import rules (CLAUDE.md §6.1). No database or network here, so every rule is unit-tested directly.
@@ -59,18 +59,55 @@ export function areaFor(point: { lat: number; lng: number }): Area | null {
   return null;
 }
 
-export function parseStart(startsAt: string | null): number | null {
-  if (startsAt === null) return null;
-  // A date with no time ("2026-10-29") has no start time.
-  if (!/T\d{2}:\d{2}/.test(startsAt)) return null;
-  // Require an explicit offset so the server's timezone never shifts an event.
-  if (!/(Z|[+-]\d{2}:?\d{2})$/.test(startsAt)) return null;
-  const ms = Date.parse(startsAt);
-  return Number.isNaN(ms) ? null : ms;
+const laParts = new Intl.DateTimeFormat("en-US", {
+  timeZone: PLACES.timezone,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+// Pacific time's UTC offset in minutes at an instant (-420 in summer, -480 in winter).
+export function pacificOffsetMinutes(ms: number): number {
+  const parts = Object.fromEntries(laParts.formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  return Math.round((asUtc - Math.floor(ms / 1000) * 1000) / 60000);
 }
 
-function isHttpUrl(value: string | null): boolean {
-  if (value === null) return false;
+const START = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|([+-])(\d{2}):?(\d{2}))$/;
+
+// The instant an event starts. Requires a time and an explicit offset, so the server's timezone never shifts an
+// event. A Pacific offset (-07:00 or -08:00) that is wrong for that date, such as a summer offset after the
+// November clock change, is corrected: the listed wall-clock time is what the venue means.
+export function parseStart(startsAt: string | null): number | null {
+  if (startsAt === null) return null;
+  const m = START.exec(startsAt.trim());
+  if (m === null) return null;
+  const [, y, mo, d, h, mi, s, zone, sign, oh, om] = m;
+  const wall = Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s ?? 0));
+  if (Number.isNaN(wall)) return null;
+  if (zone === "Z") return wall;
+  const given = (sign === "-" ? -1 : 1) * (+oh * 60 + +om);
+  if (given !== -420 && given !== -480) return wall - given * 60000;
+  for (const offset of [given, given === -420 ? -480 : -420]) {
+    const instant = wall - offset * 60000;
+    if (pacificOffsetMinutes(instant) === offset) return instant;
+  }
+  // A wall-clock time that doesn't exist in Pacific time (inside the spring-forward gap).
+  return null;
+}
+
+export function titlesOverlap(a: string, b: string): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short.length >= 4 && ` ${long} `.includes(` ${short} `);
+}
+
+export function isHttpUrl(value: string | null | undefined): value is string {
+  if (value === null || value === undefined) return false;
   try {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:";
@@ -81,8 +118,11 @@ function isHttpUrl(value: string | null): boolean {
 
 function looksAdultOnly(item: ScoutItem): boolean {
   if (item.ageLimit !== null && item.ageLimit >= 21) return true;
-  const text = [item.title, ...item.tags, item.freeEntryNote ?? ""].join(" ").toLowerCase();
-  return /\b21\s*\+|\b21 and (over|up)\b|\bages? 21\b/.test(text);
+  const text = [item.title, ...item.tags, item.freeEntryNote ?? ""]
+    .join(" ")
+    .toLowerCase()
+    .replace(/&amp;/g, "&");
+  return /\b21\s*\+|\b21\s*(and|&)\s*(over|up|older)\b|\bover\s*21\b|\bages?\s*21\b|\b21\s*(years?\s*)?(of age\s*)?or older\b/.test(text);
 }
 
 // Checks that need no venue lookup. Returns the reason shown on the admin page, or null when the item passes.
@@ -91,9 +131,9 @@ export function basicRejectReason(item: ScoutItem, now: number): string | null {
   if (item.startsAt === null || !/^\d{4}-\d{2}-\d{2}/.test(item.startsAt)) return "No date";
   if (start === null) return "No start time";
   if (start <= now) return "Already started";
-  if (looksAdultOnly(item)) return "21+ event";
+  if (looksAdultOnly(item)) return ADULT_REASON;
   const hasTicket = isHttpUrl(item.ticketUrl);
-  const hasFreeNote = (item.freeEntryNote ?? "").trim().length > 0;
+  const hasFreeNote = cleanNote(item.freeEntryNote) !== undefined;
   if (!hasTicket && !hasFreeNote) return "No official ticket or RSVP link and no free entry note";
   if (item.price.min !== null && item.price.max !== null && item.price.min > item.price.max) {
     return "Price range is inverted";
@@ -110,9 +150,13 @@ export function priceFields(item: ScoutItem): {
   priceMax: number | null;
   priceSource: string;
 } {
-  if (item.price.source === "not_found") return { priceMin: null, priceMax: null, priceSource: "not_found" };
-  const min = item.price.min ?? item.price.max;
-  const max = item.price.max ?? item.price.min;
+  if (item.price.source === "not_found") {
+    const checked = item.price.checked.length > 0 ? ` (checked ${item.price.checked.join(", ")})` : "";
+    return { priceMin: null, priceMax: null, priceSource: `not_found${checked}` };
+  }
+  // Stored as listed: "From $15" keeps the maximum unknown (null); a single price has min equal to max.
+  const min = item.price.min;
+  const max = item.price.max;
   const where = item.price.sourceUrl ? `${item.price.source} ${item.price.sourceUrl}` : item.price.source;
   return { priceMin: min, priceMax: max, priceSource: where };
 }
@@ -138,4 +182,41 @@ export function cleanList(values: string[], max = 12): string[] {
     if (out.length >= max) break;
   }
   return out;
+}
+
+// A short plain free-entry note, or undefined when there is none.
+export function cleanNote(note: string | null | undefined): string | undefined {
+  if (!note) return undefined;
+  const text = note
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 160);
+  return text.length > 0 ? text : undefined;
+}
+
+// The city part of a scraped address: "2036 University Ave, Berkeley, CA" gives "berkeley".
+export function cityOf(address: string): string | null {
+  const parts = address
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 2 && !/\d/.test(part) && !/^(ca|california|usa|united states)$/i.test(part));
+  return parts.length > 0 ? parts[parts.length - 1].toLowerCase() : null;
+}
+
+// A map result counts only if its name matches the scraped name and, when the scrape gives a city, it is there.
+export function placeMatches(
+  scraped: { name: string; address: string },
+  candidate: { name: string; address: string },
+): boolean {
+  const a = normalizeName(scraped.name);
+  const b = normalizeName(candidate.name);
+  const tokensA = new Set(a.split(" ").filter(Boolean));
+  const tokensB = new Set(b.split(" ").filter(Boolean));
+  const shared = [...tokensA].filter((token) => tokensB.has(token)).length;
+  const jaccard = shared / Math.max(1, new Set([...tokensA, ...tokensB]).size);
+  const nameOk = titlesOverlap(a, b) || jaccard >= 0.5;
+  const city = cityOf(scraped.address);
+  const cityOk = city === null || candidate.address.toLowerCase().includes(city);
+  return nameOk && cityOk;
 }
