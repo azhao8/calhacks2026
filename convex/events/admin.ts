@@ -10,6 +10,9 @@ import { embed } from "../services/voyage";
 import { ADULT_REASON, CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
 import { cleanNote, isHttpUrl, normalizeTitle, sameShowTitles, sourceRank } from "./checks";
 import type { Id } from "../_generated/dataModel";
+import { scheduleAskClose } from "../asks/close";
+import { wakeMatcher } from "../matching/wake";
+import { eventCutoff } from "../plans/model";
 import { moveVenueSpot } from "./venues";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
@@ -175,8 +178,9 @@ export const pull = internalMutation({
   },
 });
 
-// Folds a duplicate into the event it repeats: the duplicate leaves the catalog for good (its asks and plans are
-// released), and the kept event takes a price the duplicate found when it had none.
+// Folds a duplicate into the event it repeats: the duplicate leaves the catalog for good, its open asks move to
+// the kept event, its plans (if any) are released, and the kept event takes a price the duplicate found when it
+// had none.
 export const mergeDuplicate = internalMutation({
   args: { keepId: v.id("events"), dropId: v.id("events") },
   returns: v.null(),
@@ -188,6 +192,35 @@ export const mergeDuplicate = internalMutation({
     if (keep.priceMin === null && keep.priceMax === null && (drop.priceMin !== null || drop.priceMax !== null)) {
       await ctx.db.patch(keepId, { priceMin: drop.priceMin, priceMax: drop.priceMax, priceSource: drop.priceSource });
     }
+    // The two copies were always one event, so a student's open ask moves with it rather than closing: a yes
+    // stays a yes, and no weekly slot is spent on our duplicate.
+    const strength = { pending: 0, no: 1, yes: 2 } as const;
+    let yesMoved = false;
+    for (const answer of ["pending", "no", "yes"] as const) {
+      const asks = await ctx.db
+        .query("asks")
+        .withIndex("by_event_answer", (q) => q.eq("eventId", dropId).eq("answer", answer))
+        .collect();
+      for (const ask of asks) {
+        if (ask.closedReason !== undefined) continue;
+        const onKept = await ctx.db
+          .query("asks")
+          .withIndex("by_user_event", (q) => q.eq("userId", ask.userId).eq("eventId", keepId))
+          .first();
+        if (onKept === null) {
+          await ctx.db.patch(ask._id, { eventId: keepId });
+          await scheduleAskClose(ctx, ask._id, eventCutoff(keep));
+          if (ask.answer === "yes") yesMoved = true;
+          continue;
+        }
+        if (onKept.closedReason === undefined && strength[ask.answer] > strength[onKept.answer]) {
+          await ctx.db.patch(onKept._id, { answer: ask.answer, answeredAt: ask.answeredAt });
+          if (ask.answer === "yes") yesMoved = true;
+        }
+        await ctx.db.delete(ask._id);
+      }
+    }
+    if (yesMoved) await wakeMatcher(ctx, keepId, "yes");
     await ctx.db.patch(dropId, { status: "rejected", rejectReason: DUPLICATE_REASON, featured: false });
     await ctx.runMutation(internal.plans.release.forEvent, { eventId: dropId });
     return null;
@@ -198,7 +231,7 @@ export const mergeDuplicate = internalMutation({
 // each extra copy into the one people hold. Never strands a student:
 // - keep: the copy with a forming or set plan; else the one with more open asks; else the more official source;
 // - a group where two copies both hold plans is left alone and reported, for the team;
-// - a dropped copy's open asks close through plans.release.forEvent (it holds no plans).
+// - a dropped copy's open asks move to the kept copy (see mergeDuplicate); it holds no plans.
 // Dry run by default: it reports what it would do and changes nothing.
 export const mergeDuplicates = internalMutation({
   args: { dryRun: v.optional(v.boolean()) },

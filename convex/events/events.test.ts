@@ -624,12 +624,32 @@ describe("folding duplicates already published", () => {
     return { official, web };
   }
 
-  async function holdAsk(t: Awaited<ReturnType<typeof setup>>, eventId: Id<"events">) {
-    await t.run(async (ctx) => {
-      const userId = await ctx.db.insert("users", { firstName: "Sam" });
-      await ctx.db.insert("asks", { userId, eventId, createdAt: Date.now(), answer: "yes" });
+  async function holdAsk(
+    t: Awaited<ReturnType<typeof setup>>,
+    eventId: Id<"events">,
+    answer: "pending" | "yes" | "no" = "yes",
+    existingUser?: Id<"users">,
+  ): Promise<Id<"users">> {
+    return await t.run(async (ctx) => {
+      const userId = existingUser ?? (await ctx.db.insert("users", { firstName: "Sam" }));
+      await ctx.db.insert("asks", {
+        userId,
+        eventId,
+        createdAt: Date.now(),
+        answer,
+        ...(answer === "pending" ? {} : { answeredAt: Date.now() }),
+      });
+      return userId;
     });
   }
+
+  const asksOf = (t: Awaited<ReturnType<typeof setup>>, userId: Id<"users">) =>
+    t.run((ctx) =>
+      ctx.db
+        .query("asks")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect(),
+    );
 
   async function holdPlan(t: Awaited<ReturnType<typeof setup>>, eventId: Id<"events">) {
     await t.run(async (ctx) => {
@@ -661,6 +681,35 @@ describe("folding duplicates already published", () => {
     const { official } = await twoCopies(t);
     await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
     expect((await t.query(internal.events.admin.list, { status: "published" })).map((e) => e.eventId)).toEqual([official.eventId]);
+  });
+
+  test("a yes on the dropped copy becomes a yes on the kept copy, and the matcher wakes", async () => {
+    const t = await setup();
+    const { official, web } = await twoCopies(t);
+    await holdPlan(t, official.eventId); // so the official copy is kept
+    const sam = await holdAsk(t, web.eventId, "yes");
+    await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    const asks = await asksOf(t, sam);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({ eventId: official.eventId, answer: "yes" });
+    expect(asks[0].closedReason).toBeUndefined();
+    const kept = (await t.run((ctx) => ctx.db.get(official.eventId)))!;
+    expect(kept.matcherWakeAt).toBeGreaterThan(Date.now());
+  });
+
+  test("a student with both copies ends with one ask and gets a weekly slot back", async () => {
+    const t = await setup();
+    const { official, web } = await twoCopies(t);
+    await holdPlan(t, official.eventId);
+    const sam = await holdAsk(t, official.eventId, "pending");
+    await holdAsk(t, web.eventId, "yes", sam);
+    expect(await asksOf(t, sam)).toHaveLength(2);
+    await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    const asks = await asksOf(t, sam);
+    expect(asks).toHaveLength(1);
+    // The stronger answer (yes over pending) carries onto the kept ask.
+    expect(asks[0]).toMatchObject({ eventId: official.eventId, answer: "yes" });
+    expect((await t.run((ctx) => ctx.db.get(official.eventId)))!.matcherWakeAt).toBeGreaterThan(Date.now());
   });
 
   test("two copies that both hold plans are left alone and reported", async () => {
