@@ -8,3 +8,4 @@ The coordinator's cross-stream wiring, saved as patches until streams A to D mer
 4. The admin page and team-only wrappers for every S17 section, with a test that each refuses non-team accounts.
 5. Pulling an event calls off its plans; a new event time retimes them.
 6. Hooks name shared liked songs properly; demo labels come from the fixed list.
+7. An event that turns 21+ leaves the catalog and calls off its plans.

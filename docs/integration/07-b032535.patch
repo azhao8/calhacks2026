@@ -1,0 +1,30 @@
+From b0325354dffce17f5ce222d6be0a663309e5cd46 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 25 Oct 2026 02:51:23 +0000
+Subject: [PATCH] wire: an event that turns 21+ leaves the catalog and calls
+ off its plans
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015guTYUBX4Ct5WtjQ9sW1zv
+---
+ convex/events/imports.ts | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/convex/events/imports.ts b/convex/events/imports.ts
+index 7f1f0a0..1c691dc 100644
+--- a/convex/events/imports.ts
++++ b/convex/events/imports.ts
+@@ -238,8 +238,8 @@ export const upsertEvent = internalMutation({
+       const wasPublished = existing.status === "published";
+       await ctx.db.patch(existing._id, { ...seen, status: "rejected", rejectReason, featured: false });
+       if (wasPublished) {
+-        // INTEGRATION: stream C releases seats and closes asks for an event that left the catalog:
+-        // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId: existing._id })
++        // It left the catalog (now 21+): close its asks, withdraw offers, and call off its plans.
++        await ctx.runMutation(internal.plans.release.forEvent, { eventId: existing._id });
+       }
+       return { outcome: "rejected" as const, eventId: existing._id, needsEmbedding: false };
+     }
+-- 
+2.43.0
+
