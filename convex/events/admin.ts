@@ -8,7 +8,8 @@ import { fail } from "../lib/errors";
 import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
 import { ADULT_REASON, CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
-import { cleanNote, isHttpUrl } from "./checks";
+import { cleanNote, isHttpUrl, normalizeTitle, sameShowTitles, sourceRank } from "./checks";
+import type { Id } from "../_generated/dataModel";
 import { moveVenueSpot } from "./venues";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
@@ -190,6 +191,86 @@ export const mergeDuplicate = internalMutation({
     await ctx.db.patch(dropId, { status: "rejected", rejectReason: DUPLICATE_REASON, featured: false });
     await ctx.runMutation(internal.plans.release.forEvent, { eventId: dropId });
     return null;
+  },
+});
+
+// Finds published upcoming events already stored twice (same venue, same start, the same show by title) and folds
+// each extra copy into the one people hold. Never strands a student:
+// - keep: the copy with a forming or set plan; else the one with more open asks; else the more official source;
+// - a group where two copies both hold plans is left alone and reported, for the team;
+// - a dropped copy's open asks close through plans.release.forEvent (it holds no plans).
+// Dry run by default: it reports what it would do and changes nothing.
+export const mergeDuplicates = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  returns: v.array(
+    v.object({
+      keep: v.object({ eventId: v.id("events"), title: v.string() }),
+      drop: v.array(v.object({ eventId: v.id("events"), title: v.string(), openAsks: v.number() })),
+      skipped: v.union(v.string(), v.null()),
+    }),
+  ),
+  handler: async (ctx, { dryRun }) => {
+    const now = Date.now();
+    const upcoming = await ctx.db
+      .query("events")
+      .withIndex("by_status_startsAt", (q) => q.eq("status", "published").gt("startsAt", now))
+      .collect();
+    const holders = async (eventId: Id<"events">) => {
+      let plans = 0;
+      for (const status of ["forming", "set"] as const) {
+        plans += (
+          await ctx.db
+            .query("meetups")
+            .withIndex("by_event_status", (q) => q.eq("eventId", eventId).eq("status", status))
+            .collect()
+        ).length;
+      }
+      let openAsks = 0;
+      for (const answer of ["pending", "yes"] as const) {
+        openAsks += (
+          await ctx.db
+            .query("asks")
+            .withIndex("by_event_answer", (q) => q.eq("eventId", eventId).eq("answer", answer))
+            .collect()
+        ).filter((ask) => ask.closedReason === undefined).length;
+      }
+      return { plans, openAsks };
+    };
+    const seen = new Set<string>();
+    const report = [];
+    for (const event of upcoming) {
+      if (seen.has(event._id) || event.venueId === undefined) continue;
+      const group = upcoming.filter(
+        (other) =>
+          other.venueId === event.venueId &&
+          other.startsAt === event.startsAt &&
+          (other._id === event._id || sameShowTitles(normalizeTitle(other.title), normalizeTitle(event.title))),
+      );
+      for (const member of group) seen.add(member._id);
+      if (group.length < 2) continue;
+      const scored = [];
+      for (const member of group) scored.push({ member, ...(await holders(member._id)) });
+      scored.sort(
+        (a, b) =>
+          b.plans - a.plans ||
+          b.openAsks - a.openAsks ||
+          sourceRank(b.member.sourceName.split(":")[0]) - sourceRank(a.member.sourceName.split(":")[0]) ||
+          a.member.scrapedAt - b.member.scrapedAt,
+      );
+      const [keep, ...drops] = scored;
+      const skipped = drops.some((d) => d.plans > 0) ? "Two copies both hold plans; merge by hand" : null;
+      if (dryRun === false && skipped === null) {
+        for (const drop of drops) {
+          await ctx.runMutation(internal.events.admin.mergeDuplicate, { keepId: keep.member._id, dropId: drop.member._id });
+        }
+      }
+      report.push({
+        keep: { eventId: keep.member._id, title: keep.member.title },
+        drop: drops.map((d) => ({ eventId: d.member._id, title: d.member.title, openAsks: d.openAsks })),
+        skipped,
+      });
+    }
+    return report;
   },
 });
 

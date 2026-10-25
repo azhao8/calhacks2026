@@ -1,0 +1,160 @@
+[
+  {
+    "title": "California Volleyball vs Stanford",
+    "kind": "game",
+    "startsAt": 1793239200000.0,
+    "venueName": "Haas Pavilion",
+    "sourceName": "official_feed:cal_athletics",
+    "sourceUrl": "https://calbears.com/sports/womens-volleyball/schedule/text",
+    "ticketUrl": "https://calbears.evenue.net/events/VH",
+    "priceMin": null,
+    "priceMax": null,
+    "performers": [
+      "California Golden Bears Volleyball",
+      "Stanford"
+    ],
+    "tags": [
+      "volleyball",
+      "college sports",
+      "women's volleyball"
+    ]
+  },
+  {
+    "title": "Cal Volleyball vs Stanford (Big Spike & Camper Reunion - Blue Out)",
+    "kind": "game",
+    "startsAt": 1793239200000.0,
+    "venueName": "Haas Pavilion",
+    "sourceName": "web:web",
+    "sourceUrl": "https://calbears.com/sports/womens-volleyball/schedule",
+    "ticketUrl": "https://calbears.evenue.net/list/V",
+    "priceMin": null,
+    "priceMax": null,
+    "performers": [
+      "California Golden Bears",
+      "Stanford"
+    ],
+    "tags": [
+      "volleyball",
+      "college sports"
+    ]
+  },
+  {
+    "title": "California Women's Basketball vs Vanguard (Exhibition)",
+    "kind": "game",
+    "startsAt": 1793322000000.0,
+    "venueName": "Haas Pavilion",
+    "sourceName": "official_feed:cal_athletics",
+    "sourceUrl": "https://calbears.com/sports/womens-basketball/schedule/text",
+    "ticketUrl": "https://calbears.evenue.net/list/WBB",
+    "priceMin": 4.0,
+    "priceMax": null,
+    "performers": [
+      "California Golden Bears Women's Basketball",
+      "Vanguard"
+    ],
+    "tags": [
+      "basketball",
+      "college sports",
+      "women's basketball",
+      "exhibition"
+    ]
+  },
+  {
+    "title": "Cal Women's Basketball vs Vanguard (Exhibition)",
+    "kind": "game",
+    "startsAt": 1793322000000.0,
+    "venueName": "Haas Pavilion",
+    "sourceName": "web:web",
+    "sourceUrl": "https://calbears.com/sports/womens-basketball/schedule/text",
+    "ticketUrl": "https://calbears.evenue.net/",
+    "priceMin": null,
+    "priceMax": null,
+    "performers": [
+      "California Golden Bears",
+      "Vanguard"
+    ],
+    "tags": [
+      "women's basketball",
+      "college sports",
+      "exhibition"
+    ]
+  },
+  {
+    "title": "Jessie Reyez: A Little Vengeance Tour 2026",
+    "kind": "concert",
+    "startsAt": 1794024000000.0,
+    "venueName": "Fox Theater",
+    "sourceName": "venue_site:fox_theater",
+    "sourceUrl": "https://thefoxoakland.com/events/jessie-reyez-261106",
+    "ticketUrl": "https://www.ticketmaster.com/jessie-reyez-a-little-vengeance-tour-oakland-california-11-06-2026/event/1C006514C671E34B?camefrom=CFC_ANOTHERPLANET_web&brand=anotherplanet",
+    "priceMin": null,
+    "priceMax": null,
+    "performers": [
+      "Jessie Reyez"
+    ],
+    "tags": [
+      "R&B",
+      "pop",
+      "sold out",
+      "all ages"
+    ]
+  },
+  {
+    "title": "A Little Vengeance Tour 2026: Jessie Reyez",
+    "kind": "concert",
+    "startsAt": 1794024000000.0,
+    "venueName": "Fox Theater",
+    "sourceName": "venue_site:fox_theater",
+    "sourceUrl": "https://thefoxoakland.com/events/jessie-reyez-261106",
+    "ticketUrl": "https://www.ticketmaster.com/jessie-reyez-a-little-vengeance-tour-oakland-california-11-06-2026/event/1C006514C671E34B?camefrom=CFC_ANOTHERPLANET_web&brand=anotherplanet",
+    "priceMin": 89.54,
+    "priceMax": null,
+    "performers": [
+      "Jessie Reyez"
+    ],
+    "tags": [
+      "R&B",
+      "pop",
+      "sold out"
+    ]
+  },
+  {
+    "title": "Brandi Carlile: Burn The Setlist Tour (The All Request Tour)",
+    "kind": "concert",
+    "startsAt": 1794110400000.0,
+    "venueName": "Fox Theater",
+    "sourceName": "venue_site:fox_theater",
+    "sourceUrl": "https://thefoxoakland.com/events/brandi-carlile-261107",
+    "ticketUrl": "https://www.ticketmaster.com/brandi-carlile-burn-the-setlist-tour-oakland-california-11-07-2026/event/1C006532CBC76BA8?camefrom=CFC_ANOTHERPLANET_web&brand=anotherplanet",
+    "priceMin": null,
+    "priceMax": null,
+    "performers": [
+      "Brandi Carlile"
+    ],
+    "tags": [
+      "Americana",
+      "phone-free",
+      "sold out",
+      "all ages"
+    ]
+  },
+  {
+    "title": "Burn The Setlist Tour (The All Request Tour): An Evening With Brandi Carlile",
+    "kind": "concert",
+    "startsAt": 1794110400000.0,
+    "venueName": "Fox Theater",
+    "sourceName": "venue_site:fox_theater",
+    "sourceUrl": "https://thefoxoakland.com/events/brandi-carlile-261107",
+    "ticketUrl": "https://www.ticketmaster.com/brandi-carlile-burn-the-setlist-tour-oakland-california-11-07-2026/event/1C006532CBC76BA8?camefrom=CFC_ANOTHERPLANET_web&brand=anotherplanet",
+    "priceMin": null,
+    "priceMax": null,
+    "performers": [
+      "Brandi Carlile"
+    ],
+    "tags": [
+      "Americana",
+      "phone-free",
+      "sold out"
+    ]
+  }
+]

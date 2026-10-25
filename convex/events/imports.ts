@@ -154,12 +154,14 @@ async function findExisting(
     .withIndex("by_dedupeKey", (q) => q.eq("dedupeKey", key))
     .first();
   if (byKey !== null || venueId === undefined) return byKey;
-  const atVenue = (
-    await ctx.db
-      .query("events")
-      .withIndex("by_venue", (q) => q.eq("venueId", venueId))
-      .collect()
-  ).filter((e) => !(e.lastSeenAt === seenAt && e.sourceName === sourceName));
+  const allAtVenue = await ctx.db
+    .query("events")
+    .withIndex("by_venue", (q) => q.eq("venueId", venueId))
+    .collect();
+  // The URL and same-day fallbacks skip rows this source wrote in this run (a two-night stand, an early and a
+  // late show). The exact-start fallback doesn't: one source listing a show twice at the same minute, with the
+  // title reordered ("Jessie Reyez: A Little Vengeance Tour" and "A Little Vengeance Tour: Jessie Reyez"), is one show.
+  const atVenue = allAtVenue.filter((e) => !(e.lastSeenAt === seenAt && e.sourceName === sourceName));
   const title = normalizeTitle(event.title);
   const day = pacificDay(event.startsAt);
   const closest = (rows: Doc<"events">[]) =>
@@ -167,7 +169,7 @@ async function findExisting(
   return (
     closest(atVenue.filter((e) => e.sourceUrl === event.sourceUrl && normalizeTitle(e.title) === title)) ??
     closest(atVenue.filter((e) => normalizeTitle(e.title) === title && pacificDay(e.startsAt) === day)) ??
-    closest(atVenue.filter((e) => e.startsAt === event.startsAt && sameShowTitles(normalizeTitle(e.title), title))) ??
+    closest(allAtVenue.filter((e) => e.startsAt === event.startsAt && sameShowTitles(normalizeTitle(e.title), title))) ??
     null
   );
 }
