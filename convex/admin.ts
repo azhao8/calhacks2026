@@ -10,14 +10,19 @@ import { now } from "./lib/clock";
 export const whoami = query({
   args: {},
   // Only the caller's own email, so the admin page can say who is signed in.
-  returns: v.object({ signedIn: v.boolean(), isAdmin: v.boolean(), email: v.union(v.string(), v.null()) }),
+  // `orphaned`: this session's account was deleted (from the admin page), so the browser should sign out.
+  returns: v.object({
+    signedIn: v.boolean(),
+    isAdmin: v.boolean(),
+    email: v.union(v.string(), v.null()),
+    orphaned: v.boolean(),
+  }),
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) return { signedIn: false, isAdmin: false, email: null };
+    if (userId === null) return { signedIn: false, isAdmin: false, email: null, orphaned: false };
     const user = await ctx.db.get(userId);
-    // A session can outlive its account (deleted from the admin page): that is signed out.
-    if (user === null) return { signedIn: false, isAdmin: false, email: null };
-    return { signedIn: true, isAdmin: isTeamEmail(user.email), email: user.email ?? null };
+    if (user === null) return { signedIn: false, isAdmin: false, email: null, orphaned: true };
+    return { signedIn: true, isAdmin: isTeamEmail(user.email), email: user.email ?? null, orphaned: false };
   },
 });
 

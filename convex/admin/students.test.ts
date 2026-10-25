@@ -146,12 +146,13 @@ test("you can delete your own account: its sessions go, the old session is refus
     }
   });
   // A token for the deleted account reads as signed out and can't use the admin page.
-  expect(await me.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null });
+  expect(await me.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null, orphaned: true });
+  expect(await t.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null, orphaned: false });
   await expect(me.query(api.admin.students.list, {})).rejects.toThrow(/not_signed_in/);
 
   const fresh = await signInAgain(t, TEAM);
   expect(fresh).not.toBe(team);
-  expect(await asUser(t, fresh).query(api.admin.whoami, {})).toEqual({ signedIn: true, isAdmin: true, email: TEAM });
+  expect(await asUser(t, fresh).query(api.admin.whoami, {})).toEqual({ signedIn: true, isAdmin: true, email: TEAM, orphaned: false });
   await t.run(async (ctx) => {
     expect((await ctx.db.get(fresh))?.onboarding).toBe("needs_about_you");
   });
@@ -179,7 +180,7 @@ test("nukes need the exact phrase; deleting students or everything removes team 
     expect(await ctx.db.query("spotifyApps").collect()).toHaveLength(1);
     expect((await ctx.db.query("universities").collect()).length).toBeGreaterThan(0);
   });
-  expect(await admin.query(api.admin.whoami, {})).toMatchObject({ signedIn: false });
+  expect(await admin.query(api.admin.whoami, {})).toMatchObject({ signedIn: false, orphaned: true });
 
   // Sign in again, then wipe everything: the new account goes too.
   const again = asUser(t, await signInAgain(t, TEAM));
