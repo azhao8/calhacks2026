@@ -266,3 +266,26 @@ export function CopyButton({ text, label, explain }: { text: string; label: stri
   );
 }
 
+
+// A 48px icon button that copies one value, for emails the admin pastes into Spotify.
+export function CopyIcon({ text, what }: { text: string; what: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={copied ? `Copied ${what}` : `Copy ${what}`}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 2000);
+        } catch {
+          setCopied(false);
+        }
+      }}
+      className="inline-flex size-12 shrink-0 items-center justify-center rounded-pill border-[1.5px] border-line-strong text-ink hover:bg-surface-raised focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+    >
+      <Icon name={copied ? "check" : "copy"} className={copied ? "text-success" : undefined} />
+    </button>
+  );
+}

@@ -13,6 +13,7 @@ import {
   Badge,
   ConfirmAction,
   CopyButton,
+  CopyIcon,
   Filters,
   Loading,
   Muted,
@@ -183,7 +184,14 @@ function AppCard({ app, redirectUris, onShowStudents }: { app: App; redirectUris
           {toAdd > 0 ? (
             <div className="flex flex-col gap-2 rounded-sm bg-surface-raised p-3">
               <p className="text-small font-semibold text-ink">Add these in Spotify&apos;s User Management</p>
-              <pre className="text-small whitespace-pre-wrap break-all text-ink">{app.emailsToAdd.join("\n")}</pre>
+              <ul className="flex flex-col gap-1">
+                {app.emailsToAdd.map((email) => (
+                  <li key={email} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 text-body-strong break-all text-ink">{email}</span>
+                    <CopyIcon text={email} what={email} />
+                  </li>
+                ))}
+              </ul>
               <CopyButton
                 text={app.emailsToAdd.join("\n")}
                 label={`Copy ${toAdd} ${toAdd === 1 ? "email" : "emails"}`}
@@ -481,22 +489,33 @@ function StudentRow({ row, apps }: { row: Row; apps: App[] }) {
 
   return (
     <li className="flex flex-col gap-2 py-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <p className="text-body-strong text-ink">
-            {row.firstName ?? "No name yet"}
-            {row.isTeam ? <span className="text-small font-normal text-ink-muted"> · team</span> : null}
-          </p>
-          <p className="text-small break-all text-ink">{row.spotifyEmail}</p>
-          <p className="text-caption break-all text-ink-muted">
-            {row.appLabel ?? "No app"} · asked {ago(row.requestedAt)}
-            {row.schoolEmail && row.schoolEmail !== row.spotifyEmail ? ` · ${row.schoolEmail}` : ""}
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-body text-ink">
+          {row.firstName ?? "No name yet"}
+          {row.isTeam ? <span className="text-small text-ink-muted"> · team</span> : null}
+        </p>
         <Badge tone={status.tone} icon={status.tone === "danger" ? "alert" : status.tone === "success" ? "check" : undefined}>
           {status.label}
         </Badge>
       </div>
+      <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <p className="text-caption font-semibold text-ink-muted">Spotify email</p>
+          <p className="text-headline break-all text-ink">{row.spotifyEmail}</p>
+        </div>
+        <CopyIcon text={row.spotifyEmail} what={row.firstName ? `${row.firstName}'s Spotify email` : "Spotify email"} />
+      </div>
+      <p className="text-small text-ink">
+        {row.appLabel ? (
+          <>
+            App <span className="font-semibold">{row.appLabel}</span> ({row.appOwner})
+          </>
+        ) : (
+          "No app yet"
+        )}
+        <span className="text-ink-muted"> · asked {ago(row.requestedAt)}</span>
+      </p>
+      {row.schoolEmail && row.schoolEmail !== row.spotifyEmail ? <p className="text-caption break-all text-ink-muted">School email {row.schoolEmail}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
         {canMark ? (
           <Button

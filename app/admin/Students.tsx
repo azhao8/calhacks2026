@@ -7,7 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { Button } from "@/components/Button";
 import { TextField, inputClasses } from "@/components/TextField";
 import { Icon } from "@/components/Icon";
-import { Action, Badge, ConfirmAction, Filters, Loading, Muted, Panel, Result, ShowMore, ago, useRun } from "./_ui";
+import { Action, Badge, ConfirmAction, CopyIcon, Filters, Loading, Muted, Panel, Result, ShowMore, ago, useRun } from "./_ui";
 
 type List = FunctionReturnType<typeof api.admin.students.list>;
 type Row = List["rows"][number];
@@ -99,7 +99,7 @@ export function StudentsTab() {
             setSearch(e.target.value);
             reset();
           }}
-          hint="First name or school email."
+          hint="First name, school email, or Spotify email."
         />
       </div>
       {list === undefined ? (
@@ -136,7 +136,7 @@ function StudentRow({ row }: { row: Row }) {
             {row.firstName ?? "No name yet"}
             {row.isYou ? <span className="text-small font-normal text-ink-muted"> · you</span> : null}
           </span>
-          <span className="text-small break-all text-ink-muted">{row.email ?? "No email"}</span>
+          <span className="text-small break-all text-ink-muted">School {row.email ?? "No email"}</span>
           <span className="text-caption text-ink-muted">
             {row.stage ? STAGE[row.stage] : "No step"} · signed up {ago(row.signedUpAt)}
           </span>
@@ -146,6 +146,15 @@ function StudentRow({ row }: { row: Row }) {
           {row.seat ? <Badge tone="accent">{row.seat.seat === "in" ? "In a plan" : "Has an offer"}</Badge> : null}
         </span>
       </button>
+      {row.spotifyEmail ? (
+        <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <p className="text-caption font-semibold text-ink-muted">Spotify email{row.appLabel ? ` · app ${row.appLabel}` : ""}</p>
+            <p className="text-headline break-all text-ink">{row.spotifyEmail}</p>
+          </div>
+          <CopyIcon text={row.spotifyEmail} what={row.firstName ? `${row.firstName}'s Spotify email` : "Spotify email"} />
+        </div>
+      ) : null}
       {open ? (
         <div className="flex flex-col gap-4 rounded-sm bg-surface-raised p-3">
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-small">
