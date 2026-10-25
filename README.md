@@ -92,6 +92,6 @@ NEXT_PUBLIC_CONVEX_URL=https://elated-barracuda-447.convex.cloud npm run build
 
 `npx convex env list`, `data`, and `logs` hang in cloud sessions because their WebSockets ignore the proxy, and Node's built-in `fetch` needs `NODE_USE_ENV_PROXY=1` to reach outside services.
 
-## Deploy (configured, not yet verified)
+## Deploy
 
-Vercel builds only production, from `main`: `vercel.json` runs `npx convex deploy --cmd 'npm run build'`, then the idempotent seed, and skips every other build so branches never touch production. Vercel's `CONVEX_DEPLOY_KEY` is the production deploy key, scoped to Production.
+Vercel builds only production, from `main`, and serves it at `melos.azhao.dev`. `vercel.json` runs `npx convex deploy --cmd 'npm run build'`, then the idempotent seed. Preview deployments are off in the Vercel project's settings, so branches never build. Vercel's `CONVEX_DEPLOY_KEY` is the production deploy key, scoped to Production, so even a stray preview build couldn't reach a Convex deployment.

@@ -145,3 +145,9 @@ Entry format:
 - Why: the owner judged account deletion unnecessary for a hackathon build; the Spotify data rules are met by disconnect.
 - Replaces: OPEN — the account deletion workflow and address (§5 S16, §13 open items).
 - Affects: S16 menu and the privacy page copy.
+
+## 2026-10-24 23:15 PT · azhao8 · Previews are off in Vercel's settings, not in vercel.json
+- Changed: `vercel.json` no longer has an `ignoreCommand`. Preview deployments are turned off in the Vercel project's settings instead (`previewDeploymentsDisabled`), and `CONVEX_DEPLOY_KEY` stays scoped to Production, so a stray preview build has no Convex deployment to reach.
+- Why: Vercel canceled both git-triggered production builds from the PR #13 and #14 merges as "Ignored Build Step" before any build ran, so `main` stopped deploying on push; the production build had to be started by hand.
+- Replaces: the `vercel.json` skip rule in the 19:02 PT entry. Still implements `CLAUDE.md` §8.1 "Preview deploys are off".
+- Affects: `vercel.json`, `README.md`, `docs/setup.md`; no screens or data contracts.
