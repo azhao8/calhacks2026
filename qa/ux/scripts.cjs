@@ -48,17 +48,29 @@ const scripts = {
     await click(page, "Surprise me");
     await settle(page, 800);
   },
+  async clickSave(page) {
+    await click(page, "Save", { exact: true });
+    await settle(page, 800);
+  },
   async clickConnect(page) {
     await page.getByRole("button", { name: /Spotify/i }).first().click();
     await settle(page, 800);
   },
-  // Walk every preferences step from the menu, screenshotting each, to see whether saved answers show.
-  async prefsWalk(page) {
-    for (let i = 1; i <= 4; i++) {
-      await page.screenshot({ path: `${__dirname}/out/shots/s05-prefs-edit-walk-step${i}.png` });
-      await page.getByRole("button", { name: /^(Continue|Skip)/ }).last().click();
-      await settle(page, 300);
-    }
+  // Editing one saved answer from the summary.
+  async prefsChangeBudget(page) {
+    await page.getByRole("button", { name: "Change ticket budget" }).click();
+    await settle(page, 300);
+  },
+  async prefsChangedUnsaved(page) {
+    await page.getByRole("button", { name: "Change ticket budget" }).click();
+    await page.getByRole("radio", { name: "Up to $15" }).click();
+    await click(page, "Done", { exact: true });
+    await settle(page, 300);
+  },
+  async firstQuestionThenNext(page) {
+    await page.getByRole("radio", { name: "Up to $25" }).click();
+    await click(page, "Continue");
+    await settle(page, 300);
   },
   async notQuite(page) {
     await click(page, "Not quite");

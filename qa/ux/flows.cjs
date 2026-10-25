@@ -61,7 +61,7 @@ const flows = {
     return { rows };
   },
 
-  // Menu → Privacy → how do you get back?
+  // Menu → Privacy → Back.
   async "nav-privacy-from-menu"(browser) {
     const { context, page } = await open(browser, ready());
     await page.goto(BASE + "/menu");
@@ -70,15 +70,27 @@ const flows = {
     await wait(page);
     await page.screenshot({ path: `${SHOTS}/privacy-from-menu.png` });
     const onPrivacy = at(page);
-    const controls = await page.locator("a[href], button").evaluateAll((els) => els.map((e) => `${e.getAttribute("aria-label") || e.innerText.trim()} → ${e.getAttribute("href") || "button"}`));
-    await page.locator('a[aria-label="Melos home"]:visible').first().click();
-    await wait(page, 1200);
-    const wordmarkGoes = at(page);
+    await btn(page, "Back", true).click();
+    await wait(page, 1000);
+    const backGoes = at(page);
     await context.close();
-    return { onPrivacy, controls, wordmarkGoes, note: "The only control on /privacy is the wordmark, which goes home (/week), not back to the menu." };
+    return { onPrivacy, backGoes, pass: backGoes === "/menu" };
   },
 
-  // Sign in → privacy link → back: is the typed email kept?
+  // Privacy opened straight from a link: Back stays in Melos.
+  async "nav-privacy-deep-link"(browser) {
+    const { context, page } = await open(browser, ready());
+    await page.goto("about:blank");
+    await page.goto(BASE + "/privacy");
+    await wait(page);
+    await btn(page, "Back", true).click();
+    await wait(page, 1200);
+    const backGoes = at(page);
+    await context.close();
+    return { backGoes, pass: backGoes.startsWith("/") };
+  },
+
+  // Sign in → privacy link → Back: is the typed email kept?
   async "nav-privacy-from-sign-in"(browser) {
     const { context, page } = await open(browser, visitor());
     await page.goto(BASE + "/sign-in");
@@ -87,43 +99,142 @@ const flows = {
     await link(page, "privacy page").click();
     await wait(page);
     const onPrivacy = at(page);
-    await page.goBack();
+    await btn(page, "Back", true).click();
     await wait(page);
     const kept = await page.getByLabel("School email").inputValue().catch(() => null);
     await context.close();
-    return { onPrivacy, emailAfterBack: kept };
+    return { onPrivacy, backTo: at(page), emailAfterBack: kept, pass: kept === "sam@berkeley.edu" };
   },
 
-  // Menu → Preferences: what do you see, how do you leave without saving, and what does saving say?
+  // Welcome → School → Sign in, typing, then Back twice; and Sign in opened from a link.
+  async "nav-onboarding-back"(browser) {
+    const out = {};
+    {
+      const { context, page } = await open(browser, visitor());
+      await page.goto(BASE + "/");
+      await wait(page);
+      await link(page, "Get started").click();
+      await wait(page);
+      await page.getByRole("radio", { name: /UC Berkeley/ }).first().click().catch(() => page.getByText("UC Berkeley").first().click());
+      await btn(page, "Continue").click();
+      await wait(page);
+      await page.getByLabel("School email").fill("sam@berkeley.edu");
+      await btn(page, "Back", true).click();
+      await wait(page);
+      out.signInBackTo = at(page);
+      await btn(page, "Back", true).click();
+      await wait(page);
+      out.schoolBackTo = at(page);
+      await link(page, "I already have an account").click();
+      await wait(page);
+      out.emailKeptAfterRoundTrip = await page.getByLabel("School email").inputValue().catch(() => null);
+      await context.close();
+    }
+    {
+      const { context, page } = await open(browser, visitor());
+      await page.goto("about:blank");
+      await page.goto(BASE + "/sign-in");
+      await wait(page);
+      await btn(page, "Back", true).click();
+      await wait(page);
+      out.deepLinkSignInBackTo = at(page);
+      await context.close();
+    }
+    {
+      const { context, page } = await open(browser, onboarding("needs_about_you", { "onboarding:access": { ...F.access.requested, spotifyEmail: null } }));
+      await page.goto(BASE + "/about-you");
+      await wait(page);
+      await page.getByLabel("What should we call you?").fill("Sam");
+      await link(page, "Back").click();
+      await wait(page);
+      out.aboutYouBackTo = at(page);
+      await context.close();
+    }
+    {
+      const { context, page } = await open(browser, onboarding("needs_preferences", { "onboarding:access": { ...F.access.requested, spotifyEmail: "sam.spotify@gmail.com" }, "onboarding:preferences": null }));
+      await page.goto(BASE + "/preferences");
+      await wait(page);
+      await link(page, "Back to About you").click();
+      await wait(page);
+      out.prefsQ1BackTo = at(page);
+      out.aboutYouPrefill = await page.getByLabel("What email is your Spotify account under?").inputValue().catch(() => null);
+      await context.close();
+    }
+    out.pass =
+      out.signInBackTo === "/school" && out.schoolBackTo === "/" && out.deepLinkSignInBackTo === "/school" && out.aboutYouBackTo === "/school" && out.prefsQ1BackTo === "/about-you" && out.aboutYouPrefill === "sam.spotify@gmail.com";
+    return out;
+  },
+
+  // Menu → Preferences: summary of saved answers, change one, save, confirmation, reopen fresh.
   async "state-preferences-edit"(browser) {
     const { context, page, mock } = await open(browser, ready(), { mutationDelayMs: 600 });
+    mock.handlers["onboarding:savePreferences"] = (args, m) =>
+      m.set("onboarding:preferences", { ...F.preferencesCustom, maxTicketPrice: args.maxTicketPrice, source: "custom" });
     await page.goto(BASE + "/week");
     await wait(page);
     await link(page, "Open menu").click();
     await wait(page);
     await link(page, "Preferences").click();
     await wait(page);
-    await page.screenshot({ path: `${SHOTS}/prefs-edit-1.png` });
-    const step1 = await text(page);
-    const exitsAtStep1 = await page.locator("a[href], button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || e.innerText.trim()));
-    const checked = await page.locator('[aria-checked="true"], [aria-pressed="true"]').allInnerTexts();
-    for (let i = 0; i < 4; i++) {
-      await page.getByRole("button", { name: /^(Continue|Skip)/ }).last().click();
-      await wait(page, 300);
-    }
+    await page.screenshot({ path: `${SHOTS}/prefs-edit-summary.png`, fullPage: true });
+    const summary = await text(page);
+    await page.getByRole("button", { name: "Change ticket budget" }).click();
+    await wait(page, 300);
+    await page.getByRole("radio", { name: "Up to $15" }).click();
+    await btn(page, "Done", true).click();
+    await wait(page, 300);
     await btn(page, "Save", true).click();
     await wait(page, 200);
     await page.screenshot({ path: `${SHOTS}/prefs-edit-saving.png` });
     await wait(page, 1200);
-    await page.screenshot({ path: `${SHOTS}/prefs-edit-after-save.png` });
+    await page.screenshot({ path: `${SHOTS}/prefs-edit-after-save.png`, fullPage: true });
     const landed = at(page);
     const after = await text(page);
-    const savedMessage = /saved|updated/i.test(after);
+    await btn(page, "Back", true).click();
+    await wait(page);
+    const backTo = at(page);
+    await link(page, "Preferences").click();
+    await wait(page);
+    const reopened = await text(page);
     await context.close();
-    return { step1: step1.slice(0, 200), exitsAtStep1, checkedAtStep1: checked, stepsToSave: 5, landedAfterSave: landed, savedMessage, calls: mock.calls.map((c) => c.path) };
+    return {
+      summaryShowsSaved: /Up to \$50/.test(summary) && /Women, Non binary people/.test(summary) && /Anywhere BART goes/.test(summary),
+      landedAfterSave: landed,
+      savedMessage: /Preferences saved/.test(after),
+      showsNewValue: /Up to \$15/.test(after),
+      backTo,
+      reopensOnSummary: /Your preferences/.test(reopened) && !/Done/.test(reopened),
+      calls: mock.calls.map((c) => c.path),
+    };
   },
 
-  // Waiting for Spotify → "Change my preferences": can you leave without saving?
+  // First time: answer all five, save, land on the next onboarding screen with a confirmation.
+  async "state-preferences-first-time"(browser) {
+    const { context, page, mock } = await open(browser, onboarding("needs_preferences", { "onboarding:preferences": null }));
+    mock.handlers["onboarding:savePreferences"] = (_a, m) => {
+      m.set("onboarding:preferences", F.preferencesCustom);
+      m.set("me:get", F.me("waiting_for_spotify"));
+    };
+    await page.goto(BASE + "/preferences");
+    await wait(page);
+    const counter = (await text(page)).match(/(Question|Step) \d of \d/)?.[0];
+    await page.getByRole("radio", { name: "Up to $25" }).click();
+    await btn(page, "Continue").click();
+    await page.getByRole("button", { name: "Anyone" }).click();
+    await btn(page, "Continue").click();
+    await btn(page, "Skip").click();
+    await btn(page, "Skip").click();
+    await page.getByRole("radio", { name: "Campus" }).click();
+    await btn(page, "Save", true).click();
+    await wait(page, 1500);
+    await page.screenshot({ path: `${SHOTS}/prefs-first-time-after-save.png` });
+    const landed = at(page);
+    const after = await text(page);
+    await context.close();
+    return { counter, landed, savedMessage: /Preferences saved/.test(after), pass: landed === "/waiting" && /Preferences saved/.test(after) };
+  },
+
+  // Waiting for Spotify → "Change my preferences": a way back, and Surprise me asks first.
   async "nav-preferences-from-waiting"(browser) {
     const data = onboarding("waiting_for_spotify", { "onboarding:access": F.access.requested, "onboarding:preferences": F.preferencesCustom });
     const { context, page, mock } = await open(browser, data);
@@ -131,14 +242,17 @@ const flows = {
     await wait(page);
     await link(page, "Change my preferences").click();
     await wait(page);
-    await page.screenshot({ path: `${SHOTS}/prefs-from-waiting.png` });
-    const menu = await page.locator('a[aria-label="Open menu"]').count();
-    const exits = await page.locator("a[href], button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || e.innerText.trim()));
+    await page.screenshot({ path: `${SHOTS}/prefs-from-waiting.png`, fullPage: true });
     await btn(page, "Surprise me").click();
-    await wait(page, 1200);
-    const afterSurprise = at(page);
+    await wait(page, 300);
+    const asked = /This replaces your answers/.test(await text(page));
+    const calledBeforeConfirm = mock.calls.some((c) => c.path === "onboarding:surpriseMe");
+    await btn(page, "Keep my answers").click();
+    await btn(page, "Back", true).click();
+    await wait(page);
+    const backTo = at(page);
     await context.close();
-    return { menu: menu > 0, exits, afterSurprise, surpriseOverwroteCustom: mock.calls.some((c) => c.path === "onboarding:surpriseMe"), note: "Surprise me replaced saved custom answers in one tap, with no confirmation." };
+    return { asked, calledBeforeConfirm, backTo, pass: asked && !calledBeforeConfirm && backTo === "/waiting" };
   },
 
   // Double taps on the actions that change shared state.
@@ -297,23 +411,24 @@ const flows = {
     return { buttons };
   },
 
-  // Menu close: where does it take you after a deep link straight to /menu?
+  // Menu close goes home, never back through browser history.
   async "nav-menu-close"(browser) {
-    const { context, page } = await open(browser, ready());
-    await page.goto(BASE + "/menu");
-    await wait(page);
-    await page.locator('button[aria-label="Close menu"]').click();
-    await wait(page, 1200);
-    const fromDeepLink = at(page);
-    await page.goto(BASE + "/contacts");
-    await wait(page);
-    await link(page, "Open menu").click();
-    await wait(page);
-    await page.locator('button[aria-label="Close menu"]').click();
-    await wait(page, 1000);
-    const fromContacts = at(page);
-    await context.close();
-    return { fromDeepLink, fromContacts };
+    const out = {};
+    for (const [name, data, expect] of [
+      ["ready", ready(), "/week"],
+      ["plan set", ready({ "plans:current": F.plans.set }), "/plan"],
+      ["waiting", onboarding("waiting_for_spotify", { "onboarding:access": F.access.requested }), "/waiting"],
+    ]) {
+      const { context, page } = await open(browser, data);
+      await page.goto("about:blank");
+      await page.goto(BASE + "/menu");
+      await wait(page);
+      await page.locator('button[aria-label="Close menu"]').click();
+      await wait(page, 1200);
+      out[name] = { landed: at(page), pass: at(page) === expect };
+      await context.close();
+    }
+    return out;
   },
 
   // Disconnect Spotify from the menu: what happens next, and is there a way to reconnect?

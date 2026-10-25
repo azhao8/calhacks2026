@@ -52,9 +52,12 @@ const scenarios = [
   // S05 Preferences
   { id: "s05-prefs-new", screen: "S05 Preferences", path: "/preferences", data: onboarding("needs_preferences", { "onboarding:preferences": null }), variants: ALL },
   { id: "s05-prefs-edit-step1", screen: "S05 Preferences", path: "/preferences", data: ready(), variants: ALL },
-  { id: "s05-prefs-edit-walk", screen: "S05 Preferences", path: "/preferences", data: ready(), script: "prefsWalk" },
+  { id: "s05-prefs-edit-change", screen: "S05 Preferences", path: "/preferences", data: ready(), script: "prefsChangeBudget" },
+  { id: "s05-prefs-edit-changed", screen: "S05 Preferences", path: "/preferences", data: ready(), script: "prefsChangedUnsaved" },
+  { id: "s05-prefs-surprise-confirm", screen: "S05 Preferences", path: "/preferences", data: ready(), script: "clickSurprise", fullPage: true },
+  { id: "s05-prefs-new-q2", screen: "S05 Preferences", path: "/preferences", data: onboarding("needs_preferences", { "onboarding:preferences": null }), script: "firstQuestionThenNext" },
   { id: "s05-prefs-waiting-open", screen: "S05 Preferences", path: "/preferences", data: onboarding("waiting_for_spotify", { "onboarding:access": F.access.requested, "onboarding:preferences": F.preferencesSurprise }) },
-  { id: "s05-prefs-save-fail", screen: "S05 Preferences", path: "/preferences", data: ready(), handlers: { "onboarding:surpriseMe": () => { throw fail("retryable"); } }, script: "clickSurprise" },
+  { id: "s05-prefs-save-fail", screen: "S05 Preferences", path: "/preferences", data: ready(), handlers: { "onboarding:savePreferences": () => { throw fail("retryable"); } }, script: "clickSave" },
   // S06 Waiting
   { id: "s06-waiting", screen: "S06 Waiting", path: "/waiting", data: onboarding("waiting_for_spotify", { "onboarding:access": F.access.requested }), variants: [...ALL, "offline"] },
   { id: "s06-waiting-refused", screen: "S06 Waiting", path: "/waiting", data: onboarding("waiting_for_spotify", { "onboarding:access": F.access.refused }) },
