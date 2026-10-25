@@ -125,13 +125,29 @@ export const jobState = internalQuery({
   },
 });
 
+// A job may only keep going while it exists (disconnect deletes it), hasn't finished, and the student
+// still has a Spotify connection, or is a demo student whose fixture snapshot stands in for one.
+async function jobActive(ctx: { db: QueryCtx["db"] }, job: Doc<"analysisJobs"> | null): Promise<boolean> {
+  if (job === null || job.status === "done" || job.status === "failed") return false;
+  const tokens = await ctx.db
+    .query("spotifyTokens")
+    .withIndex("by_userId", (q) => q.eq("userId", job.userId))
+    .first();
+  if (tokens !== null) return true;
+  const snapshot = await snapshotFor(ctx, job.userId);
+  return snapshot?.source === "demo_fixture";
+}
+
+// Moves the job to its next step; false means stop now (for example, the student disconnected),
+// so no Claude or Voyage call runs on data that should be gone.
 export const setStatus = internalMutation({
   args: { jobId: v.id("analysisJobs"), status: vAnalysisStatus },
-  returns: v.null(),
+  returns: v.boolean(),
   handler: async (ctx, { jobId, status }) => {
     const job = await ctx.db.get(jobId);
-    if (job && job.status !== "done" && job.status !== "failed") await ctx.db.patch(jobId, { status });
-    return null;
+    if (!(await jobActive(ctx, job))) return false;
+    await ctx.db.patch(jobId, { status });
+    return true;
   },
 });
 
@@ -151,14 +167,23 @@ export const failJob = internalMutation({
   },
 });
 
+// Stores the fetched listening data only if the job is still running and the student is still connected.
+// A disconnect during the fetch deletes the job and tokens, so the late result is dropped, never stored.
 export const saveSnapshot = internalMutation({
-  args: { userId: v.id("users"), listening: vListening, source: v.union(v.literal("spotify"), v.literal("demo_fixture")) },
-  returns: v.null(),
-  handler: async (ctx, { userId, listening, source }) => {
-    const existing = await snapshotFor(ctx, userId);
+  args: { jobId: v.id("analysisJobs"), listening: vListening },
+  returns: v.boolean(),
+  handler: async (ctx, { jobId, listening }) => {
+    const job = await ctx.db.get(jobId);
+    if (job === null || !(await jobActive(ctx, job))) return false;
+    const existing = await snapshotFor(ctx, job.userId);
     if (existing) await ctx.db.delete(existing._id);
-    await ctx.db.insert("tasteSnapshots", { userId, source, ...toSnapshotFields(listening), fetchedAt: Date.now() });
-    return null;
+    await ctx.db.insert("tasteSnapshots", {
+      userId: job.userId,
+      source: "spotify",
+      ...toSnapshotFields(listening),
+      fetchedAt: Date.now(),
+    });
+    return true;
   },
 });
 
@@ -191,9 +216,9 @@ export const saveProfile = internalMutation({
   returns: v.null(),
   handler: async (ctx, { jobId, result }) => {
     const job = await ctx.db.get(jobId);
-    if (job === null) return null;
+    if (job === null || !(await jobActive(ctx, job))) return null; // disconnected meanwhile
     const snapshot = await snapshotFor(ctx, job.userId);
-    if (snapshot === null) return null; // disconnected meanwhile
+    if (snapshot === null) return null;
     if ((await profileFor(ctx, job.userId)) === null) {
       await ctx.db.insert("tasteProfiles", {
         userId: job.userId,
@@ -232,11 +257,11 @@ export const run = internalAction({
     const { userId } = state;
 
     if (!state.hasSnapshot) {
-      await ctx.runMutation(internal.onboarding.analysis.setStatus, { jobId, status: "fetching" });
+      if (!(await ctx.runMutation(internal.onboarding.analysis.setStatus, { jobId, status: "fetching" }))) return null;
       try {
         const token = await accessToken(ctx, userId);
         const listening = await fetchListening(token);
-        await ctx.runMutation(internal.onboarding.analysis.saveSnapshot, { userId, listening, source: "spotify" });
+        if (!(await ctx.runMutation(internal.onboarding.analysis.saveSnapshot, { jobId, listening }))) return null;
       } catch (error) {
         if (error instanceof SpotifyRefusedError) {
           await markRefused(ctx, userId);
@@ -259,7 +284,8 @@ export const run = internalAction({
     }
 
     if (!state.hasProfile) {
-      await ctx.runMutation(internal.onboarding.analysis.setStatus, { jobId, status: "summarizing" });
+      // Checked right before the paid call: stop if the student disconnected meanwhile.
+      if (!(await ctx.runMutation(internal.onboarding.analysis.setStatus, { jobId, status: "summarizing" }))) return null;
       const result: TasteResult = await summarizeTaste(summary.input);
       await ctx.runMutation(internal.onboarding.analysis.saveProfile, { jobId, result });
     } else {
@@ -372,6 +398,8 @@ export const saveRevision = internalMutation({
       ...result,
       revision: revision + 1,
       confirmedAt: undefined,
+      // The old vector no longer matches; confirming this revision embeds it again.
+      embedding: undefined,
       fingerprint: { ...profile.fingerprint, labels: [...new Set(result.labels)].sort() },
     });
     const job = await jobFor(ctx, profile.userId);
@@ -394,12 +422,19 @@ export const reviseComplete = internalMutation({
 });
 
 // "That's me" (S09): confirm the current revision, mark the student ready, and embed the taste document.
+// Idempotent per revision: a repeated tap never queues a second Voyage call while one is queued or done.
+// A revision whose embedding failed has no vector and no embedding in flight, so confirming again retries it.
 export async function confirmProfile(ctx: MutationCtx, userId: Id<"users">): Promise<void> {
   const profile = await profileFor(ctx, userId);
   if (profile === null) throw new Error("No taste profile to confirm");
-  await ctx.db.patch(profile._id, { confirmedAt: Date.now() });
   const user = await ctx.db.get(userId);
   if (user && user.onboarding !== "ready") await ctx.db.patch(userId, { onboarding: "ready" });
+  const job = await jobFor(ctx, userId);
+  const embedded = profile.embedding !== undefined;
+  const queued = job?.status === "embedding";
+  if (profile.confirmedAt !== undefined && (embedded || queued)) return;
+  if (profile.confirmedAt === undefined) await ctx.db.patch(profile._id, { confirmedAt: Date.now() });
+  if (job) await ctx.db.patch(job._id, { status: "embedding", error: undefined });
   await aiPool.enqueueAction(
     ctx,
     internal.onboarding.analysis.embedTaste,
@@ -458,6 +493,10 @@ export const embedComplete = internalMutation({
   args: { workId: v.string(), context: v.object({ userId: v.id("users") }), result: vResultValidator },
   returns: v.null(),
   handler: async (ctx, { context }) => {
+    const job = await jobFor(ctx, context.userId);
+    if (job?.status === "embedding") {
+      await ctx.db.patch(job._id, { status: "done", finishedAt: Date.now() });
+    }
     const user = await ctx.db.get(context.userId);
     if (user?.onboarding !== "ready") return null;
     // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });

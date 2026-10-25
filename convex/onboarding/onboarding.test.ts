@@ -46,8 +46,10 @@ const spotify = {
   meStatus: 200,
   artists: ["Big Thief", "Phoebe Bridgers", "Adrianne Lenker", "Bon Iver", "Fleet Foxes", "Clairo"],
   requests: [] as string[],
+  // Runs while the liked-songs request is in flight, before Spotify answers.
+  duringFetch: null as null | (() => Promise<void>),
 };
-function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+async function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
   spotify.requests.push(url);
   const json = (body: unknown, status = 200) =>
@@ -67,6 +69,7 @@ function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<R
     return json({ items: spotify.artists.map((name, i) => ({ id: `t${i}`, name: `Song ${i}`, artists: [{ id: `a${i}`, name }] })) });
   }
   if (url.startsWith("https://api.spotify.com/v1/me/tracks")) {
+    if (spotify.duringFetch) await spotify.duringFetch();
     return json({ items: [{ track: { id: "l1", name: "Not", artists: [{ id: "a0", name: "Big Thief" }] } }], next: null });
   }
   return json({ error: "unexpected" }, 500);
@@ -94,6 +97,7 @@ beforeEach(() => {
   claude.answer = DEFAULT_ANSWER;
   spotify.meStatus = 200;
   spotify.requests.length = 0;
+  spotify.duringFetch = null;
   spotify.artists = ["Big Thief", "Phoebe Bridgers", "Adrianne Lenker", "Bon Iver", "Fleet Foxes", "Clairo"];
   vi.useFakeTimers();
   vi.stubGlobal("fetch", fakeFetch);
@@ -540,6 +544,48 @@ describe("analysis and taste review", () => {
     expect((await s.as.query(api.taste.profile, {}))?.confirmed).toBe(true);
   });
 
+  test("a double tapped That's me queues one Voyage call; a correction then needs a new one", async () => {
+    const t = await setup();
+    await addApp(t);
+    const s = await connected(t);
+    await drain(t);
+    await s.as.mutation(api.taste.confirm, {});
+    await s.as.mutation(api.taste.confirm, {});
+    expect(await s.as.query(api.taste.analysis, {})).toMatchObject({ status: "embedding" });
+    await drain(t);
+    await s.as.mutation(api.taste.confirm, {}); // already confirmed and embedded
+    await drain(t);
+    expect(voyage.calls).toHaveLength(1);
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "done", error: null, failure: null });
+
+    // A revised summary drops the old vector and is embedded once on its own confirm.
+    claude.answer = { summary: "Live folk first.", labels: ["folk", "acoustic", "mellow"], artists: ["Fleet Foxes"] };
+    await s.as.mutation(api.taste.correct, { text: "More folk" });
+    await drain(t);
+    expect(await t.run(async (ctx) => (await ctx.db.query("tasteProfiles").first())?.embedding !== undefined)).toBe(false);
+    await s.as.mutation(api.taste.confirm, {});
+    await s.as.mutation(api.taste.confirm, {});
+    await drain(t);
+    expect(voyage.calls).toHaveLength(2);
+    expect(voyage.calls[1][0]).toContain("Live folk first.");
+  });
+
+  test("a failed embedding can be retried by confirming again", async () => {
+    const t = await setup();
+    await addApp(t);
+    voyage.fail = true;
+    const s = await connected(t);
+    await drain(t);
+    await s.as.mutation(api.taste.confirm, {});
+    await drain(t);
+    const attempts = voyage.calls.length;
+    voyage.fail = false;
+    await s.as.mutation(api.taste.confirm, {});
+    await drain(t);
+    expect(voyage.calls).toHaveLength(attempts + 1);
+    expect((await t.run(async (ctx) => ctx.db.query("tasteProfiles").first()))?.embedding).toHaveLength(1024);
+  });
+
   test("a Voyage failure still leaves the student ready, matched on exact items", async () => {
     const t = await setup();
     await addApp(t);
@@ -582,6 +628,29 @@ describe("analysis and taste review", () => {
 });
 
 describe("disconnect", () => {
+  test("disconnecting while Spotify is still answering stores nothing and never calls Claude", async () => {
+    const t = await setup();
+    await addApp(t);
+    let s: Awaited<ReturnType<typeof student>> | null = null;
+    spotify.duringFetch = async () => {
+      spotify.duringFetch = null;
+      await s!.as.mutation(api.settings.disconnectSpotify, {});
+    };
+    s = await connected(t);
+    await drain(t);
+    const left = await t.run(async (ctx) => ({
+      snapshots: await ctx.db.query("tasteSnapshots").collect(),
+      profiles: await ctx.db.query("tasteProfiles").collect(),
+      jobs: await ctx.db.query("analysisJobs").collect(),
+      tokens: await ctx.db.query("spotifyTokens").collect(),
+    }));
+    expect(spotify.requests.some((u) => u.includes("/me/tracks"))).toBe(true); // the fetch really was in flight
+    expect(left).toEqual({ snapshots: [], profiles: [], jobs: [], tokens: [] });
+    expect(claude.calls).toHaveLength(0);
+    expect(voyage.calls).toHaveLength(0);
+    expect(await onboardingOf(t, s.userId)).toBe("needs_spotify_connect");
+  });
+
   test("deletes tokens, snapshot, profile, and vector; revokes access; reconnect starts at S07", async () => {
     const t = await setup();
     await addApp(t);
