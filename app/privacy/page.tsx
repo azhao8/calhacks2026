@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Wordmark } from "@/components/Wordmark";
+import { BackLink } from "@/app/_components/BackLink";
 
 export const metadata: Metadata = { title: "Privacy · Melos" };
 
@@ -18,10 +19,12 @@ function Part({ title, children }: { title: string; children: ReactNode }) {
 export default function PrivacyPage() {
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-120 flex-col gap-8 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
-      <header className="flex min-h-12 items-center">
+      <header className="flex min-h-12 items-center justify-between gap-3">
         <Link href="/" aria-label="Melos home" className="inline-flex min-h-12 items-center">
           <Wordmark />
         </Link>
+        {/* Back to wherever privacy was opened from (the menu, sign in, Connect), or home. */}
+        <BackLink fallback="/" />
       </header>
       <main className="flex flex-col gap-6">
         <h1 className="font-display text-title">Privacy</h1>

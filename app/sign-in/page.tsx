@@ -15,6 +15,7 @@ import { useNow, useOnline } from "@/app/_lib/hooks";
 import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
 import { secondsLeft } from "@/app/_lib/time";
 import { checkSchoolEmail, codeDigits } from "@/app/_lib/validate";
+import { BackLink } from "@/app/_components/BackLink";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 import { CodeInput } from "./CodeInput";
 
@@ -113,7 +114,13 @@ export default function SignInPage() {
       <Screen
         object="headphones"
         step={ONBOARDING_STEP[ROUTES.signIn]}
-        top={<ScreenTitle lead="Melos is for students. We'll send a 6 digit code to your school email.">What&apos;s your school email?</ScreenTitle>}
+        top={
+          <div className="flex flex-col gap-2">
+            {/* Back to the school picker or Welcome, whichever opened this; the typed email stays. */}
+            <BackLink fallback={ROUTES.school} className="-ml-3 self-start" />
+            <ScreenTitle lead="Melos is for students. We'll send a 6 digit code to your school email.">What&apos;s your school email?</ScreenTitle>
+          </div>
+        }
       >
         <form onSubmit={send} noValidate className="flex flex-col gap-4">
           <TextField
