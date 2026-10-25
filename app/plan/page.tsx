@@ -17,7 +17,6 @@ import { afterLeavingText, cantMakeItDetail, couldntGetOneDetail, partnerNoticeT
 import { offerExpiryText } from "@/app/_lib/time";
 import { Confirm } from "@/app/_components/Confirm";
 import { Optional } from "@/app/_components/Optional";
-import { SafetyNote } from "@/app/_components/Safety";
 import { ShareablePrompt } from "@/app/_components/ShareablePrompt";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
@@ -311,7 +310,6 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
         </Button>
       ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
-      <SafetyNote id="safety" list="meetup_day" />
     </Screen>
   );
 }

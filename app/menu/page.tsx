@@ -18,7 +18,6 @@ import { atLeast, ROUTES } from "@/app/_lib/routes";
 import { useAccess } from "@/app/_lib/views";
 import { checkNote } from "@/app/_lib/validate";
 import { Confirm } from "@/app/_components/Confirm";
-import { SafetyNote } from "@/app/_components/Safety";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S16 Menu, settings and help (component MenuButton opens it).
@@ -79,7 +78,6 @@ function Menu({ me }: { me: NonNullable<MeView> }) {
 
       <SpotifySection />
       <HelpSection />
-      <SafetyNote id="safety" list="menu" />
 
       <SignOut />
     </Screen>
