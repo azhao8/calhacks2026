@@ -284,6 +284,8 @@ export default defineSchema({
     // Set by the reconcile step, so time-based changes reach live queries.
     dayRevealedAt: v.optional(v.number()),
     meetingStartedAt: v.optional(v.number()),
+    // Set by reconcile at the cutoff, so live views stop promising a refill (queries don't rerun as time passes).
+    cutoffPassedAt: v.optional(v.number()),
     createdAt: v.number(),
     endReason: v.optional(v.string()),
   })
