@@ -712,6 +712,30 @@ describe("folding duplicates already published", () => {
     expect((await t.run((ctx) => ctx.db.get(official.eventId)))!.matcherWakeAt).toBeGreaterThan(Date.now());
   });
 
+  test("matching isn't transitive: two different games never fold through a vaguer third title", async () => {
+    for (const order of [["Cal Volleyball vs Stanford", "Cal Volleyball", "Cal Volleyball vs UCLA"], ["Cal Volleyball", "Cal Volleyball vs Stanford", "Cal Volleyball vs UCLA"]]) {
+      const t = await setup();
+      const start = Date.now() + 3 * DAY;
+      // Published apart (a day each), then aligned to the same start, as stored before the fix.
+      await importRun(
+        t,
+        `abc-${order[0]}`,
+        order.map((title, i) =>
+          scoutItem({ title, kind: "game", startsAt: iso(start + i * DAY), venue: HAAS, sourceUrl: `https://x.test/${i}` }),
+        ),
+      );
+      const rows = await t.query(internal.events.admin.list, {});
+      await t.run(async (ctx) => {
+        for (const row of rows) await ctx.db.patch(row.eventId, { startsAt: start });
+      });
+      await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+      const published = (await t.query(internal.events.admin.list, { status: "published" })).map((e) => e.title);
+      expect(published).toContain("Cal Volleyball vs Stanford");
+      expect(published).toContain("Cal Volleyball vs UCLA");
+      expect(published).toHaveLength(2);
+    }
+  });
+
   test("two copies that both hold plans are left alone and reported", async () => {
     const t = await setup();
     const { official, web } = await twoCopies(t);

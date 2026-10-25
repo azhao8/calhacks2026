@@ -230,6 +230,7 @@ export const mergeDuplicate = internalMutation({
 // Finds published upcoming events already stored twice (same venue, same start, the same show by title) and folds
 // each extra copy into the one people hold. Never strands a student:
 // - keep: the copy with a forming or set plan; else the one with more open asks; else the more official source;
+//   else the more specific title;
 // - a group where two copies both hold plans is left alone and reported, for the team;
 // - a dropped copy's open asks move to the kept copy (see mergeDuplicate); it holds no plans.
 // Dry run by default: it reports what it would do and changes nothing.
@@ -273,12 +274,17 @@ export const mergeDuplicates = internalMutation({
     const report = [];
     for (const event of upcoming) {
       if (seen.has(event._id) || event.venueId === undefined) continue;
-      const group = upcoming.filter(
-        (other) =>
-          other.venueId === event.venueId &&
-          other.startsAt === event.startsAt &&
-          (other._id === event._id || sameShowTitles(normalizeTitle(other.title), normalizeTitle(event.title))),
-      );
+      // Matching isn't transitive ("Cal Volleyball" matches both "… vs Stanford" and "… vs UCLA"), so a member
+      // joins only if it matches every member already in the group, has not been grouped before, and is still
+      // published.
+      const group = [event];
+      for (const other of upcoming) {
+        if (other._id === event._id || seen.has(other._id) || other.status !== "published") continue;
+        if (other.venueId !== event.venueId || other.startsAt !== event.startsAt) continue;
+        if (group.every((member) => sameShowTitles(normalizeTitle(member.title), normalizeTitle(other.title)))) {
+          group.push(other);
+        }
+      }
       for (const member of group) seen.add(member._id);
       if (group.length < 2) continue;
       const scored = [];
@@ -288,6 +294,8 @@ export const mergeDuplicates = internalMutation({
           b.plans - a.plans ||
           b.openAsks - a.openAsks ||
           sourceRank(b.member.sourceName.split(":")[0]) - sourceRank(a.member.sourceName.split(":")[0]) ||
+          // The more specific title ("Cal Volleyball vs Stanford" over "Cal Volleyball") says which show it is.
+          b.member.title.length - a.member.title.length ||
           a.member.scrapedAt - b.member.scrapedAt,
       );
       const [keep, ...drops] = scored;
