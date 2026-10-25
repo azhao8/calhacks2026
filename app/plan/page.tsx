@@ -12,13 +12,13 @@ import { MatchCard, MelosNumber, SharedLine } from "@/components/MatchCard";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useNow, useOnline } from "@/app/_lib/hooks";
 import { isActivePlan, ROUTES } from "@/app/_lib/routes";
+import { afterLeavingText, cantMakeItDetail, couldntGetOneDetail, partnerNoticeText, type Ended } from "@/app/_lib/planCopy";
 import { offerExpiryText } from "@/app/_lib/time";
 import { Confirm } from "@/app/_components/Confirm";
 import { SafetyNote } from "@/app/_components/Safety";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 type Plan = PlanView;
-type Ended = "next_time" | "cant_make_it" | "no_ticket";
 
 // S11 Offer, S12 Plan set, S13 Meetup day: one screen driven by the plan's stage. Everything shown
 // comes from the server's current view; fields the student may not see yet are null there.
@@ -66,14 +66,7 @@ const eventLine = (plan: Plan) => `${plan.event.title} at ${plan.event.venueName
 
 // Notices about the other seat, worded neutrally (CLAUDE.md §3).
 function PartnerNotice({ plan }: { plan: Plan }) {
-  let text: string | null = null;
-  if (plan.notice === "partner_dropped" || (plan.partner === null && plan.stage !== "offer")) {
-    text = "Your plan is still on. We're finding someone else who's going. You don't need to do anything.";
-  } else if (plan.notice === "partner_replaced" && plan.partner) {
-    text = `${plan.partner.firstName} is coming instead. ${plan.hook}`;
-  } else if (plan.notice === "partner_left" && plan.partner) {
-    text = `${plan.partner.firstName} had to head out. Enjoy the show.`;
-  }
+  const text = partnerNoticeText(plan);
   if (text === null) return null;
   return (
     <Panel>
@@ -110,7 +103,7 @@ function Offer({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void }) {
             block
             loading={busy === "next"}
             disabled={busy === "accept" || !online}
-            onClick={() => run("next", () => nextTime({ seatId: plan.seatId }), () => onEnded("next_time"))}
+            onClick={() => run("next", () => nextTime({ seatId: plan.seatId }), () => onEnded({ kind: "next_time", beforeCutoff: plan.beforeCutoff }))}
           >
             Next time
           </Button>
@@ -147,12 +140,15 @@ function TicketBlock({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => voi
       {confirming ? (
         <Confirm
           question="Couldn't get a ticket?"
-          detail="That's okay. Your seat opens for someone else who's going, and the plan carries on for them."
+          detail={couldntGetOneDetail(plan)}
           yes="Give up my seat"
           no="Keep my seat"
           busy={busy === "couldnt"}
           disabled={!online}
-          onYes={() => run("couldnt", () => setTicket({ seatId: plan.seatId, ticket: "couldnt" }), () => onEnded("no_ticket"))}
+          onYes={() => {
+            const beforeCutoff = plan.beforeCutoff;
+            void run("couldnt", () => setTicket({ seatId: plan.seatId, ticket: "couldnt" }), () => onEnded({ kind: "no_ticket", beforeCutoff }));
+          }}
           onNo={() => setConfirming(false)}
         />
       ) : (
@@ -181,16 +177,15 @@ function CantMakeIt({ plan, onEnded, label }: { plan: Plan; onEnded: (e: Ended) 
       {confirming ? (
         <Confirm
           question={label}
-          detail={
-            plan.partner
-              ? `That's okay. ${plan.partner.firstName} keeps the plan, and we'll look for someone else who's going.`
-              : "That's okay. We'll let the plan go for you."
-          }
+          detail={cantMakeItDetail(plan)}
           yes="Yes, I can't"
           no="Keep my seat"
           busy={busy === "cant"}
           disabled={!online}
-          onYes={() => run("cant", () => cantMakeIt({ seatId: plan.seatId }), () => onEnded("cant_make_it"))}
+          onYes={() => {
+            const beforeCutoff = plan.beforeCutoff;
+            void run("cant", () => cantMakeIt({ seatId: plan.seatId }), () => onEnded({ kind: "cant_make_it", beforeCutoff }));
+          }}
           onNo={() => setConfirming(false)}
         />
       ) : (
@@ -301,19 +296,18 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
         </Button>
       ) : null}
       {error ? <InlineError>{error}</InlineError> : null}
-      <SafetyNote id="safety" />
+      <SafetyNote id="safety" list="meetup_day" />
     </Screen>
   );
 }
 
 function AfterLeaving({ ended }: { ended: Ended }) {
+  const { title, body } = afterLeavingText(ended);
   return (
     <Screen object="radio" menu>
       <Panel className="flex flex-col gap-2">
-        <ScreenTitle>{ended === "next_time" ? "No problem. We will keep looking." : "Done. Your seat is open for someone else."}</ScreenTitle>
-        <p className="text-body text-ink">
-          {ended === "next_time" ? "Your other yeses still count." : "We will keep looking for your other yeses."}
-        </p>
+        <ScreenTitle>{title}</ScreenTitle>
+        <p className="text-body text-ink">{body}</p>
       </Panel>
       <Link href={ROUTES.week} className={buttonClasses({ block: true })}>
         Back to your week

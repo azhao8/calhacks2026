@@ -21,9 +21,6 @@ import { Confirm } from "@/app/_components/Confirm";
 import { SafetyNote } from "@/app/_components/Safety";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
-// The address for account deletion requests until a real flow exists (CLAUDE.md §5 S16, OPEN).
-const DELETE_EMAIL = "hello@melos.azhao.dev";
-
 // S16 Menu, settings and help (component MenuButton opens it).
 export default function MenuPage() {
   const gate = useGate(ROUTES.menu);
@@ -81,16 +78,7 @@ function Menu({ me }: { me: NonNullable<MeView> }) {
 
       <SpotifySection />
       <HelpSection />
-      <SafetyNote id="safety" />
-
-      <section aria-label="Delete your account" className="flex flex-col gap-1 px-1">
-        <p className="text-small text-ink-muted">
-          Email us to delete your account:{" "}
-          <a href={`mailto:${DELETE_EMAIL}`} className="font-semibold text-accent underline underline-offset-3">
-            {DELETE_EMAIL}
-          </a>
-        </p>
-      </section>
+      <SafetyNote id="safety" list="menu" />
 
       <SignOut />
     </Screen>

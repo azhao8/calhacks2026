@@ -10,9 +10,11 @@ import { Chip } from "@/components/Chip";
 import { QuestionnaireStep } from "@/components/QuestionnaireStep";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
+import { usePreferences, type PreferencesView } from "@/app/_lib/views";
 import {
   AREA_OPTIONS,
   BUDGETS,
+  budgetIdFor,
   budgetMax,
   MEET_OPTIONS,
   meetWhoSelection,
@@ -35,24 +37,27 @@ import { LoadingScreen, Screen } from "@/app/_components/Screen";
 // for pairing. Changes apply to future asks and offers.
 export default function PreferencesPage() {
   const gate = useGate(ROUTES.preferences);
-  if (gate.status === "loading" || gate.me === null) return <LoadingScreen object="headphones" />;
-  return <Questions me={gate.me} />;
+  const ready = gate.status === "ready" && gate.me !== null;
+  // Saved answers, so opening this from the menu starts where the student left off.
+  const saved = usePreferences(ready ? undefined : "skip");
+  if (gate.status === "loading" || gate.me === null || saved === undefined) return <LoadingScreen object="headphones" />;
+  return <Questions me={gate.me} saved={saved} />;
 }
 
 const TOTAL = 5;
 
-function Questions({ me }: { me: NonNullable<MeView> }) {
+function Questions({ me, saved }: { me: NonNullable<MeView>; saved: PreferencesView }) {
   const router = useRouter();
   const online = useOnline();
   const savePreferences = useMutation(api.onboarding.savePreferences);
   const surpriseMe = useMutation(api.onboarding.surpriseMe);
   const [step, setStep] = useState(1);
-  const [budget, setBudget] = useState<BudgetId | null>(null);
-  const [meetWho, setMeetWho] = useState<MeetWho | null>(null);
-  const [self, setSelf] = useState<GenderSelf | null>(null);
-  const [year, setYear] = useState<Year | null>(null);
-  const [similarYear, setSimilarYear] = useState(false);
-  const [area, setArea] = useState<Area | null>(null);
+  const [budget, setBudget] = useState<BudgetId | null>(saved ? budgetIdFor(saved.maxTicketPrice) : null);
+  const [meetWho, setMeetWho] = useState<MeetWho | null>(saved?.meetWho ?? null);
+  const [self, setSelf] = useState<GenderSelf | null>(saved?.gender ?? null);
+  const [year, setYear] = useState<Year | null>(saved?.year ?? null);
+  const [similarYear, setSimilarYear] = useState(saved?.prefersSimilarYear ?? false);
+  const [area, setArea] = useState<Area | null>(saved?.area ?? null);
   const [busy, setBusy] = useState<"next" | "surprise" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
