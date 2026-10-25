@@ -16,12 +16,13 @@ export const status = query({
   },
 });
 
+// `email: false` makes the drop quiet: no start or match emails, for rehearsals.
 export const start = mutation({
-  args: {},
+  args: { email: v.optional(v.boolean()) },
   returns: v.null(),
-  handler: async (ctx) => {
+  handler: async (ctx, { email }) => {
     const admin = await requireAdmin(ctx);
-    await startDrop(ctx, admin.email ?? "admin");
+    await startDrop(ctx, admin.email ?? "admin", email === false);
     return null;
   },
 });
@@ -37,11 +38,11 @@ export const endChoosing = mutation({
 });
 
 export const matchNow = mutation({
-  args: {},
+  args: { email: v.optional(v.boolean()) },
   returns: v.null(),
-  handler: async (ctx) => {
+  handler: async (ctx, { email }) => {
     await requireAdmin(ctx);
-    await requestMatchNow(ctx);
+    await requestMatchNow(ctx, email === false);
     return null;
   },
 });

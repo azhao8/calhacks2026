@@ -439,3 +439,35 @@ describe("the runtime switch", () => {
     }
   });
 });
+
+describe("quiet drops", () => {
+  test("a quiet drop queues no emails at start or at the scheduled match", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: "d", email: "d@demo.invalid" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    await admin.mutation(api.admin.drops.start, { email: false });
+    await advance(t, 1000);
+    await asUser(t, sam).mutation(api.drops.seeMore, {});
+    await asUser(t, sam).mutation(api.drops.accept, {});
+    await advance(t, DROP.choosingMs + DROP.confirmMs);
+    expect((await entryOf(t, sam))!.state).toBe("matched");
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+
+  test("Match now with email false silences the match email", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: "d", email: "d@demo.invalid" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    await startDrop(t, admin);
+    await advance(t, 5000);
+    mocks.sendEmail.mockClear();
+    await asUser(t, sam).mutation(api.drops.seeMore, {});
+    await asUser(t, sam).mutation(api.drops.accept, {});
+    await admin.mutation(api.admin.drops.matchNow, { email: false });
+    await advance(t, 10_000);
+    expect((await entryOf(t, sam))!.state).toBe("matched");
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+});

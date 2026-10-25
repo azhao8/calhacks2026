@@ -391,6 +391,8 @@ export default defineSchema({
     endedChoosingAt: v.optional(v.number()),
     matchedAt: v.optional(v.number()),
     startedBy: v.string(),
+    // A quiet drop sends no emails (team rehearsals on prod).
+    quiet: v.optional(v.boolean()),
   }).index("by_status", ["status"]),
 
   // One student's place in a drop. `choices` and `index` are server-only: no query returns the count.
