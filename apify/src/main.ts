@@ -72,7 +72,8 @@ async function searchWeb(query: string): Promise<SearchResult[]> {
 // Listing pages for one source, crawled with Crawlee (robots rules respected, one request per host at a time).
 async function crawlListings(source: Source, runKey: string): Promise<string[]> {
   if (source.startUrls.length === 0) return [];
-  const queue = await RequestQueue.open(`listings-${runKey}-${source.id}`.slice(0, 63));
+  const name = `listings-${runKey}-${source.id}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 63).replace(/-+$/, "");
+  const queue = await RequestQueue.open(name);
   const pages: string[] = [];
   const crawler = new CheerioCrawler({
     requestQueue: queue,
