@@ -14,6 +14,7 @@ import { TextField } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
+import { shareTarget, type Candidate, type ShareTarget } from "@/app/_lib/shareTarget";
 import { useMyShares, useShareable } from "@/app/_lib/views";
 import { Optional } from "@/app/_components/Optional";
 import { checkInstagram, checkPhone, formatPhone, instagramDisplay } from "@/app/_lib/validate";
@@ -35,24 +36,48 @@ export default function StayInTouchPage() {
 
 function StayInTouch() {
   const gate = useGate(ROUTES.stayInTouch);
-  const meetupId = useSearchParams().get("meetupId");
+  const requested = useSearchParams().get("meetupId");
   if (gate.status === "loading" || gate.plan === undefined) return <LoadingScreen object="mic" />;
   const plan = gate.plan;
   const current = plan !== null && plan.canShare ? { meetupId: plan.meetupId, partnerName: plan.partner?.firstName ?? null } : null;
-  if (current && (meetupId === null || meetupId === current.meetupId)) return <Share {...current} />;
+  const direct = shareTarget(requested, current, "failed");
+  // The current plan needs no list; anything else waits for contacts.shareable, and if that fails
+  // the page never swaps in a different recipient (app/_lib/shareTarget.ts).
+  if (direct.kind === "share") return <Target target={direct} />;
   return (
-    <Optional fallback={current ? <Share {...current} /> : <NothingToShare />}>
-      <FromShareable meetupId={meetupId} />
+    <Optional fallback={<Target target={direct} />}>
+      <FromShareable requested={requested} current={current} />
     </Optional>
   );
 }
 
-function FromShareable({ meetupId }: { meetupId: string | null }) {
+function FromShareable({ requested, current }: { requested: string | null; current: Candidate | null }) {
   const shareable = useShareable();
-  if (shareable === undefined) return <LoadingScreen object="mic" />;
-  const pick = meetupId === null ? shareable[0] : shareable.find((s) => s.meetupId === meetupId);
-  if (!pick) return <NothingToShare />;
-  return <Share meetupId={pick.meetupId} partnerName={pick.partnerFirstName} />;
+  return <Target target={shareTarget(requested, current, shareable)} />;
+}
+
+function Target({ target }: { target: ShareTarget }) {
+  if (target.kind === "loading") return <LoadingScreen object="mic" />;
+  if (target.kind === "share") return <Share {...target.target} />;
+  if (target.kind === "unavailable") return <Unavailable />;
+  return <NothingToShare />;
+}
+
+function Unavailable() {
+  return (
+    <Screen object="mic" menu>
+      <StateView
+        kind="error"
+        title="This plan isn't available to share right now."
+        body="Nothing was shared. Try again in a moment."
+        action={null}
+        className="rounded-lg bg-backdrop-vignette"
+      />
+      <Link href={ROUTES.contacts} className={buttonClasses({ variant: "secondary", block: true })}>
+        Recent connections
+      </Link>
+    </Screen>
+  );
 }
 
 function NothingToShare() {
