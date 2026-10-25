@@ -4,6 +4,7 @@ import { fail } from "../lib/errors";
 import { eventPriceLabel } from "../asks/rules";
 import { hookItems } from "../matching/names";
 import { documentFrequency, sharedItems } from "../matching/taste";
+import { normalizeTrackKey } from "../lib/normalize";
 import { isActivePlan, isActiveSeat, seatsOf } from "../plans/model";
 import { entryFor, latestDrop, openDrop, type Drop, type Entry } from "./cycle";
 import type { DropView, Reveal } from "./views";
@@ -139,6 +140,9 @@ async function trackArtist(db: DatabaseReader, key: string, userIds: Id<"users">
       .first();
     const track = snapshot?.topTracks.find((t) => t.normalizedKey === key);
     if (track?.artistNames[0]) return track.artistNames[0];
+    // A song shared only through liked songs.
+    const liked = snapshot?.likedSongs.find((s) => normalizeTrackKey(s.name, s.artistNames) === key);
+    if (liked?.artistNames[0]) return liked.artistNames[0];
   }
   return key.split("|")[1] ?? "";
 }

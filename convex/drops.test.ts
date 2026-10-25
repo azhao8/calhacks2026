@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import { DROP } from "./lib/config";
 import { pickChoices, type PickEvent } from "./drops/pick";
 import { validateAudience } from "./drops/audience";
+import { normalizeTrackKey } from "./lib/normalize";
 import { advance, asUser, DAY, HOUR, makeEvent, makeStudent, seatsFor, setup, T0, type T } from "./testing.helpers";
 
 const mocks = vi.hoisted(() => ({ generateJson: vi.fn(), embed: vi.fn(), sendEmail: vi.fn() }));
@@ -469,5 +470,60 @@ describe("quiet drops", () => {
     await advance(t, 10_000);
     expect((await entryOf(t, sam))!.state).toBe("matched");
     expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("review fixes", () => {
+  test("a student who accepts and then disconnects Spotify is unmatched, not matched or emailed", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: "d", email: "d@demo.invalid" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    await startDrop(t, admin);
+    await asUser(t, sam).mutation(api.drops.seeMore, {});
+    await asUser(t, sam).mutation(api.drops.accept, {});
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sam, { onboarding: "needs_spotify_connect" });
+      const profile = (await ctx.db.query("tasteProfiles").collect()).find((p) => p.userId === sam)!;
+      await ctx.db.delete(profile._id);
+    });
+    mocks.sendEmail.mockClear();
+    await admin.mutation(api.admin.drops.matchNow, {});
+    await advance(t, 10_000);
+    expect((await entryOf(t, sam))!.state).toBe("unmatched");
+    expect(await t.run(async (ctx) => (await ctx.db.query("meetups").collect()).length)).toBe(0);
+    expect(mocks.sendEmail.mock.calls.filter(([m]) => m.subject === "You've been matched")).toHaveLength(0);
+  });
+
+  test("a song shared only through liked songs shows its artist as Spotify spells it", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const key = normalizeTrackKey("Not", ["Big Thief"]);
+    const ids = [await makeStudent(t, { firstName: "Ann" }), await makeStudent(t, { firstName: "Ben" })];
+    await t.run(async (ctx) => {
+      for (const userId of ids) {
+        const profile = (await ctx.db.query("tasteProfiles").collect()).find((p) => p.userId === userId)!;
+        await ctx.db.patch(profile._id, { fingerprint: { ...profile.fingerprint, tracks: [key] } });
+        await ctx.db.insert("tasteSnapshots", {
+          userId,
+          source: "spotify",
+          topArtists: [],
+          topTracks: [],
+          likedSongs: [{ spotifyId: "s1", name: "Not", artistIds: ["a1"], artistNames: ["Big Thief"] }],
+          fetchedAt: Date.now(),
+        });
+      }
+    });
+    await startDrop(t, admin);
+    for (const id of ids) {
+      await asUser(t, id).mutation(api.drops.seeMore, {});
+      await asUser(t, id).mutation(api.drops.accept, {});
+    }
+    await admin.mutation(api.admin.drops.matchNow, {});
+    await advance(t, 10_000);
+    const view = await asUser(t, ids[0]).query(api.drops.mine, {});
+    if (view.kind !== "reveal") throw new Error("expected a reveal");
+    const { steps } = await asUser(t, ids[0]).query(api.drops.reveal, { meetupId: view.meetupId });
+    expect(steps.find((s) => s.kind === "song")).toEqual({ kind: "song", title: "Not", artist: "Big Thief" });
   });
 });
