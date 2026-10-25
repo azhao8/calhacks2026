@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { eventFormValues, eventPatch, fromPacificInput, toPacificInput, parsePrice, parseLatLng } from "./format";
+import { eventFormValues, eventPatch, sameAsSchoolEmail, fromPacificInput, toPacificInput, parsePrice, parseLatLng } from "./format";
 test("pacific", () => {
   const ms = Date.UTC(2026, 9, 30, 2, 30); // Oct 29 7:30 pm PDT
   expect(toPacificInput(ms)).toBe("2026-10-29T19:30");
@@ -32,4 +32,11 @@ test("the event editor sends only fields changed from the values it opened with"
   const newer = eventFormValues({ ...EVENT, priceMin: 20, ticketUrl: "https://example.com/new" });
   expect(newer.priceMin).not.toBe(baseline.priceMin);
   expect(eventPatch(baseline, form)).toEqual({ patch: { title: "Indie folk night, late show" } });
+});
+
+test("a Spotify email equal to the school email is flagged, ignoring case and spaces", () => {
+  expect(sameAsSchoolEmail("Maya@Berkeley.edu ", "maya@berkeley.edu")).toBe(true);
+  expect(sameAsSchoolEmail("maya.listens@gmail.com", "maya@berkeley.edu")).toBe(false);
+  expect(sameAsSchoolEmail(null, "maya@berkeley.edu")).toBe(false);
+  expect(sameAsSchoolEmail("maya@berkeley.edu", null)).toBe(false);
 });

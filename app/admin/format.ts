@@ -121,3 +121,9 @@ export function eventPatch(baseline: EventFormValues, form: EventFormValues): { 
   }
   return { patch };
 }
+
+// About you used to prefill the school address as the Spotify email, so some requests carry the wrong one.
+export function sameAsSchoolEmail(spotifyEmail: string | null, schoolEmail: string | null): boolean {
+  if (!spotifyEmail || !schoolEmail) return false;
+  return spotifyEmail.trim().toLowerCase() === schoolEmail.trim().toLowerCase();
+}

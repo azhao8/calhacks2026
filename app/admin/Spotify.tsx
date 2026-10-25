@@ -14,6 +14,8 @@ import {
   ConfirmAction,
   CopyButton,
   CopyIcon,
+  SAME_AS_SCHOOL_WARNING,
+  Warning,
   Filters,
   Loading,
   Muted,
@@ -25,6 +27,7 @@ import {
   useRun,
   when,
 } from "./_ui";
+import { sameAsSchoolEmail } from "./format";
 
 type Queue = FunctionReturnType<typeof api.admin.queue.list>;
 type App = Queue["apps"][number];
@@ -505,6 +508,7 @@ function StudentRow({ row, apps }: { row: Row; apps: App[] }) {
         </div>
         <CopyIcon text={row.spotifyEmail} what={row.firstName ? `${row.firstName}'s Spotify email` : "Spotify email"} />
       </div>
+      {sameAsSchoolEmail(row.spotifyEmail, row.schoolEmail) ? <Warning>{SAME_AS_SCHOOL_WARNING}</Warning> : null}
       <p className="text-small text-ink">
         {row.appLabel ? (
           <>
@@ -515,7 +519,7 @@ function StudentRow({ row, apps }: { row: Row; apps: App[] }) {
         )}
         <span className="text-ink-muted"> · asked {ago(row.requestedAt)}</span>
       </p>
-      {row.schoolEmail && row.schoolEmail !== row.spotifyEmail ? <p className="text-caption break-all text-ink-muted">School email {row.schoolEmail}</p> : null}
+      {row.schoolEmail && !sameAsSchoolEmail(row.spotifyEmail, row.schoolEmail) ? <p className="text-caption break-all text-ink-muted">School email {row.schoolEmail}</p> : null}
       <div className="flex flex-wrap items-center gap-2">
         {canMark ? (
           <Button
