@@ -8,16 +8,8 @@ export type ItemKind = "artist" | "track" | "label";
 export type SharedItem = { kind: ItemKind; name: string; weight: number };
 export type Fingerprint = Doc<"tasteProfiles">["fingerprint"];
 
-// INTEGRATION: must match stream A's normalization of artist and track names in the fingerprint.
-export function normalizeName(name: string): string {
-  return name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
+// Shared with onboarding, so demo and real fingerprints compare alike.
+export { normalizeName } from "../lib/normalize";
 
 // Built once per fingerprint object, so scoring every pair in a pool doesn't rebuild them.
 const setCache = new WeakMap<Fingerprint, Record<ItemKind, Set<string>>>();

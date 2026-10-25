@@ -5,7 +5,7 @@ import { reconcilePlan } from "./reconcile";
 
 // Spotify disconnect (S16): gives up any seat the student was offered or holds (it reopens for the
 // partner) and closes their open asks, so no new asks or offers reach them.
-// INTEGRATION: stream A's settings.disconnectSpotify calls this.
+// stream A's settings.disconnectSpotify calls this.
 export const forUser = internalMutation({
   args: { userId: v.id("users") },
   returns: v.object({ seatsReleased: v.number(), asksClosed: v.number() }),
@@ -49,7 +49,7 @@ export const forUser = internalMutation({
 
 // The team pulled an event (S17): open asks for it close, and every plan for it that is still forming
 // or set is called off. An offer is withdrawn, not declined, so it goes out as no_answer.
-// INTEGRATION: stream B's convex/events/admin.ts calls this when an event is pulled.
+// stream B's convex/events/admin.ts calls this when an event is pulled.
 export const forEvent = internalMutation({
   args: { eventId: v.id("events") },
   returns: v.object({ asksClosed: v.number(), plansCalledOff: v.number(), offersWithdrawn: v.number() }),

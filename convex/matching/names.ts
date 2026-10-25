@@ -2,6 +2,7 @@ import type { Id } from "../_generated/dataModel";
 import type { DatabaseReader } from "../_generated/server";
 import type { HookItem } from "../ai/hooks";
 import { normalizeName, type SharedItem } from "./taste";
+import { normalizeTrackKey } from "../lib/normalize";
 
 // Fingerprints hold normalized names; hooks show the names as Spotify spells them.
 export async function hookItems(
@@ -26,11 +27,15 @@ export async function hookItems(
     for (const track of snapshot.topTracks) tracks.set(track.normalizedKey, track.name);
     for (const song of snapshot.likedSongs) {
       for (const name of song.artistNames) if (!artists.has(normalizeName(name))) artists.set(normalizeName(name), name);
+      // Liked songs are in the fingerprint's tracks too, under the same key onboarding builds.
+      const key = normalizeTrackKey(song.name, song.artistNames);
+      if (!tracks.has(key)) tracks.set(key, song.name);
     }
   }
   return shared.map((item) => {
     if (item.kind === "artist") return { kind: item.kind, name: artists.get(item.name) ?? item.name };
-    if (item.kind === "track") return { kind: item.kind, name: tracks.get(item.name) ?? item.name.split(" | ")[0] };
+    // A key is "title|artist"; without a spelling on file, show the title, never the raw key.
+    if (item.kind === "track") return { kind: item.kind, name: tracks.get(item.name) ?? item.name.split("|")[0] };
     return { kind: item.kind, name: item.name };
   });
 }

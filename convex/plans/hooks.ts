@@ -7,6 +7,7 @@ import { generateJson } from "../services/claude";
 import { HOOK_SYSTEM, hookPrompt, hookSchema, templateHook, validateHook, type HookItem } from "../ai/hooks";
 import { aiPool } from "../lib/pools";
 import { itemSets, normalizeName } from "../matching/taste";
+import { TASTE_LABELS } from "../ai/labels";
 
 // Hooks and icebreakers for a pair (CLAUDE.md §6.4, §7): the template is written at once, then Claude's
 // version replaces it if it validates and the pair hasn't changed in the meantime.
@@ -32,9 +33,10 @@ export async function setPairHook(ctx: MutationCtx, meetupId: Id<"meetups">, ite
   const event = plan ? await ctx.db.get(plan.eventId) : null;
   if (plan === null || event === null || items.length === 0) return;
 
-  // Every artist and track either student has, so the validator can reject unshared names.
+  // Every artist and track either student has, plus every label on the fixed list, so the validator can
+  // reject any name or genre the two don't share (a label neither has can't slip in either).
   const { key, userIds } = await pairKey(ctx, meetupId);
-  const known = new Set<string>();
+  const known = new Set<string>(TASTE_LABELS.map(normalizeName));
   for (const userId of userIds) {
     const profile = await ctx.db
       .query("tasteProfiles")

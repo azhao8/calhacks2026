@@ -24,6 +24,8 @@ describe("demo students", () => {
   test("seeding creates six fictional students with .invalid emails and confirmed taste; it's idempotent", async () => {
     const t = await setup();
     expect(await t.mutation(internal.demo.admin.seed, {})).toEqual({ created: 6, updated: 0 });
+    // Claude is unavailable in this file, so the fixture summaries stand in after the fallback wait.
+    await advance(t, 3 * MINUTE);
     expect(await t.mutation(internal.demo.admin.seed, {})).toEqual({ created: 0, updated: 6 });
     const users = await demoUsers(t);
     expect(users).toHaveLength(6);

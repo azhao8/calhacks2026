@@ -17,6 +17,8 @@ export const TIMING = {
   nextTimeCooldownMs: 0,
   demoReplyDelayMs: { min: 5 * SECOND, max: 20 * SECOND },
   demoTicketDelayMs: 1 * MINUTE,
+  // A demo student whose Claude summary isn't done by then gets its fixture summary instead (§6.7).
+  demoProfileFallbackMs: 2 * MINUTE,
   meetOffsetMinutes: 30,
   cutoffBeforeMeetMs: 2 * HOUR,
   completionAfterStartMs: 4 * HOUR,
