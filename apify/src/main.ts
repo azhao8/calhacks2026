@@ -46,7 +46,9 @@ function anthropicKey(input: Input): string | undefined {
 
 async function placeCache(): Promise<PlaceCache> {
   const store = await Actor.openKeyValueStore(GEO.cacheStore);
-  const keyFor = (key: string) => `q-${Buffer.from(key).toString("base64url").slice(0, 200)}`;
+  // The prefix versions the stored Place format: "q2" entries leave unnamed results' names empty, so results
+  // cached by earlier runs (with an address standing in as the name) are never reused.
+  const keyFor = (key: string) => `q2-${Buffer.from(key).toString("base64url").slice(0, 200)}`;
   return {
     get: async (key) => (await store.getValue<Place[]>(keyFor(key))) ?? null,
     set: async (key, value) => store.setValue(keyFor(key), value),
