@@ -2,6 +2,7 @@ import { internalMutation, internalQuery } from "../_generated/server";
 import { v, type Infer } from "convex/values";
 import { accessFor, savedSecret } from "./apps";
 import { startJob } from "./analysis";
+import { fail } from "../lib/errors";
 
 // S07 internals behind spotify.connectUrl and spotify.completeConnect.
 
@@ -53,6 +54,14 @@ export const storeConnection = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, { userId, appId, spotifyUserId, tokens }) => {
+    // The team may have moved or removed the request while Spotify answered: store nothing then.
+    const current = await accessFor(ctx, userId);
+    const stillAdded =
+      current !== null &&
+      current.spotifyAppId === appId &&
+      (current.status === "allowlisted" || current.status === "connected" || (current.status === "revoked" && current.allowlistedAt !== undefined));
+    if (!stillAdded) fail("validation_failed", "Your Spotify setup changed. Try connecting again.");
+
     const existing = await ctx.db
       .query("spotifyTokens")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
@@ -60,8 +69,7 @@ export const storeConnection = internalMutation({
     for (const row of existing) await ctx.db.delete(row._id);
     await ctx.db.insert("spotifyTokens", { userId, appId, spotifyUserId, ...tokens });
 
-    const access = await accessFor(ctx, userId);
-    if (access) await ctx.db.patch(access._id, { status: "connected", refusedAt: undefined });
+    await ctx.db.patch(current._id, { status: "connected", refusedAt: undefined });
 
     const user = await ctx.db.get(userId);
     if (user && user.onboarding !== "ready" && user.onboarding !== "needs_review") {

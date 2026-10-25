@@ -8,14 +8,26 @@ import { clientSecret } from "../services/spotify";
 
 const modules = import.meta.glob("/convex/**/*.ts");
 
+// Loaded by name so the app's type check doesn't compile the package's TypeScript test helper.
+const WORKPOOL_TEST = "@convex-dev/workpool/test";
+type WorkpoolTest = { register: (t: unknown, name: string) => unknown };
+const workpool: WorkpoolTest = ((await import(/* @vite-ignore */ WORKPOOL_TEST)) as { default: WorkpoolTest }).default;
+
 const TEAM_EMAIL = "team@berkeley.edu";
 const SECRET = "0123456789abcdef0123456789abcdef";
 
 // Spotify's token endpoint for "Check app": accepts only SECRET.
 const tokenCalls: string[] = [];
+// Runs while Spotify is "answering" a connect's code exchange, before the tokens come back.
+const hooks = { duringExchange: null as null | (() => Promise<void>) };
 async function fakeFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  if (url === "https://api.spotify.com/v1/me") return new Response(JSON.stringify({ id: "spotify-user" }), { status: 200 });
   if (url !== "https://accounts.spotify.com/api/token") return new Response("{}", { status: 500 });
+  if (new URLSearchParams(String(init?.body)).get("grant_type") === "authorization_code") {
+    if (hooks.duringExchange) await hooks.duringExchange();
+    return new Response(JSON.stringify({ access_token: "a", refresh_token: "r", expires_in: 3600, scope: "user-top-read" }), { status: 200 });
+  }
   const auth = new Headers(init?.headers).get("Authorization") ?? "";
   tokenCalls.push(auth);
   const [, secret] = atob(auth.replace("Basic ", "")).split(":");
@@ -28,6 +40,7 @@ beforeEach(() => {
   vi.stubEnv("ADMIN_EMAILS", TEAM_EMAIL);
   vi.stubGlobal("fetch", fakeFetch);
   tokenCalls.length = 0;
+  hooks.duringExchange = null;
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -309,4 +322,41 @@ test("connect refuses before Spotify consent when the app has no secret, and wor
   const url = new URL(await as(t, userId).action(api.spotify.connectUrl, { redirectUri }));
   expect(url.searchParams.get("client_id")).toBe("client-melos-nosecret");
   expect(url.toString()).not.toContain(SECRET);
+});
+
+test("a request moved or removed while Spotify answers a connect stores no tokens", async () => {
+  const { t, team, admin } = await setup();
+  for (const pool of ["aiPool", "emailPool", "syncPool"]) workpool.register(t, pool);
+  vi.stubEnv("SPOTIFY_STATE_SECRET", "test-state-secret");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const alex = await addApp(t, team, "melos-alex", SECRET);
+  const sam = await addApp(t, team, "melos-sam", SECRET);
+  const redirectUri = "http://127.0.0.1:3000/spotify/callback";
+
+  for (const change of ["move", "remove"] as const) {
+    const { userId, accessId } = await request(t, { email: `${change}@berkeley.edu`, appId: alex, status: "allowlisted", onboarding: "needs_spotify_connect" });
+    const student = as(t, userId);
+    const state = new URL(await student.action(api.spotify.connectUrl, { redirectUri })).searchParams.get("state")!;
+    hooks.duringExchange = async () => {
+      hooks.duringExchange = null;
+      if (change === "move") await admin.mutation(api.admin.queue.moveRequest, { accessId, appId: sam });
+      else await admin.mutation(api.admin.queue.removeRequest, { accessId });
+    };
+    await expect(student.action(api.spotify.completeConnect, { code: "good", state, redirectUri })).rejects.toThrow(/setup changed/);
+    await t.run(async (ctx) => {
+      const tokens = await ctx.db.query("spotifyTokens").collect();
+      expect(tokens.filter((row) => row.userId === userId)).toHaveLength(0);
+      const access = await ctx.db.get(accessId);
+      if (change === "move") expect(access).toMatchObject({ spotifyAppId: sam, status: "requested" });
+      else expect(access).toBeNull();
+    });
+  }
+
+  // Unchanged, the same connect stores tokens for the app in the signed state.
+  const { userId } = await request(t, { email: "ok@berkeley.edu", appId: alex, status: "allowlisted", onboarding: "needs_spotify_connect" });
+  const state = new URL(await as(t, userId).action(api.spotify.connectUrl, { redirectUri })).searchParams.get("state")!;
+  await as(t, userId).action(api.spotify.completeConnect, { code: "good", state, redirectUri });
+  await t.run(async (ctx) => {
+    expect((await ctx.db.query("spotifyTokens").collect()).find((row) => row.userId === userId)?.appId).toBe(alex);
+  });
 });
