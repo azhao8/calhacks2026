@@ -159,6 +159,9 @@ export const vPlanView = v.object({
   // Only from meetup day.
   marker: v.union(v.number(), v.null()),
   icebreaker: v.union(v.string(), v.null()),
+  // True until the cutoff (§6.5): a seat given up now reopens and is refilled. After it, nobody new is
+  // added, so "I can't make it" and "I couldn't get one" must not promise a replacement.
+  beforeCutoff: v.boolean(),
   canCantMakeIt: v.boolean(),
   canLeave: v.boolean(),
   canShare: v.boolean(),
