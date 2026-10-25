@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
 import type { Infer } from "convex/values";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
@@ -49,7 +48,5 @@ export type Shareable = { meetupId: Id<"meetups">; partnerFirstName: string; eve
 export const useMyActiveShares = (skip?: Skip) => useQuery(api.contacts.mine, args(skip)) as MyShare[] | undefined;
 export const useShareable = (skip?: Skip) => useQuery(api.contacts.shareable, args(skip)) as Shareable[] | undefined;
 
-// Stream C's plans.lastEnded, referenced by name until it's in the generated API. Render it
-// inside <Optional> so a deployment without it still works.
-const plansLastEnded = makeFunctionReference<"query", Record<string, never>, LastEnded>("plans:lastEnded");
-export const useLastEnded = (skip?: Skip) => useQuery(plansLastEnded, args(skip)) as LastEnded | undefined;
+// The student's latest seat that went out as Next time or unanswered in the last day (G6b).
+export const useLastEnded = (skip?: Skip) => useQuery(api.plans.lastEnded, args(skip)) as LastEnded | undefined;
