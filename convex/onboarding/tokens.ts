@@ -76,14 +76,17 @@ export const refuse = internalMutation({
   },
 });
 
+// Any status, including "revoked" after a disconnect: the request goes back on the queue with its app slot,
+// and notifiedAt clears so the next "Mark added" emails the student again, as S06 promises.
 export async function refuseAccess(ctx: MutationCtx, userId: Id<"users">) {
   const access = await accessFor(ctx, userId);
-  if (access && access.status !== "revoked") {
+  if (access) {
     await ctx.db.patch(access._id, {
       status: "requested",
       refusedAt: Date.now(),
       allowlistedAt: undefined,
       allowlistedBy: undefined,
+      notifiedAt: undefined,
     });
   }
   const tokens = await ctx.db

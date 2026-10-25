@@ -87,11 +87,16 @@ The student says the current summary isn't quite right. Their correction wins ov
   return validateTaste(answer, input);
 }
 
-const FORBIDDEN = /[!–—]|\p{Extended_Pictographic}/u;
+const FORBIDDEN = /[!\-–—]|\p{Extended_Pictographic}/u;
 
 // Checks Claude's answer against the schema rules; throws so the job retries instead of storing a bad read.
 export function validateTaste(answer: z.infer<typeof answerSchema>, input: TasteInput): TasteResult {
-  const summary = answer.summary.trim().replace(/\s+/g, " ");
+  // Word-joining hyphens ("lo-fi", "hip-hop") become spaces: product copy has no hyphens or dashes.
+  // A free-standing hyphen still fails below, so the pool retries.
+  const summary = answer.summary
+    .trim()
+    .replace(/(?<=\p{L})-(?=\p{L})/gu, " ")
+    .replace(/\s+/g, " ");
   if (summary.length === 0 || summary.length > ANALYSIS.summaryMaxChars) {
     throw new TasteValidationError(`Summary length ${summary.length} is out of range`);
   }

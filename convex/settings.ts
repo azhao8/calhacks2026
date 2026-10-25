@@ -21,6 +21,21 @@ export const disconnectSpotify = mutation({
         .collect();
       for (const row of rows) await ctx.db.delete(row._id);
     }
+    // Spotify-derived text outside the taste tables (Spotify Developer Policy: delete on disconnect):
+    // the private reasons the ask picker wrote from this student's taste, and the shared items in matcher logs.
+    const asks = await ctx.db
+      .query("asks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const ask of asks) if (ask.pickReason !== undefined) await ctx.db.patch(ask._id, { pickReason: undefined });
+    // matchRuns has no index by student; the table stays small (one row per matcher run).
+    for (const run of await ctx.db.query("matchRuns").collect()) {
+      if (!run.decisions.some((d) => (d.a === userId || d.b === userId) && d.shared.length > 0)) continue;
+      await ctx.db.patch(run._id, {
+        decisions: run.decisions.map((d) => (d.a === userId || d.b === userId ? { ...d, shared: [] } : d)),
+      });
+    }
+
     const access = await accessFor(ctx, userId);
     if (access && access.status !== "requested") await ctx.db.patch(access._id, { status: "revoked" });
 

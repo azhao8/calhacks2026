@@ -44,6 +44,7 @@ vi.mock("../services/voyage", () => ({
 // Spotify, through a stubbed fetch so the real service module runs.
 const spotify = {
   meStatus: 200,
+  topStatus: 200,
   artists: ["Big Thief", "Phoebe Bridgers", "Adrianne Lenker", "Bon Iver", "Fleet Foxes", "Clairo"],
   requests: [] as string[],
   // Runs while the liked-songs request is in flight, before Spotify answers.
@@ -63,6 +64,7 @@ async function fakeFetch(input: string | URL | Request, init?: RequestInit): Pro
     return spotify.meStatus === 200 ? json({ id: "spotify-user-1" }) : json({ error: "forbidden" }, spotify.meStatus);
   }
   if (url.startsWith("https://api.spotify.com/v1/me/top/artists")) {
+    if (spotify.topStatus !== 200) return json({ error: "nope" }, spotify.topStatus);
     return json({ items: spotify.artists.map((name, i) => ({ id: `a${i}`, name, genres: [] })) });
   }
   if (url.startsWith("https://api.spotify.com/v1/me/top/tracks")) {
@@ -84,6 +86,7 @@ const workpool: WorkpoolTest = ((await import(/* @vite-ignore */ WORKPOOL_TEST))
 
 beforeAll(() => {
   process.env.SPOTIFY_STATE_SECRET = "test-state-secret";
+  process.env.SITE_URL = "http://127.0.0.1:3000";
   process.env.SPOTIFY_CLIENT_SECRET_MELOS_ALEX = "client-secret";
   process.env.SPOTIFY_CLIENT_SECRET_MELOS_SAM = "client-secret";
 });
@@ -96,6 +99,7 @@ beforeEach(() => {
   voyage.fail = false;
   claude.answer = DEFAULT_ANSWER;
   spotify.meStatus = 200;
+  spotify.topStatus = 200;
   spotify.requests.length = 0;
   spotify.duringFetch = null;
   spotify.artists = ["Big Thief", "Phoebe Bridgers", "Adrianne Lenker", "Bon Iver", "Fleet Foxes", "Clairo"];
@@ -392,9 +396,9 @@ describe("Spotify connect", () => {
     await t.run(async (ctx) => {
       expect(await ctx.db.query("spotifyTokens").collect()).toHaveLength(0);
     });
-    // Marking added again doesn't send a second ready email.
+    // Marking added again emails the student again: S06 promises an email when they can try again.
     const again = await t.mutation(internal.onboarding.admin.markAdded, { accessId: rows[0].accessId, adminEmail: "o@berkeley.edu" });
-    expect(again).toEqual({ changed: true, emailQueued: false });
+    expect(again).toEqual({ changed: true, emailQueued: true });
   });
 });
 
@@ -677,5 +681,125 @@ describe("disconnect", () => {
     const url = await s.as.action(api.spotify.connectUrl, { redirectUri: "http://127.0.0.1:3000/spotify/callback" });
     expect(url).toContain("client_id=client-melos-alex");
     expect((await t.query(internal.onboarding.admin.queue, {})).apps[0].used).toBe(1);
+  });
+});
+
+describe("acceptance audit fixes", () => {
+  const redirectUri = "http://127.0.0.1:3000/spotify/callback";
+  async function reconnect(s: { as: { action: T["action"] } }) {
+    const state = new URL(await s.as.action(api.spotify.connectUrl, { redirectUri })).searchParams.get("state")!;
+    return await errorCode(s.as.action(api.spotify.completeConnect, { code: "good", state, redirectUri }));
+  }
+
+  test("a disconnected student refused on reconnect is flagged, re-addable, and emailed again", async () => {
+    const t = await setup();
+    await addApp(t);
+    const s = await connected(t);
+    await drain(t);
+    await s.as.mutation(api.settings.disconnectSpotify, {});
+    await drain(t);
+    expect(emails).toHaveLength(1); // the first ready email
+    spotify.meStatus = 403;
+    expect(await reconnect(s)).toBe("spotify_refused");
+    expect(await onboardingOf(t, s.userId)).toBe("waiting_for_spotify");
+    expect(await s.as.query(api.onboarding.access, {})).toMatchObject({ status: "requested", refused: true });
+    const queue = await t.query(internal.onboarding.admin.queue, {});
+    expect(queue.flags.refused).toBe(1);
+    expect(queue.rows[0].appLabel).toBe("melos-alex"); // keeps its app slot
+    const added = await t.mutation(internal.onboarding.admin.markAdded, { accessId: queue.rows[0].accessId, adminEmail: "o@berkeley.edu" });
+    expect(added).toEqual({ changed: true, emailQueued: true });
+    await drain(t);
+    expect(emails).toHaveLength(2); // S06 promised an email when they can try again
+    expect(await onboardingOf(t, s.userId)).toBe("needs_spotify_connect");
+  });
+
+  test("a rejected Spotify connection during analysis sends the student back to connect", async () => {
+    const t = await setup();
+    await addApp(t);
+    spotify.topStatus = 401;
+    const s = await connected(t);
+    await drain(t);
+    expect(await s.as.query(api.taste.analysis, {})).toMatchObject({ status: "failed", error: "spotify_auth" });
+    expect(await onboardingOf(t, s.userId)).toBe("needs_spotify_connect");
+    await t.run(async (ctx) => {
+      expect(await ctx.db.query("spotifyTokens").collect()).toHaveLength(0);
+    });
+    // Connecting again works and the analysis resumes.
+    spotify.topStatus = 200;
+    expect(await reconnect(s)).toBeUndefined();
+    await drain(t);
+    expect(await s.as.query(api.taste.analysis, {})).toMatchObject({ status: "done" });
+    expect(await onboardingOf(t, s.userId)).toBe("needs_review");
+  });
+
+  test("changing preferences when ready asks the picker again", async () => {
+    const t = await setup();
+    await addApp(t);
+    const s = await connected(t);
+    await drain(t);
+    await s.as.mutation(api.taste.confirm, {});
+    await drain(t);
+    const pickerRuns = async () =>
+      await t.run(async (ctx) => {
+        const jobs = await ctx.db.system.query("_scheduled_functions").collect();
+        return jobs.filter((job) => job.name.includes("asks/picker") && job.name.includes("pickForUser")).length;
+      });
+    const before = await pickerRuns();
+    await s.as.mutation(api.onboarding.surpriseMe, {});
+    expect(await pickerRuns()).toBe(before + 1);
+    await s.as.mutation(api.onboarding.savePreferences, { maxTicketPrice: 50, meetWho: "anyone", prefersSimilarYear: false, area: "bart" });
+    expect(await pickerRuns()).toBe(before + 2);
+  });
+
+  test("a code request for a non-normalized address is refused, so case variants can't multiply tries", async () => {
+    const t = await setup();
+    expect(await errorCode(t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "VICTIM@berkeley.edu" } }))).toBe(
+      "validation_failed",
+    );
+    expect(await errorCode(t.action(api.auth.signIn, { provider: "resend-otp", params: { email: " victim@berkeley.edu" } }))).toBe(
+      "validation_failed",
+    );
+    await t.run(async (ctx) => {
+      expect(await ctx.db.query("users").collect()).toHaveLength(0);
+      expect(await ctx.db.query("authAccounts").collect()).toHaveLength(0);
+    });
+    expect(emails).toHaveLength(0);
+    const started = await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "victim@berkeley.edu" } });
+    expect(started.started).toBe(true);
+    expect(emails.map((m) => m.to)).toEqual(["victim@berkeley.edu"]);
+  });
+
+  test("disconnect also clears Spotify-derived pick reasons and shared items in matcher logs", async () => {
+    const t = await setup();
+    await addApp(t);
+    const s = await connected(t);
+    await drain(t);
+    const other = await student(t, "other@berkeley.edu");
+    const ids = await t.run(async (ctx) => {
+      const eventId = await ctx.db.insert("events", {
+        title: "Show", kind: "concert", startsAt: Date.now() + 86400000, priceMin: null, priceMax: null, priceSource: null,
+        sourceName: "test", sourceUrl: "https://example.com", performers: [], tags: [], ageLimit: null, meetOffsetMinutes: 30,
+        status: "published", featured: false, dedupeKey: "k", scrapedAt: 0, lastSeenAt: 0,
+      });
+      const mine = await ctx.db.insert("asks", { userId: s.userId, eventId, createdAt: 0, answer: "pending", pickReason: "Loves Big Thief" });
+      const theirs = await ctx.db.insert("asks", { userId: other.userId, eventId, createdAt: 0, answer: "pending", pickReason: "keep" });
+      const shared = [{ kind: "artist", name: "Big Thief", weight: 1 }];
+      const runId = await ctx.db.insert("matchRuns", {
+        eventId, trigger: "sweep", startedAt: 0, seatsRefilled: 0, pairsCreated: 1, demoFills: 0, errors: [],
+        decisions: [
+          { a: s.userId, b: other.userId, score: 1, similarity: 0.5, shared, reason: "pair" },
+          { a: other.userId, b: other.userId, score: 1, similarity: 0.5, shared, reason: "untouched" },
+        ],
+      });
+      return { mine, theirs, runId };
+    });
+    await s.as.mutation(api.settings.disconnectSpotify, {});
+    await t.run(async (ctx) => {
+      expect((await ctx.db.get(ids.mine))?.pickReason).toBeUndefined();
+      expect((await ctx.db.get(ids.theirs))?.pickReason).toBe("keep");
+      const run = await ctx.db.get(ids.runId);
+      expect(run?.decisions[0].shared).toEqual([]);
+      expect(run?.decisions[1].shared).toHaveLength(1);
+    });
   });
 });

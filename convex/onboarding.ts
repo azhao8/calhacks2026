@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { fail } from "./lib/errors";
@@ -192,6 +193,12 @@ async function writePreferences(ctx: MutationCtx, user: Doc<"users">, fields: Pr
     .first();
   if (existing) await ctx.db.patch(existing._id, fields);
   else await ctx.db.insert("preferences", { userId: user._id, ...fields });
+
+  // A ready student who changes preferences (for example from the empty week) gets fresh asks.
+  // The picker's own slot check keeps the 3 per week limit.
+  if (user.onboarding === "ready") {
+    await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: user._id });
+  }
 
   if (user.onboarding === "needs_preferences") {
     const row = await accessFor(ctx, user._id);

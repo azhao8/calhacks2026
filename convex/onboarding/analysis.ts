@@ -158,6 +158,17 @@ export const failJob = internalMutation({
     const job = await ctx.db.get(jobId);
     if (job === null || job.status === "done") return null;
     await ctx.db.patch(jobId, { status: "failed", error, finishedAt: Date.now() });
+    if (error === "spotify_auth") {
+      // The stored connection no longer works (a rejected refresh token or a 401), so retrying can't help.
+      // Drop the tokens and send the student back to S07 to connect again.
+      const tokens = await ctx.db
+        .query("spotifyTokens")
+        .withIndex("by_userId", (q) => q.eq("userId", job.userId))
+        .collect();
+      for (const row of tokens) await ctx.db.delete(row._id);
+      const user = await ctx.db.get(job.userId);
+      if (user && user.onboarding !== "ready") await ctx.db.patch(job.userId, { onboarding: "needs_spotify_connect" });
+    }
     if (error === "too_little_data") {
       // Never invent a taste. Drop the thin snapshot so "try again later" fetches fresh data.
       const snapshot = await snapshotFor(ctx, job.userId);
