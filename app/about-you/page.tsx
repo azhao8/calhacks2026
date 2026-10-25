@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -12,6 +12,8 @@ import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
 import { checkEmail, checkFirstName } from "@/app/_lib/validate";
+import { normalizeEmail } from "@/convex/lib/edu";
+import { Confirm } from "@/app/_components/Confirm";
 import { setFlash } from "@/app/_lib/nav";
 import { useAccess } from "@/app/_lib/views";
 import { BackTo } from "@/app/_components/BackLink";
@@ -42,9 +44,12 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
   const firstTime = me.onboarding === "needs_about_you" || me.onboarding === "needs_preferences";
   const [errors, setErrors] = useState<{ firstName?: string; spotifyEmail?: string; form?: string }>({});
   const [saving, setSaving] = useState(false);
+  // The school email is rarely a Spotify login, so typing it again asks once before saving.
+  const [confirmSame, setConfirmSame] = useState(false);
+  const spotifyField = useRef<HTMLDivElement>(null);
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function submit(event?: FormEvent, confirmed = false) {
+    event?.preventDefault();
     const name = checkFirstName(firstName);
     const mail = checkEmail(spotifyEmail);
     if (!name.ok || !mail.ok) {
@@ -52,9 +57,17 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
       return;
     }
     setErrors({});
+    if (!confirmed && me.email !== null && mail.value === normalizeEmail(me.email)) {
+      setConfirmSame(true);
+      return;
+    }
+    setConfirmSame(false);
     setSaving(true);
     try {
       await save({ firstName: name.value, spotifyEmail: mail.value });
+      // Next keeps this page alive, and Change on Waiting opens it again: clear the spinner so Save
+      // works on the next visit.
+      setSaving(false);
       if (firstTime) {
         router.replace(ROUTES.preferences);
       } else {
@@ -90,27 +103,47 @@ function AboutYouForm({ me, savedSpotifyEmail }: { me: NonNullable<MeView>; save
           error={errors.firstName}
           hint="First name only. The person you go with sees it, and nobody else does."
         />
-        <TextField
-          label="The email you log in to Spotify with"
-          required
-          type="email"
-          inputMode="email"
-          autoComplete="email"
-          autoCapitalize="none"
-          spellCheck={false}
-          value={spotifyEmail}
-          onChange={(e) => setSpotifyEmail(e.target.value)}
-          error={errors.spotifyEmail}
-          hint={
-            <>
-              Not sure? Spotify → Profile → Account. If you signed up with Google or Apple, it&apos;s that email.
-              <br />
-              Melos is in early access with Spotify, so we add each account by hand. We only use this email for that.
-            </>
-          }
-        />
+        <div ref={spotifyField}>
+          <TextField
+            label="The email you log in to Spotify with"
+            required
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            spellCheck={false}
+            value={spotifyEmail}
+            onChange={(e) => {
+              setSpotifyEmail(e.target.value);
+              setConfirmSame(false);
+            }}
+            error={errors.spotifyEmail}
+            hint={
+              <>
+                Not sure? Spotify → Profile → Account. If you signed up with Google or Apple, it&apos;s that email.
+                <br />
+                Melos is in early access with Spotify, so we add each account by hand. We only use this email for that.
+              </>
+            }
+          />
+        </div>
+        {confirmSame ? (
+          <Confirm
+            question="Is this the email you log in to Spotify with?"
+            detail="Most Spotify accounts use a personal email, not a school one. If you signed up with Google or Apple, use that email."
+            yes="Yes, that's my Spotify email"
+            no="Change it"
+            busy={saving}
+            disabled={!online}
+            onYes={() => void submit(undefined, true)}
+            onNo={() => {
+              setConfirmSame(false);
+              spotifyField.current?.querySelector("input")?.focus();
+            }}
+          />
+        ) : null}
         {errors.form ? <InlineError>{errors.form}</InlineError> : null}
-        <Button type="submit" block loading={saving} disabled={!online}>
+        <Button type="submit" block loading={saving && !confirmSame} disabled={!online || confirmSame}>
           {firstTime ? "Continue" : "Save"}
         </Button>
       </form>

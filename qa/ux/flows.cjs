@@ -479,6 +479,44 @@ const flows = {
       await page.screenshot({ path: `${SHOTS}/about-you-new.png` });
       await context.close();
     }
+    {
+      // Typing the sign-in email asks first; "Change it" goes back to the field; "Yes" saves.
+      const { context, page, mock } = await open(browser, onboarding("needs_about_you", { "onboarding:access": { status: "none", refused: false, spotifyEmail: null } }));
+      mock.handlers["onboarding:saveAboutYou"] = (_a, m) => m.set("me:get", F.me("needs_preferences"));
+      await page.goto(BASE + "/about-you");
+      await wait(page);
+      const field = page.getByLabel("The email you log in to Spotify with");
+      await page.getByLabel("What should we call you?").fill("Sam");
+      await field.fill("Sam@Berkeley.edu ");
+      await btn(page, "Continue").click();
+      await wait(page, 400);
+      await page.screenshot({ path: `${SHOTS}/about-you-same-email.png` });
+      const asked = await page.getByText("Is this the email you log in to Spotify with?").isVisible();
+      const savedBeforeConfirm = mock.calls.some((c) => c.path === "onboarding:saveAboutYou");
+      await btn(page, "Change it", true).click();
+      await wait(page, 200);
+      const focused = await field.evaluate((el) => el === document.activeElement);
+      await btn(page, "Continue").click();
+      await wait(page, 300);
+      await btn(page, "Yes, that's my Spotify email", true).click();
+      await wait(page, 1000);
+      out.sameEmail = { asked, savedBeforeConfirm, focused, savedAfterYes: mock.calls.filter((c) => c.path === "onboarding:saveAboutYou").length === 1, landed: at(page) };
+      out.sameEmail.pass = asked && !savedBeforeConfirm && focused && out.sameEmail.savedAfterYes && out.sameEmail.landed === "/preferences";
+      await context.close();
+    }
+    {
+      // From Waiting's Change, a saved school email asks too.
+      const { context, page, mock } = await open(browser, onboarding("waiting_for_spotify", { "onboarding:access": { ...F.access.requested, spotifyEmail: "sam@berkeley.edu" } }));
+      await page.goto(BASE + "/waiting");
+      await wait(page);
+      await link(page, "Change the Spotify email").click();
+      await wait(page);
+      await btn(page, "Save", true).click();
+      await wait(page, 400);
+      out.sameEmailFromWaiting = { asked: await page.getByText("Is this the email you log in to Spotify with?").isVisible(), saved: mock.calls.some((c) => c.path === "onboarding:saveAboutYou") };
+      out.sameEmailFromWaiting.pass = out.sameEmailFromWaiting.asked && !out.sameEmailFromWaiting.saved;
+      await context.close();
+    }
     for (const [from, state] of [
       ["/waiting", "waiting_for_spotify"],
       ["/connect", "needs_spotify_connect"],
@@ -500,11 +538,45 @@ const flows = {
       await wait(page, 1500);
       await page.screenshot({ path: `${SHOTS}/spotify-email-saved-from${from.replace("/", "-")}.png` });
       const after = await text(page);
-      out[from] = { prefill, landed: at(page), showsNew: after.includes("sam.spotify@gmail.com"), saved: /Saved\./.test(after) };
-      out[from].pass = prefill === "sam@berkeley.edu" && out[from].landed === "/waiting" && out[from].showsNew && out[from].saved;
+      const landed = at(page);
+      // Change again: the kept-alive form must be ready to save, not stuck on its spinner.
+      await link(page, "Change the Spotify email").click();
+      await wait(page);
+      const saveReadyAgain = await btn(page, "Save", true).isEnabled();
+      out[from] = { prefill, landed, showsNew: after.includes("sam.spotify@gmail.com"), saved: /Saved\./.test(after), saveReadyAgain };
+      out[from].pass = prefill === "sam@berkeley.edu" && out[from].landed === "/waiting" && out[from].showsNew && out[from].saved && saveReadyAgain;
       await context.close();
     }
-    out.pass = out.newStudentField === "" && out.emptyError && out["/waiting"].pass && out["/connect"].pass;
+    out.pass = out.newStudentField === "" && out.emptyError && out.sameEmail.pass && out.sameEmailFromWaiting.pass && out["/waiting"].pass && out["/connect"].pass;
+    return out;
+  },
+
+  // The loading equalizer: each bar has its own delay and pace, so the bars aren't in step.
+  async "state-loading-equalizer"(browser) {
+    const out = {};
+    for (const motion of ["no-preference", "reduce"]) {
+      const context = await browser.newContext({ viewport: { width: 375, height: 812 }, reducedMotion: motion });
+      const mock = new MockConvex({ data: visitor({ "me:get": MockConvex.hold }) });
+      await mock.attach(context);
+      const page = await context.newPage();
+      await page.goto(BASE + "/");
+      await wait(page, 1300);
+      const bars = await page.evaluate(() =>
+        [...document.querySelectorAll('[aria-busy="true"] [aria-hidden="true"] > span')].map((el) => {
+          const s = getComputedStyle(el);
+          return { delay: s.animationDelay, duration: s.animationDuration, height: Math.round(el.getBoundingClientRect().height), running: el.getAnimations().some((a) => a.playState === "running") };
+        }),
+      );
+      out[motion] = bars;
+      await context.close();
+    }
+    const moving = out["no-preference"];
+    out.pass =
+      moving.length === 4 &&
+      new Set(moving.map((b) => b.delay)).size === 4 &&
+      new Set(moving.map((b) => b.duration)).size === 4 &&
+      new Set(moving.map((b) => b.height)).size > 1 &&
+      out.reduce.every((b) => !b.running);
     return out;
   },
 
