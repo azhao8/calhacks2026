@@ -26,6 +26,7 @@ import type * as lib_config from "../lib/config.js";
 import type * as lib_edu from "../lib/edu.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_format from "../lib/format.js";
+import type * as lib_pools from "../lib/pools.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_views from "../lib/views.js";
 import type * as matching_admin from "../matching/admin.js";
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   "lib/edu": typeof lib_edu;
   "lib/errors": typeof lib_errors;
   "lib/format": typeof lib_format;
+  "lib/pools": typeof lib_pools;
   "lib/validators": typeof lib_validators;
   "lib/views": typeof lib_views;
   "matching/admin": typeof matching_admin;

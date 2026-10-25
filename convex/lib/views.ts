@@ -1,5 +1,17 @@
 import { v, type Infer } from "convex/values";
-import { vAnalysisStatus, vAnswer, vOnboarding, vSchoolStatus, vShareKind, vTicket } from "./validators";
+import {
+  vAnalysisStatus,
+  vAnswer,
+  vArea,
+  vGenderSelf,
+  vMeetWho,
+  vOnboarding,
+  vPreferencesSource,
+  vSchoolStatus,
+  vShareKind,
+  vTicket,
+  vYear,
+} from "./validators";
 
 // The UI contract: what each public query returns (CLAUDE.md §8.7). Withholding happens here, by shape:
 // a field a student may not see yet is null, never present with a hidden value.
@@ -36,13 +48,31 @@ export const vAccessView = v.object({
     v.literal("revoked"),
   ),
   refused: v.boolean(),
+  // The student's own Spotify account email, so S06 can say which account to sign in with.
+  spotifyEmail: v.union(v.string(), v.null()),
 });
+
+// S05 opened again from the menu starts from the saved answers. The student's own record only.
+export const vPreferencesView = v.union(
+  v.null(),
+  v.object({
+    maxTicketPrice: v.union(v.number(), v.null()),
+    meetWho: vMeetWho,
+    gender: v.union(vGenderSelf, v.null()),
+    year: v.union(vYear, v.null()),
+    prefersSimilarYear: v.boolean(),
+    area: vArea,
+    source: vPreferencesSource,
+  }),
+);
 
 export const vAnalysisView = v.union(
   v.null(),
   v.object({
     status: vAnalysisStatus,
     error: v.union(v.string(), v.null()),
+    // Why a failed job failed: too little listening data gets its own copy and no retry button (S08).
+    failure: v.union(v.null(), v.literal("too_little_data"), v.literal("other")),
   }),
 );
 
@@ -112,6 +142,9 @@ export const vPlanView = v.object({
     v.literal("partner_left"),
     v.literal("nobody_by_cutoff"),
   ),
+  // The first name of the partner who gave up the seat, for "{Name} can't make it." Set with
+  // partner_dropped and partner_replaced; this student already saw the name in the offer.
+  previousPartnerFirstName: v.union(v.string(), v.null()),
   // Only once both seats are in.
   meeting: v.union(
     v.null(),
@@ -126,6 +159,9 @@ export const vPlanView = v.object({
   // Only from meetup day.
   marker: v.union(v.number(), v.null()),
   icebreaker: v.union(v.string(), v.null()),
+  // True until the cutoff (§6.5): a seat given up now reopens and is refilled. After it, nobody new is
+  // added, so "I can't make it" and "I couldn't get one" must not promise a replacement.
+  beforeCutoff: v.boolean(),
   canCantMakeIt: v.boolean(),
   canLeave: v.boolean(),
   canShare: v.boolean(),

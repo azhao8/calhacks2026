@@ -17,6 +17,17 @@ describe("edu email check", () => {
     expect(isEduEmail("alex@edu")).toBe(false);
     expect(isEduEmail("not an email")).toBe(false);
   });
+
+  test("validates the normalized address, the same one we store and send to", () => {
+    // NFKC folds compatibility characters (the Kelvin sign, fullwidth letters) to ASCII before the check,
+    // so what passes is exactly the address the code goes to.
+    expect(normalizeEmail("alex@Keio.edu")).toBe("alex@keio.edu");
+    expect(isEduEmail("alex@Keio.edu")).toBe(true);
+    expect(normalizeEmail("alex@berkeley.ｅｄｕ")).toBe("alex@berkeley.edu");
+    // Lookalikes that stay non-ASCII after normalization are refused.
+    expect(isEduEmail("alex@berkeley.еdu")).toBe(false);
+    expect(isEduEmail("аlex@berkeley.edu")).toBe(false);
+  });
 });
 
 describe("display labels", () => {
