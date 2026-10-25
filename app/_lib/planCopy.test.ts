@@ -7,7 +7,7 @@ const plan = (over: Partial<Parameters<typeof partnerNoticeText>[0]> = {}) => ({
   partner: { firstName: "Sam", seat: "in" as const, ticket: "none" as const, left: false },
   previousPartnerFirstName: null,
   beforeCutoff: true,
-  hook: "You both have Big Thief on repeat.",
+  hook: "You both have Big Thief on repeat." as string | null,
   ...over,
 });
 
@@ -32,6 +32,9 @@ describe("partnerNoticeText", () => {
     expect(partnerNoticeText(plan({ notice: "partner_replaced", partner: { firstName: "Ari", seat: "offered", ticket: "none", left: false } }))).toBe(
       "Ari is coming instead. You both have Big Thief on repeat.",
     );
+    expect(partnerNoticeText(plan({ notice: "partner_replaced", hook: null, partner: { firstName: "Ari", seat: "offered", ticket: "none", left: false } }))).toBe(
+      "Ari is coming instead.",
+    );
     expect(partnerNoticeText(plan({ notice: "partner_left" }))).toBe("Sam had to head out. Enjoy the show.");
     expect(partnerNoticeText(plan())).toBeNull();
   });
@@ -42,9 +45,9 @@ test("confirm copy promises a replacement only before the cutoff", () => {
   expect(cantMakeItDetail(plan({ beforeCutoff: false }))).not.toMatch(/someone else|look for/);
   expect(couldntGetOneDetail(plan())).toContain("opens for someone else");
   expect(couldntGetOneDetail(plan({ beforeCutoff: false }))).not.toContain("someone else");
-  expect(afterLeavingText({ kind: "cant_make_it", beforeCutoff: true }).title).toContain("open for someone else");
-  expect(afterLeavingText({ kind: "no_ticket", beforeCutoff: false }).title).not.toContain("someone else");
-  expect(afterLeavingText({ kind: "next_time", beforeCutoff: false }).title).toBe("No problem. We will keep looking.");
+  expect(afterLeavingText({ kind: "cant_make_it", beforeCutoff: true, meetupId: "m" }).title).toContain("open for someone else");
+  expect(afterLeavingText({ kind: "no_ticket", beforeCutoff: false, meetupId: "m" }).title).not.toContain("someone else");
+  expect(afterLeavingText({ kind: "next_time", beforeCutoff: false, meetupId: "m" }).title).toBe("No problem. We will keep looking.");
 });
 
 test("no pronouns for the partner and no dashes in any line", () => {
