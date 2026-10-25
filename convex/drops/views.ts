@@ -16,12 +16,15 @@ export const vDropEvent = v.object({
 });
 
 // `endsAt` is choosingEndsAt while choosing is open, then matchAt.
+// Which countdown endsAt belongs to.
+export const vDropPhase = v.union(v.literal("choosing"), v.literal("confirming"));
+
 export const vDropView = v.union(
   v.object({ kind: v.literal("none") }),
-  v.object({ kind: v.literal("choosing"), endsAt: v.number(), card: vDropCard }),
-  v.object({ kind: v.literal("deciding"), endsAt: v.number(), acceptBy: v.number(), event: vDropEvent }),
-  v.object({ kind: v.literal("accepted"), endsAt: v.number(), matchAt: v.number(), event: vDropEvent }),
-  v.object({ kind: v.literal("done"), endsAt: v.number() }),
+  v.object({ kind: v.literal("choosing"), phase: vDropPhase, endsAt: v.number(), card: vDropCard }),
+  v.object({ kind: v.literal("deciding"), phase: vDropPhase, endsAt: v.number(), acceptBy: v.number(), event: vDropEvent }),
+  v.object({ kind: v.literal("accepted"), phase: vDropPhase, endsAt: v.number(), matchAt: v.number(), event: vDropEvent }),
+  v.object({ kind: v.literal("done"), phase: vDropPhase, endsAt: v.number() }),
   v.object({ kind: v.literal("reveal"), meetupId: v.id("meetups") }),
 );
 export type DropView = Infer<typeof vDropView>;
