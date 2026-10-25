@@ -7,7 +7,8 @@ import { fail } from "./lib/errors";
 import { dayLabel, timeLabel } from "./lib/format";
 import { eventPriceLabel } from "./asks/rules";
 import { vPlanView, type PlanView } from "./lib/views";
-import { TIMING } from "./lib/config";
+import { legacyAsksOn, TIMING } from "./lib/config";
+import { internal } from "./_generated/api";
 import {
   acceptSeat,
   cantMakeIt as giveUpSeat,
@@ -303,6 +304,8 @@ export const leave = mutation({
     const { now } = await planClock(ctx.db, current);
     await ctx.db.patch(seat._id, { leftAt: now });
     await reconcilePlan(ctx, plan._id);
+    // Drops: someone who left is no longer part of the plan, so they may join an open drop.
+    if (!legacyAsksOn()) await ctx.scheduler.runAfter(0, internal.drops.cycle.joinLateFor, { userId });
     return null;
   },
 });

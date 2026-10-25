@@ -358,8 +358,11 @@ export async function dropSeat(ctx: MutationCtx, seat: Seat, reason: NonNullable
 // A student gave up a seat or a plan ended: no cooldown, so their other open yeses go back to the
 // matcher right away, and a closed ask may leave room for a new one.
 export async function freeStudent(ctx: MutationCtx, userId: Id<"users">, exceptEventId?: Id<"events">): Promise<void> {
-  // Drops: no asks, so a freed student waits for the next drop.
-  if (!legacyAsksOn()) return;
+  // Drops: no asks. A freed student joins the open drop if it's still choosing, else waits for the next.
+  if (!legacyAsksOn()) {
+    await ctx.scheduler.runAfter(0, internal.drops.cycle.joinLateFor, { userId });
+    return;
+  }
   await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
   const yeses = await ctx.db
     .query("asks")
