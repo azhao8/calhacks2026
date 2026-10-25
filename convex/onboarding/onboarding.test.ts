@@ -704,7 +704,7 @@ describe("acceptance audit fixes", () => {
     expect(await onboardingOf(t, s.userId)).toBe("waiting_for_spotify");
     expect(await s.as.query(api.onboarding.access, {})).toMatchObject({ status: "requested", refused: true });
     const queue = await t.query(internal.onboarding.admin.queue, {});
-    expect(queue.flags.refused).toBe(1);
+    expect(queue.counts.refused).toBe(1);
     expect(queue.rows[0].appLabel).toBe("melos-alex"); // keeps its app slot
     const added = await t.mutation(internal.onboarding.admin.markAdded, { accessId: queue.rows[0].accessId, adminEmail: "o@berkeley.edu" });
     expect(added).toEqual({ changed: true, emailQueued: true });
