@@ -17,8 +17,9 @@ import {
   setTicketGot,
 } from "../plans/model";
 import { reconcilePlan } from "../plans/reconcile";
-import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoListening } from "./fixtures";
-import { TIMING } from "../lib/config";
+import { DEMO_FIXTURES, demoEmail, demoFingerprint, demoListening, type DemoFixture } from "./fixtures";
+import { GENDERS, GENERATED_PREFIX, YEARS, generatedFixture, isGeneratedKey, pickNames, seededRandom } from "./generate";
+import { SURPRISE_ME, TIMING } from "../lib/config";
 
 // Demo controls for S17 (§6.7). These touch only demo records. The admin page wraps them in
 // server-checked ADMIN_EMAILS functions.
@@ -93,17 +94,85 @@ async function seedDemoStudents(ctx: MutationCtx): Promise<{ created: number; up
         await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
         continue;
       }
-      await ctx.db.patch(userId, { onboarding: "analyzing" });
-      await ctx.runMutation(internal.onboarding.analysis.analyzeFixture, { userId, listening: demoListening(fixture) });
-      // If Claude can't write the summary in time, the fixture's own summary stands in, so demo fill never waits on it.
-      await ctx.scheduler.runAfter(TIMING.demoProfileFallbackMs, internal.demo.admin.ensureProfile, {
-        userId,
-        key: fixture.key,
-      });
+      await startDemoTaste(ctx, userId, fixture, 0);
     }
     return { created, updated };
   }
 }
+
+// The same pipeline real students go through, fed the generated listening data instead of a Spotify fetch.
+async function startDemoTaste(ctx: MutationCtx, userId: Id<"users">, fixture: DemoFixture, extraDelayMs: number) {
+  await ctx.db.patch(userId, { onboarding: "analyzing" });
+  await ctx.runMutation(internal.onboarding.analysis.analyzeFixture, { userId, listening: demoListening(fixture) });
+  // If Claude can't write the summary in time, the fixture's own summary stands in, so demo fill never waits on it.
+  await ctx.scheduler.runAfter(TIMING.demoProfileFallbackMs + extraDelayMs, internal.demo.admin.ensureProfile, {
+    userId,
+    key: fixture.key,
+  });
+}
+
+// The six base fixtures, or the reproducible listening data of a generated key.
+function fixtureFor(key: string): DemoFixture | undefined {
+  return DEMO_FIXTURES.find((candidate) => candidate.key === key) ?? (isGeneratedKey(key) ? generatedFixture(key) : undefined);
+}
+
+// More demo students on demand (S17): adds `count` new ones with unique keys and first names, and never
+// touches the existing ones. Each goes through the same taste pipeline as the seed, through the AI pool.
+export const generate = internalMutation({
+  args: { count: v.number() },
+  returns: v.object({ created: v.number(), firstNames: v.array(v.string()) }),
+  handler: async (ctx, { count }) => {
+    if (!Number.isInteger(count) || count < 1 || count > 50) fail("validation_failed", "Pick between 1 and 50.");
+    const now = Date.now();
+    const berkeley = await ctx.db
+      .query("universities")
+      .withIndex("by_themeId", (q) => q.eq("themeId", "berkeley"))
+      .unique();
+    const existing = await demoUsers(ctx);
+    const takenNames = new Set(existing.map((user) => user.firstName ?? ""));
+    const batch = now.toString(36);
+    const names = pickNames(count, takenNames, batch);
+    const offset = Math.floor(seededRandom(batch)() * GENDERS.length);
+    const firstNames: string[] = [];
+    for (let i = 0; i < count; i++) {
+      let key = `${GENERATED_PREFIX}${batch}-${i}`;
+      for (let n = 1; ; n++) {
+        const clash = await ctx.db
+          .query("users")
+          .withIndex("by_demoKey", (q) => q.eq("demoKey", key))
+          .first();
+        if (clash === null) break;
+        key = `${GENERATED_PREFIX}${batch}-${i}-${n}`;
+      }
+      const fixture = generatedFixture(key, names[i]);
+      const userId = await ctx.db.insert("users", {
+        email: `demo-${key}@melos.invalid`,
+        emailDomain: "melos.invalid",
+        universityId: berkeley?._id,
+        verifiedAt: now,
+        firstName: names[i],
+        // A spread across the batch, whatever its size.
+        gender: GENDERS[(offset + i) % GENDERS.length],
+        year: YEARS[(offset + i) % YEARS.length],
+        onboarding: "analyzing",
+        isDemo: true,
+        demoKey: key,
+      });
+      await ctx.db.insert("preferences", {
+        userId,
+        maxTicketPrice: SURPRISE_ME.maxTicketPrice,
+        meetWho: SURPRISE_ME.meetWho,
+        area: SURPRISE_ME.area,
+        prefersSimilarYear: SURPRISE_ME.prefersSimilarYear,
+        source: "surprise_me",
+      });
+      // Fallbacks are staggered a second apart so a batch of 50 doesn't land in one burst.
+      await startDemoTaste(ctx, userId, fixture, i * 1000);
+      firstNames.push(names[i]);
+    }
+    return { created: count, firstNames };
+  },
+});
 
 // The fallback for a demo student whose Claude summary didn't finish (for example while the Claude key is
 // missing): the fixture's summary and labels, in the same fingerprint onboarding builds, then the usual confirm.
@@ -112,7 +181,7 @@ export const ensureProfile = internalMutation({
   returns: v.null(),
   handler: async (ctx, { userId, key }) => {
     const user = await ctx.db.get(userId);
-    const fixture = DEMO_FIXTURES.find((candidate) => candidate.key === key);
+    const fixture = fixtureFor(key);
     if (user === null || user.isDemo !== true || fixture === undefined) return null;
     const profile = await ctx.db
       .query("tasteProfiles")

@@ -26,6 +26,7 @@ import type * as crons from "../crons.js";
 import type * as demo_admin from "../demo/admin.js";
 import type * as demo_behavior from "../demo/behavior.js";
 import type * as demo_fixtures from "../demo/fixtures.js";
+import type * as demo_generate from "../demo/generate.js";
 import type * as events_admin from "../events/admin.js";
 import type * as events_checks from "../events/checks.js";
 import type * as events_config from "../events/config.js";
@@ -111,6 +112,7 @@ declare const fullApi: ApiFromModules<{
   "demo/admin": typeof demo_admin;
   "demo/behavior": typeof demo_behavior;
   "demo/fixtures": typeof demo_fixtures;
+  "demo/generate": typeof demo_generate;
   "events/admin": typeof events_admin;
   "events/checks": typeof events_checks;
   "events/config": typeof events_config;
