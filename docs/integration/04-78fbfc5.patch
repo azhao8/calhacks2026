@@ -1,0 +1,1129 @@
+From 78fbfc5aa36e272efb5d8ec2a12ffbfa8df0dd72 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 25 Oct 2026 02:35:47 +0000
+Subject: [PATCH] admin: every S17 section behind server-checked ADMIN_EMAILS
+ wrappers
+
+Team-only wrappers in convex/admin/ around each stream's internal admin
+functions: the allow-list queue (Mark added, app capacity, add an app),
+events (imports, published, rejected, and missing events; pull, restore,
+feature, edit a price, find events now), matching (run now and the
+inspector with similarity, shared items and their rarity weights), and
+demo controls (seed, reset, demo clock, act as). Every wrapper is
+annotated with the internal function's own return type to avoid a
+circular type through the generated api. A test checks that each one
+refuses a student who isn't on the team list.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_015guTYUBX4Ct5WtjQ9sW1zv
+---
+ app/admin/page.tsx            | 567 ++++++++++++++++++++++++++++++----
+ convex/_generated/api.d.ts    |  10 +
+ convex/admin/demo.ts          |  80 +++++
+ convex/admin/events.ts        | 114 +++++++
+ convex/admin/matching.ts      |  26 ++
+ convex/admin/queue.ts         |  34 ++
+ convex/admin/wrappers.test.ts |  94 ++++++
+ convex/lib/registered.ts      |  19 ++
+ 8 files changed, 879 insertions(+), 65 deletions(-)
+ create mode 100644 convex/admin/demo.ts
+ create mode 100644 convex/admin/events.ts
+ create mode 100644 convex/admin/matching.ts
+ create mode 100644 convex/admin/queue.ts
+ create mode 100644 convex/admin/wrappers.test.ts
+ create mode 100644 convex/lib/registered.ts
+
+diff --git a/app/admin/page.tsx b/app/admin/page.tsx
+index 23383c1..29bfa19 100644
+--- a/app/admin/page.tsx
++++ b/app/admin/page.tsx
+@@ -1,21 +1,19 @@
+ "use client";
+ 
+-import { useState, type ReactNode } from "react";
+-import { useMutation, useQuery } from "convex/react";
++import { useState, type FormEvent, type ReactNode } from "react";
++import { useAction, useMutation, useQuery } from "convex/react";
+ import { api } from "@/convex/_generated/api";
+-import type { Id } from "@/convex/_generated/dataModel";
+-import { dayLabel, timeLabel } from "@/convex/lib/format";
++import type { FunctionReturnType } from "convex/server";
++import { dayLabel, priceLabel, timeLabel } from "@/convex/lib/format";
+ 
+-// S17 admin and demo (stream E). The server checks ADMIN_EMAILS on every admin function; this gate is only for display.
++// S17 admin and demo (team only). The server checks ADMIN_EMAILS on every admin function; this gate is only for display.
+ export default function AdminPage() {
+   const who = useQuery(api.admin.whoami);
+ 
+   if (who === undefined) {
+     return (
+       <Shell>
+-        <p role="status" className="text-body text-ink-muted">
+-          Loading
+-        </p>
++        <Loading />
+       </Shell>
+     );
+   }
+@@ -33,39 +31,52 @@ export default function AdminPage() {
+     <Shell>
+       <h1 className="font-display text-title text-ink">Admin</h1>
+       <Funnel />
++      <AllowList />
++      <Events />
++      <Matching />
+       <HelpNotes />
+-      <Section title="Allow-list queue">
+-        <Pending>Arrives with the onboarding backend.</Pending>
+-      </Section>
+-      <Section title="Events">
+-        <Pending>Arrives with the event agent.</Pending>
+-      </Section>
+-      <Section title="Matching">
+-        <Pending>Arrives with the matcher.</Pending>
+-      </Section>
+-      <Section title="Demo controls">
+-        <Pending>Arrives with the matcher.</Pending>
+-      </Section>
++      <Demo />
+     </Shell>
+   );
+ }
+ 
++const when = (ms: number) => `${dayLabel(ms)} · ${timeLabel(ms)}`;
++
++// Runs one server call at a time per control, keeps the button width stable, and shows failures in words.
++function useRun() {
++  const [busy, setBusy] = useState<string | null>(null);
++  const [error, setError] = useState<string | null>(null);
++  const [done, setDone] = useState<string | null>(null);
++  async function run(name: string, call: () => Promise<unknown>, doneText?: string) {
++    setBusy(name);
++    setError(null);
++    setDone(null);
++    try {
++      await call();
++      if (doneText) setDone(doneText);
++    } catch (e) {
++      setError(e instanceof Error ? e.message : "That didn't work. Try again.");
++    } finally {
++      setBusy(null);
++    }
++  }
++  return { busy, error, done, run };
++}
++
+ function Funnel() {
+   const funnel = useQuery(api.admin.funnel);
+   return (
+     <Section title="Funnel">
+-      <p className="text-small text-ink-muted">Real students only. Demo students and team accounts are left out.</p>
++      <Muted>Real students only. Demo students and team accounts are left out.</Muted>
+       {funnel === undefined ? (
+-        <p role="status" className="text-body text-ink-muted">
+-          Loading
+-        </p>
++        <Loading />
+       ) : (
+         <ol className="flex flex-col">
+           {funnel.map(({ stage, count }) => (
+-            <li key={stage} className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">
++            <Row key={stage}>
+               <span className="text-body text-ink">{stage}</span>
+               <span className="text-body-strong text-ink tabular-nums">{count}</span>
+-            </li>
++            </Row>
+           ))}
+         </ol>
+       )}
+@@ -73,70 +84,427 @@ function Funnel() {
+   );
+ }
+ 
++function AllowList() {
++  const queue = useQuery(api.admin.queue.list);
++  const markAdded = useMutation(api.admin.queue.markAdded);
++  const { busy, error, run } = useRun();
++  return (
++    <Section title="Allow-list queue">
++      {queue === undefined ? (
++        <Loading />
++      ) : (
++        <>
++          <div className="flex flex-col gap-1">
++            <p className="text-body-strong text-ink">Spotify apps</p>
++            {queue.apps.length === 0 ? <Muted>No apps yet. Add one below.</Muted> : null}
++            {queue.apps.map((app) => (
++              <Row key={app.appId}>
++                <span className="text-body text-ink">
++                  {app.label} · {app.ownerName}
++                  {app.active ? "" : " · inactive"}
++                </span>
++                <span className="text-body-strong text-ink tabular-nums">
++                  {app.used}/{app.capacity}
++                </span>
++              </Row>
++            ))}
++            {queue.flags.noCapacity > 0 ? (
++              <p className="text-small text-danger">
++                {queue.flags.noCapacity} waiting with no free app slot. Add an app or free a slot.
++              </p>
++            ) : null}
++            {queue.flags.refused > 0 ? (
++              <p className="text-small text-danger">
++                {queue.flags.refused} refused by Spotify at connect. Check the email on the app&apos;s allow-list.
++              </p>
++            ) : null}
++          </div>
++          <ul className="flex flex-col gap-3">
++            {queue.rows.length === 0 ? <Muted>Nobody has asked for access yet.</Muted> : null}
++            {queue.rows.map((row) => (
++              <li key={row.accessId} className="flex flex-col gap-2 rounded-md border border-line p-3">
++                <p className="text-body-strong text-ink">
++                  {row.firstName ?? "No name yet"} · <span className="break-all">{row.spotifyEmail}</span>
++                </p>
++                <p className="text-small text-ink-muted tabular-nums">
++                  {row.appLabel ? `${row.appLabel} (${row.appOwner})` : "No app assigned"} · asked {when(row.requestedAt)} ·{" "}
++                  {row.status}
++                  {row.refused ? " · Spotify refused" : ""}
++                </p>
++                {row.status === "requested" && row.appLabel ? (
++                  <Button
++                    busy={busy === row.accessId}
++                    onClick={() => run(row.accessId, () => markAdded({ accessId: row.accessId }))}
++                  >
++                    Mark added
++                  </Button>
++                ) : null}
++              </li>
++            ))}
++          </ul>
++          <Failure error={error} />
++          <AddSpotifyApp />
++        </>
++      )}
++    </Section>
++  );
++}
++
++function AddSpotifyApp() {
++  const upsert = useMutation(api.admin.queue.upsertSpotifyApp);
++  const { busy, error, done, run } = useRun();
++  const [label, setLabel] = useState("");
++  const [ownerName, setOwnerName] = useState("");
++  const [clientId, setClientId] = useState("");
++  return (
++    <form
++      className="flex flex-col gap-2 border-t border-line pt-3"
++      onSubmit={(event: FormEvent) => {
++        event.preventDefault();
++        void run("app", () => upsert({ label, ownerName, clientId }), "Saved. Set its client secret in Convex before anyone connects.");
++      }}
++    >
++      <p className="text-body-strong text-ink">Add or update a Spotify app</p>
++      <Field label="Label (for example melos-alex)" value={label} onChange={setLabel} />
++      <Field label="Owner's name" value={ownerName} onChange={setOwnerName} />
++      <Field label="Client ID" value={clientId} onChange={setClientId} />
++      <Button type="submit" busy={busy === "app"}>
++        Save app
++      </Button>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++    </form>
++  );
++}
++
++function Events() {
++  const [filter, setFilter] = useState<"published" | "rejected" | "flagged">("published");
++  const imports = useQuery(api.admin.events.imports, { limit: 5 });
++  const events = useQuery(
++    api.admin.events.list,
++    filter === "flagged" ? { flaggedOnly: true, limit: 100 } : { status: filter, limit: 100 },
++  );
++  const findNow = useAction(api.admin.events.findNow);
++  const { busy, error, done, run } = useRun();
++  return (
++    <Section title="Events">
++      <Button busy={busy === "find"} onClick={() => run("find", () => findNow({}), "Started an event scout run. New events arrive when it finishes.")}>
++        Find events now
++      </Button>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++
++      <p className="text-body-strong text-ink">Recent imports</p>
++      {imports === undefined ? (
++        <Loading />
++      ) : imports.length === 0 ? (
++        <Muted>No imports yet.</Muted>
++      ) : (
++        <ul className="flex flex-col gap-2">
++          {imports.map((row) => (
++            <li key={row.importId} className="text-small text-ink tabular-nums">
++              {when(row.receivedAt)} · {row.status} · {row.counts.received} received, {row.counts.published} published,{" "}
++              {row.counts.updated} updated, {row.counts.rejected} rejected, {row.counts.duplicates} duplicates
++              {row.errors.length > 0 ? <span className="block text-danger">{row.errors.slice(0, 3).join(" · ")}</span> : null}
++            </li>
++          ))}
++        </ul>
++      )}
++
++      <div className="flex flex-wrap gap-2" role="group" aria-label="Which events">
++        {(["published", "rejected", "flagged"] as const).map((option) => (
++          <button
++            key={option}
++            type="button"
++            aria-pressed={filter === option}
++            onClick={() => setFilter(option)}
++            className="min-h-12 rounded-pill border border-line-strong px-4 text-body text-ink aria-pressed:bg-accent aria-pressed:text-on-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
++          >
++            {option === "flagged" ? "Missing from runs" : option === "published" ? "Published" : "Rejected"}
++          </button>
++        ))}
++      </div>
++      {events === undefined ? (
++        <Loading />
++      ) : events.length === 0 ? (
++        <Muted>Nothing here.</Muted>
++      ) : (
++        <ul className="flex flex-col gap-3">
++          {events.map((event) => (
++            <EventRow key={event.eventId} event={event} />
++          ))}
++        </ul>
++      )}
++    </Section>
++  );
++}
++
++type ListedEvent = FunctionReturnType<typeof api.admin.events.list>[number];
++
++function EventRow({ event }: { event: ListedEvent }) {
++  const pull = useMutation(api.admin.events.pull);
++  const restore = useMutation(api.admin.events.restore);
++  const feature = useMutation(api.admin.events.feature);
++  const edit = useMutation(api.admin.events.edit);
++  const { busy, error, run } = useRun();
++  const [editing, setEditing] = useState(false);
++  const [min, setMin] = useState(event.priceMin === null ? "" : String(event.priceMin));
++  const [max, setMax] = useState(event.priceMax === null ? "" : String(event.priceMax));
++  const id = event.eventId;
++  const toPrice = (text: string) => (text.trim() === "" ? null : Number(text));
++
++  return (
++    <li className="flex flex-col gap-2 rounded-md border border-line p-3">
++      <p className="text-body-strong text-ink">
++        {event.title}
++        {event.featured ? " · featured" : ""}
++      </p>
++      <p className="text-small text-ink-muted tabular-nums">
++        {when(event.startsAt)} · {event.venueName ?? "No venue"} · {priceLabel(event.priceMin, event.priceMax)}
++        {event.priceSource ? ` (${event.priceSource})` : ""} · {event.status}
++        {event.rejectReason ? ` · ${event.rejectReason}` : ""}
++        {event.flaggedMissing ? " · missing from the last two runs" : ""}
++      </p>
++      <p className="text-small text-ink-muted">
++        {event.meetingSpot ? `Meet: ${event.meetingSpot.name} (${event.meetingSpot.chosenBy})` : "No meeting spot"} ·{" "}
++        <a href={event.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-accent underline">
++          {event.sourceName}
++        </a>
++      </p>
++      <div className="flex flex-wrap gap-2">
++        {event.pulled || event.status === "rejected" ? (
++          <Button busy={busy === "restore"} onClick={() => run("restore", () => restore({ eventId: id }))}>
++            Restore
++          </Button>
++        ) : (
++          <Button busy={busy === "pull"} onClick={() => run("pull", () => pull({ eventId: id }))}>
++            Pull
++          </Button>
++        )}
++        <Button busy={busy === "feature"} onClick={() => run("feature", () => feature({ eventId: id, featured: !event.featured }))}>
++          {event.featured ? "Unfeature" : "Feature"}
++        </Button>
++        <Button onClick={() => setEditing(!editing)}>{editing ? "Close" : "Edit price"}</Button>
++      </div>
++      {editing ? (
++        <form
++          className="flex flex-col gap-2"
++          onSubmit={(e: FormEvent) => {
++            e.preventDefault();
++            void run("edit", () => edit({ eventId: id, patch: { priceMin: toPrice(min), priceMax: toPrice(max) } }));
++          }}
++        >
++          <Field label="Lowest price in dollars (empty if not listed)" value={min} onChange={setMin} inputMode="decimal" />
++          <Field label="Highest price in dollars (empty if not listed)" value={max} onChange={setMax} inputMode="decimal" />
++          <Button type="submit" busy={busy === "edit"}>
++            Save price
++          </Button>
++        </form>
++      ) : null}
++      <Failure error={error} />
++    </li>
++  );
++}
++
++function Matching() {
++  const runs = useQuery(api.admin.matching.runs, { limit: 10 });
++  const runNow = useMutation(api.admin.matching.runNow);
++  const { busy, error, done, run } = useRun();
++  return (
++    <Section title="Matching">
++      <Button
++        busy={busy === "run"}
++        onClick={() => run("run", () => runNow({}), "Matching ran for every event with yeses.")}
++      >
++        Run matching now
++      </Button>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++      {runs === undefined ? (
++        <Loading />
++      ) : runs.length === 0 ? (
++        <Muted>No matcher runs yet.</Muted>
++      ) : (
++        <ul className="flex flex-col gap-3">
++          {runs.map((r) => (
++            <li key={r._id} className="flex flex-col gap-1 rounded-md border border-line p-3">
++              <p className="text-body-strong text-ink">{r.eventTitle}</p>
++              <p className="text-small text-ink-muted tabular-nums">
++                {when(r.startedAt)} · {r.trigger} · {r.pairsCreated} pairs, {r.seatsRefilled} refills, {r.demoFills} demo fills
++              </p>
++              {r.decisions.map((d, i) => (
++                <div key={i} className="flex flex-col gap-0.5 border-t border-line pt-2 text-small text-ink">
++                  <p className="tabular-nums">
++                    {d.aName}
++                    {d.aIsDemo ? " (demo)" : ""} and {d.bName}
++                    {d.bIsDemo ? " (demo)" : ""} · score {d.score.toFixed(3)} · similarity {d.similarity.toFixed(3)}
++                  </p>
++                  <p className="text-ink-muted">
++                    {d.shared.map((item) => `${item.name} (${item.kind}, ${item.weight.toFixed(2)})`).join(" · ") || "Nothing shared"}
++                  </p>
++                  <p className="text-ink-muted">{d.reason}</p>
++                </div>
++              ))}
++            </li>
++          ))}
++        </ul>
++      )}
++    </Section>
++  );
++}
++
+ function HelpNotes() {
+   const notes = useQuery(api.admin.helpNotes);
++  const markHandled = useMutation(api.admin.markHelpNoteHandled);
++  const { busy, error, run } = useRun();
+   return (
+     <Section title="Help notes">
++      <Muted>Read by the team. Not monitored around the clock, and not an emergency channel.</Muted>
+       {notes === undefined ? (
+-        <p role="status" className="text-body text-ink-muted">
+-          Loading
+-        </p>
++        <Loading />
+       ) : notes.length === 0 ? (
+-        <p className="text-body text-ink-muted">No notes yet.</p>
++        <Muted>No notes yet.</Muted>
+       ) : (
+         <ul className="flex flex-col gap-3">
+           {notes.map((note) => (
+             <li key={note._id} className="flex flex-col gap-2 rounded-md border border-line p-3">
+               <p className="text-caption text-ink-muted tabular-nums">
+-                {dayLabel(note.createdAt)} · {timeLabel(note.createdAt)} · {note.firstName ?? "No name yet"} ·{" "}
+-                {note.email ?? "No email"}
++                {when(note.createdAt)} · {note.firstName ?? "No name yet"} · {note.email ?? "No email"}
+                 {note.isDemo ? " · demo" : ""}
+               </p>
+               <p className="text-body whitespace-pre-wrap text-ink">{note.text}</p>
+               {note.handledAt === null ? (
+-                <MarkHandled noteId={note._id} />
++                <Button busy={busy === note._id} onClick={() => run(note._id, () => markHandled({ noteId: note._id }))}>
++                  Mark handled
++                </Button>
+               ) : (
+-                <p className="text-small text-ink-muted">Handled</p>
++                <Muted>Handled</Muted>
+               )}
+             </li>
+           ))}
+         </ul>
+       )}
++      <Failure error={error} />
+     </Section>
+   );
+ }
+ 
+-function MarkHandled({ noteId }: { noteId: Id<"helpNotes"> }) {
+-  const markHandled = useMutation(api.admin.markHelpNoteHandled);
+-  const [pending, setPending] = useState(false);
+-  const [failed, setFailed] = useState(false);
++const HOUR = 60 * 60 * 1000;
++
++function Demo() {
++  const overview = useQuery(api.admin.demo.overview);
++  const seed = useMutation(api.admin.demo.seed);
++  const reset = useMutation(api.admin.demo.reset);
++  const setClock = useMutation(api.admin.demo.setClockOffset);
++  const actAs = useMutation(api.admin.demo.actAs);
++  const { busy, error, done, run } = useRun();
++  const [confirmReset, setConfirmReset] = useState(false);
++  const [hours, setHours] = useState("");
++
+   return (
+-    <div className="flex flex-col items-start gap-1">
+-      <button
+-        type="button"
+-        disabled={pending}
+-        aria-busy={pending}
+-        onClick={async () => {
+-          setPending(true);
+-          setFailed(false);
+-          try {
+-            await markHandled({ noteId });
+-          } catch {
+-            setFailed(true);
+-          } finally {
+-            setPending(false);
+-          }
+-        }}
+-        className="min-h-12 min-w-40 rounded-pill border border-line-strong px-4 text-body-strong text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60"
+-      >
+-        Mark handled
+-      </button>
+-      {failed ? (
+-        <p role="alert" className="text-small text-danger">
+-          Couldn&apos;t save that. Try again.
++    <Section title="Demo controls">
++      <Muted>These touch only demo students and demo plans. Plans with a real student always keep real time.</Muted>
++      <div className="flex flex-wrap gap-2">
++        <Button busy={busy === "seed"} onClick={() => run("seed", () => seed({}), "Demo students seeded. Their taste summaries take a minute or two.")}>
++          Seed demo students
++        </Button>
++        {confirmReset ? (
++          <>
++            <Button
++              busy={busy === "reset"}
++              onClick={() =>
++                run("reset", async () => {
++                  await reset({});
++                  setConfirmReset(false);
++                }, "Demo reset. Seats demo students held next to real students reopened.")
++              }
++            >
++              Yes, reset demo
++            </Button>
++            <Button onClick={() => setConfirmReset(false)}>Keep it</Button>
++          </>
++        ) : (
++          <Button onClick={() => setConfirmReset(true)}>Reset demo</Button>
++        )}
++      </div>
++
++      <div className="flex flex-col gap-2 border-t border-line pt-3">
++        <p className="text-body-strong text-ink tabular-nums">
++          Demo clock: {overview === undefined ? "loading" : overview.clockOffsetMs === 0 ? "real time" : `${(overview.clockOffsetMs / HOUR).toFixed(1)} hours ahead`}
+         </p>
+-      ) : null}
+-    </div>
++        <div className="flex flex-wrap gap-2">
++          {[0, 1, 24].map((h) => (
++            <Button key={h} busy={busy === `clock-${h}`} onClick={() => run(`clock-${h}`, () => setClock({ offsetMs: h * HOUR }))}>
++              {h === 0 ? "Real time" : `${h} ${h === 1 ? "hour" : "hours"} ahead`}
++            </Button>
++          ))}
++        </div>
++        <form
++          className="flex flex-col gap-2"
++          onSubmit={(e: FormEvent) => {
++            e.preventDefault();
++            const value = Number(hours);
++            if (Number.isFinite(value)) void run("clock-custom", () => setClock({ offsetMs: value * HOUR }));
++          }}
++        >
++          <Field label="Hours ahead" value={hours} onChange={setHours} inputMode="decimal" />
++          <Button type="submit" busy={busy === "clock-custom"}>
++            Set demo clock
++          </Button>
++        </form>
++      </div>
++
++      <div className="flex flex-col gap-2 border-t border-line pt-3">
++        <p className="text-body-strong text-ink">Act as a demo student</p>
++        {overview === undefined ? (
++          <Loading />
++        ) : overview.students.length === 0 ? (
++          <Muted>No demo students yet. Seed them above.</Muted>
++        ) : (
++          <ul className="flex flex-col gap-3">
++            {overview.students.map((student) => (
++              <li key={student.userId} className="flex flex-col gap-2 rounded-md border border-line p-3">
++                <p className="text-body-strong text-ink">
++                  {student.firstName} · {student.onboarding ?? "no state"}
++                </p>
++                {student.seats.length === 0 ? <Muted>No seat right now.</Muted> : null}
++                {student.seats.map((seat) => (
++                  <div key={seat.seatId} className="flex flex-col gap-2">
++                    <p className="text-small text-ink-muted">
++                      {seat.eventTitle} · seat {seat.seat} · ticket {seat.ticket} · plan {seat.planStatus}
++                    </p>
++                    <div className="flex flex-wrap gap-2">
++                      {(
++                        [
++                          ["accept", "Accept"],
++                          ["next_time", "Next time"],
++                          ["cant_make_it", "Can't make it"],
++                          ["got_ticket", "Got ticket"],
++                        ] as const
++                      ).map(([action, label]) => (
++                        <Button
++                          key={action}
++                          busy={busy === `${seat.seatId}-${action}`}
++                          onClick={() =>
++                            run(`${seat.seatId}-${action}`, () =>
++                              actAs({ userId: student.userId, action, seatId: seat.seatId }),
++                            )
++                          }
++                        >
++                          {label}
++                        </Button>
++                      ))}
++                    </div>
++                  </div>
++                ))}
++              </li>
++            ))}
++          </ul>
++        )}
++      </div>
++      <Failure error={error} />
++      {done ? <p className="text-small text-success">{done}</p> : null}
++    </Section>
+   );
+ }
+ 
+@@ -153,6 +521,75 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
+   );
+ }
+ 
+-function Pending({ children }: { children: ReactNode }) {
+-  return <p className="text-body text-ink-muted">{children}</p>;
++function Row({ children }: { children: ReactNode }) {
++  return <li className="flex items-baseline justify-between gap-4 border-b border-line py-2 last:border-b-0">{children}</li>;
++}
++
++function Muted({ children }: { children: ReactNode }) {
++  return <p className="text-small text-ink-muted">{children}</p>;
++}
++
++function Loading() {
++  return (
++    <p role="status" className="text-body text-ink-muted">
++      Loading
++    </p>
++  );
++}
++
++function Failure({ error }: { error: string | null }) {
++  if (error === null) return null;
++  return (
++    <p role="alert" className="text-small text-danger">
++      {error}
++    </p>
++  );
++}
++
++function Button({
++  children,
++  onClick,
++  busy = false,
++  type = "button",
++}: {
++  children: ReactNode;
++  onClick?: () => void;
++  busy?: boolean;
++  type?: "button" | "submit";
++}) {
++  return (
++    <button
++      type={type}
++      onClick={onClick}
++      disabled={busy}
++      aria-busy={busy}
++      className="min-h-12 min-w-32 self-start rounded-pill border border-line-strong px-4 text-body-strong text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:opacity-60"
++    >
++      {children}
++    </button>
++  );
++}
++
++function Field({
++  label,
++  value,
++  onChange,
++  inputMode,
++}: {
++  label: string;
++  value: string;
++  onChange: (value: string) => void;
++  inputMode?: "decimal" | "text";
++}) {
++  return (
++    <label className="flex flex-col gap-1 text-small text-ink">
++      {label}
++      <input
++        value={value}
++        inputMode={inputMode}
++        onChange={(e) => onChange(e.target.value)}
++        className="min-h-12 rounded-md border border-line-strong bg-canvas px-3 text-body text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
++      />
++    </label>
++  );
+ }
+diff --git a/convex/_generated/api.d.ts b/convex/_generated/api.d.ts
+index aac8fbb..5a7bc3e 100644
+--- a/convex/_generated/api.d.ts
++++ b/convex/_generated/api.d.ts
+@@ -9,6 +9,10 @@
+  */
+ 
+ import type * as admin from "../admin.js";
++import type * as admin_demo from "../admin/demo.js";
++import type * as admin_events from "../admin/events.js";
++import type * as admin_matching from "../admin/matching.js";
++import type * as admin_queue from "../admin/queue.js";
+ import type * as ai_hooks from "../ai/hooks.js";
+ import type * as ai_labels from "../ai/labels.js";
+ import type * as ai_taste from "../ai/taste.js";
+@@ -36,6 +40,7 @@ import type * as lib_config from "../lib/config.js";
+ import type * as lib_edu from "../lib/edu.js";
+ import type * as lib_errors from "../lib/errors.js";
+ import type * as lib_format from "../lib/format.js";
++import type * as lib_normalize from "../lib/normalize.js";
+ import type * as lib_pools from "../lib/pools.js";
+ import type * as lib_validators from "../lib/validators.js";
+ import type * as lib_views from "../lib/views.js";
+@@ -84,6 +89,10 @@ import type {
+ 
+ declare const fullApi: ApiFromModules<{
+   admin: typeof admin;
++  "admin/demo": typeof admin_demo;
++  "admin/events": typeof admin_events;
++  "admin/matching": typeof admin_matching;
++  "admin/queue": typeof admin_queue;
+   "ai/hooks": typeof ai_hooks;
+   "ai/labels": typeof ai_labels;
+   "ai/taste": typeof ai_taste;
+@@ -111,6 +120,7 @@ declare const fullApi: ApiFromModules<{
+   "lib/edu": typeof lib_edu;
+   "lib/errors": typeof lib_errors;
+   "lib/format": typeof lib_format;
++  "lib/normalize": typeof lib_normalize;
+   "lib/pools": typeof lib_pools;
+   "lib/validators": typeof lib_validators;
+   "lib/views": typeof lib_views;
+diff --git a/convex/admin/demo.ts b/convex/admin/demo.ts
+new file mode 100644
+index 0000000..0f040b0
+--- /dev/null
++++ b/convex/admin/demo.ts
+@@ -0,0 +1,80 @@
++import { mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import { demoClockOffsetMs } from "../lib/clock";
++import { heldSeats } from "../plans/model";
++import type { actAs as actAsFn, reset as resetFn, seed as seedFn, setClockOffset as setClockOffsetFn } from "../demo/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 demo controls (§6.7). They touch only demo records; the internal functions enforce that too.
++// Team only: every function checks ADMIN_EMAILS on the server.
++
++// The demo students, what each holds right now (for "act as"), and the demo clock offset.
++export const overview = query({
++  args: {},
++  handler: async (ctx) => {
++    await requireAdmin(ctx);
++    const users = await ctx.db
++      .query("users")
++      .withIndex("by_demoKey", (q) => q.gt("demoKey", ""))
++      .collect();
++    const students = await Promise.all(
++      users
++        .filter((user) => user.isDemo === true)
++        .map(async (user) => {
++          const seats = await Promise.all(
++            (await heldSeats(ctx.db, user._id)).map(async ({ seat, plan }) => {
++              const event = await ctx.db.get(plan.eventId);
++              return {
++                seatId: seat._id,
++                seat: seat.seat,
++                ticket: seat.ticket,
++                planStatus: plan.status,
++                eventTitle: event?.title ?? "Unknown event",
++              };
++            }),
++          );
++          return { userId: user._id, firstName: user.firstName ?? "Demo", onboarding: user.onboarding ?? null, seats };
++        }),
++    );
++    return { students, clockOffsetMs: await demoClockOffsetMs(ctx.db) };
++  },
++});
++
++export const seed = mutation({
++  args: {},
++  handler: async (ctx): Promise<ReturnsOf<typeof seedFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.seed, {});
++  },
++});
++
++export const reset = mutation({
++  args: {},
++  handler: async (ctx): Promise<ReturnsOf<typeof resetFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.reset, {});
++  },
++});
++
++// Moves the demo clock for demo plans only; plans with a real student keep real time.
++export const setClockOffset = mutation({
++  args: { offsetMs: v.number() },
++  handler: async (ctx, { offsetMs }): Promise<ReturnsOf<typeof setClockOffsetFn>> => {
++    const admin = await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.setClockOffset, { offsetMs, updatedBy: admin.email ?? "team" });
++  },
++});
++
++export const actAs = mutation({
++  args: {
++    userId: v.id("users"),
++    action: v.union(v.literal("accept"), v.literal("next_time"), v.literal("cant_make_it"), v.literal("got_ticket")),
++    seatId: v.optional(v.id("meetupMembers")),
++  },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof actAsFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.demo.admin.actAs, args);
++  },
++});
+diff --git a/convex/admin/events.ts b/convex/admin/events.ts
+new file mode 100644
+index 0000000..35a12ca
+--- /dev/null
++++ b/convex/admin/events.ts
+@@ -0,0 +1,114 @@
++import { action, internalQuery, mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import { vEventKind, vEventStatus } from "../lib/validators";
++import type { edit as editFn, feature as featureFn, findNow as findNowFn, imports as importsFn, list as listFn, overrideSpot as overrideSpotFn, pull as pullFn, restore as restoreFn } from "../events/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 events: imports, the catalog, and the team's controls. Team only: every function checks
++// ADMIN_EMAILS on the server.
++
++export const imports = query({
++  args: { limit: v.optional(v.number()) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof importsFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.events.admin.imports, args);
++  },
++});
++
++export const list = query({
++  args: {
++    status: v.optional(vEventStatus),
++    flaggedOnly: v.optional(v.boolean()),
++    includePast: v.optional(v.boolean()),
++    limit: v.optional(v.number()),
++  },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof listFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.events.admin.list, args);
++  },
++});
++
++export const pull = mutation({
++  args: { eventId: v.id("events") },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof pullFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.pull, args);
++  },
++});
++
++export const restore = mutation({
++  args: { eventId: v.id("events") },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof restoreFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.restore, args);
++  },
++});
++
++export const feature = mutation({
++  args: { eventId: v.id("events"), featured: v.boolean() },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof featureFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.feature, args);
++  },
++});
++
++// Edit any field, such as filling in a price the agent couldn't find.
++export const edit = mutation({
++  args: {
++    eventId: v.id("events"),
++    patch: v.object({
++      title: v.optional(v.string()),
++      kind: v.optional(vEventKind),
++      startsAt: v.optional(v.number()),
++      priceMin: v.optional(v.union(v.number(), v.null())),
++      priceMax: v.optional(v.union(v.number(), v.null())),
++      ticketUrl: v.optional(v.union(v.string(), v.null())),
++      freeEntryNote: v.optional(v.union(v.string(), v.null())),
++      performers: v.optional(v.array(v.string())),
++      tags: v.optional(v.array(v.string())),
++      ageLimit: v.optional(v.union(v.number(), v.null())),
++      meetOffsetMinutes: v.optional(v.number()),
++    }),
++  },
++  handler: async (ctx, { eventId, patch }): Promise<ReturnsOf<typeof editFn>> => {
++    const admin = await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.edit, { eventId, patch, editedBy: admin.email ?? "team" });
++  },
++});
++
++// The team overrides a venue's meeting spot (§6.1).
++export const overrideSpot = mutation({
++  args: {
++    venueId: v.id("venues"),
++    name: v.string(),
++    howToFind: v.string(),
++    lat: v.number(),
++    lng: v.number(),
++    meetOffsetMinutes: v.optional(v.number()),
++  },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof overrideSpotFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.events.admin.overrideSpot, args);
++  },
++});
++
++// Actions can't read the database, so the admin check runs as a query with the caller's identity.
++export const assertAdmin = internalQuery({
++  args: {},
++  returns: v.null(),
++  handler: async (ctx) => {
++    await requireAdmin(ctx);
++    return null;
++  },
++});
++
++// "Find events now": starts an event scout run on Apify. Its webhook brings the results back.
++export const findNow = action({
++  args: { sources: v.optional(v.array(v.string())) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof findNowFn>> => {
++    await ctx.runQuery(internal.admin.events.assertAdmin, {});
++    return await ctx.runAction(internal.events.admin.findNow, args);
++  },
++});
+diff --git a/convex/admin/matching.ts b/convex/admin/matching.ts
+new file mode 100644
+index 0000000..e0de0b6
+--- /dev/null
++++ b/convex/admin/matching.ts
+@@ -0,0 +1,26 @@
++import { mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import type { runNow as runNowFn, runs as runsFn } from "../matching/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 matching: "Run matching now" and the matching inspector. Team only: every function checks
++// ADMIN_EMAILS on the server.
++
++export const runNow = mutation({
++  args: { eventId: v.optional(v.id("events")) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof runNowFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.matching.admin.runNow, args);
++  },
++});
++
++// Recent runs with each pair's similarity, shared items and their rarity weights, and the reason.
++export const runs = query({
++  args: { eventId: v.optional(v.id("events")), limit: v.optional(v.number()) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof runsFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.matching.admin.runs, args);
++  },
++});
+diff --git a/convex/admin/queue.ts b/convex/admin/queue.ts
+new file mode 100644
+index 0000000..e5c2f88
+--- /dev/null
++++ b/convex/admin/queue.ts
+@@ -0,0 +1,34 @@
++import { mutation, query } from "../_generated/server";
++import { internal } from "../_generated/api";
++import { v } from "convex/values";
++import { requireAdmin } from "../lib/access";
++import type { markAdded as markAddedFn, queue as queueFn, upsertSpotifyApp as upsertSpotifyAppFn } from "../onboarding/admin";
++import type { ReturnsOf } from "../lib/registered";
++
++// S17 allow-list queue. Team only: every function checks ADMIN_EMAILS on the server.
++
++export const list = query({
++  args: {},
++  handler: async (ctx): Promise<ReturnsOf<typeof queueFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runQuery(internal.onboarding.admin.queue, {});
++  },
++});
++
++// "Mark added": the app owner added this Spotify email to their app. Sends the ready email once.
++export const markAdded = mutation({
++  args: { accessId: v.id("spotifyAccess") },
++  handler: async (ctx, { accessId }): Promise<ReturnsOf<typeof markAddedFn>> => {
++    const admin = await requireAdmin(ctx);
++    return await ctx.runMutation(internal.onboarding.admin.markAdded, { accessId, adminEmail: admin.email ?? "team" });
++  },
++});
++
++// Registers or updates a teammate's Spotify app. Client IDs aren't secret; client secrets stay in Convex env vars.
++export const upsertSpotifyApp = mutation({
++  args: { label: v.string(), ownerName: v.string(), clientId: v.string(), active: v.optional(v.boolean()) },
++  handler: async (ctx, args): Promise<ReturnsOf<typeof upsertSpotifyAppFn>> => {
++    await requireAdmin(ctx);
++    return await ctx.runMutation(internal.onboarding.admin.upsertSpotifyApp, args);
++  },
++});
+diff --git a/convex/admin/wrappers.test.ts b/convex/admin/wrappers.test.ts
+new file mode 100644
+index 0000000..ebe20af
+--- /dev/null
++++ b/convex/admin/wrappers.test.ts
+@@ -0,0 +1,94 @@
++/// <reference types="vite/client" />
++import { convexTest } from "convex-test";
++import { afterEach, beforeEach, expect, test, vi } from "vitest";
++import schema from "../schema";
++import { api } from "../_generated/api";
++import type { Id } from "../_generated/dataModel";
++
++const modules = import.meta.glob("/convex/**/*.ts");
++
++const TEAM_EMAIL = "team@berkeley.edu";
++
++beforeEach(() => {
++  vi.stubEnv("ADMIN_EMAILS", TEAM_EMAIL);
++});
++afterEach(() => {
++  vi.unstubAllEnvs();
++});
++
++async function users(t: ReturnType<typeof convexTest>) {
++  return t.run(async (ctx) => ({
++    team: await ctx.db.insert("users", { email: TEAM_EMAIL, verifiedAt: 1, onboarding: "ready" }),
++    student: await ctx.db.insert("users", { email: "student@berkeley.edu", verifiedAt: 1, onboarding: "ready" }),
++  }));
++}
++
++const as = (t: ReturnType<typeof convexTest>, userId: Id<"users">) => t.withIdentity({ subject: `${userId}|session` });
++
++test("every admin wrapper refuses a student who isn't on the team list", async () => {
++  const t = convexTest(schema, modules);
++  const { student } = await users(t);
++  const s = as(t, student);
++  // Real rows, so every call gets past argument validation to the admin check itself.
++  const { someEvent, someAccess } = await t.run(async (ctx) => ({
++    someAccess: await ctx.db.insert("spotifyAccess", {
++      userId: student,
++      spotifyEmail: "student@example.com",
++      status: "requested",
++      requestedAt: 1,
++    }),
++    someEvent: await ctx.db.insert("events", {
++      title: "Show",
++      kind: "concert",
++      startsAt: Date.now() + 86_400_000,
++      priceMin: null,
++      priceMax: null,
++      priceSource: null,
++      sourceName: "test",
++      sourceUrl: "https://example.com",
++      performers: [],
++      tags: [],
++      ageLimit: null,
++      meetOffsetMinutes: 30,
++      status: "published",
++      featured: false,
++      dedupeKey: "show",
++      scrapedAt: 1,
++      lastSeenAt: 1,
++    }),
++  }));
++
++  const calls: [string, () => Promise<unknown>][] = [
++    ["queue.list", () => s.query(api.admin.queue.list, {})],
++    ["queue.markAdded", () => s.mutation(api.admin.queue.markAdded, { accessId: someAccess })],
++    ["queue.upsertSpotifyApp", () => s.mutation(api.admin.queue.upsertSpotifyApp, { label: "x", ownerName: "x", clientId: "x" })],
++    ["events.imports", () => s.query(api.admin.events.imports, {})],
++    ["events.list", () => s.query(api.admin.events.list, {})],
++    ["events.pull", () => s.mutation(api.admin.events.pull, { eventId: someEvent })],
++    ["events.restore", () => s.mutation(api.admin.events.restore, { eventId: someEvent })],
++    ["events.feature", () => s.mutation(api.admin.events.feature, { eventId: someEvent, featured: true })],
++    ["events.edit", () => s.mutation(api.admin.events.edit, { eventId: someEvent, patch: {} })],
++    ["events.findNow", () => s.action(api.admin.events.findNow, {})],
++    ["matching.runNow", () => s.mutation(api.admin.matching.runNow, {})],
++    ["matching.runs", () => s.query(api.admin.matching.runs, {})],
++    ["demo.overview", () => s.query(api.admin.demo.overview, {})],
++    ["demo.seed", () => s.mutation(api.admin.demo.seed, {})],
++    ["demo.reset", () => s.mutation(api.admin.demo.reset, {})],
++    ["demo.setClockOffset", () => s.mutation(api.admin.demo.setClockOffset, { offsetMs: 0 })],
++    ["demo.actAs", () => s.mutation(api.admin.demo.actAs, { userId: student, action: "accept" })],
++  ];
++  for (const [name, call] of calls) {
++    await expect(call(), name).rejects.toThrow(/forbidden/);
++  }
++  await expect(t.query(api.admin.queue.list, {})).rejects.toThrow(/not_signed_in/);
++});
++
++test("team accounts can read the admin views", async () => {
++  const t = convexTest(schema, modules);
++  const { team } = await users(t);
++  const a = as(t, team);
++  expect(await a.query(api.admin.queue.list, {})).toMatchObject({ rows: [], apps: [] });
++  expect(await a.query(api.admin.events.list, {})).toEqual([]);
++  expect(await a.query(api.admin.matching.runs, {})).toEqual([]);
++  expect(await a.query(api.admin.demo.overview, {})).toEqual({ students: [], clockOffsetMs: 0 });
++});
+diff --git a/convex/lib/registered.ts b/convex/lib/registered.ts
+new file mode 100644
+index 0000000..f35bcbb
+--- /dev/null
++++ b/convex/lib/registered.ts
+@@ -0,0 +1,19 @@
++import type {
++  DefaultFunctionArgs,
++  FunctionVisibility,
++  RegisteredAction,
++  RegisteredMutation,
++  RegisteredQuery,
++} from "convex/server";
++
++// The return type of a registered Convex function, read from its own definition rather than through the
++// generated `internal` api. A thin wrapper annotated with it avoids the circular type you get when a
++// handler's inferred return type depends on `ctx.runQuery(internal...)` in a module `internal` includes.
++export type ReturnsOf<F> =
++  F extends RegisteredQuery<FunctionVisibility, DefaultFunctionArgs, infer R>
++    ? Awaited<R>
++    : F extends RegisteredMutation<FunctionVisibility, DefaultFunctionArgs, infer R>
++      ? Awaited<R>
++      : F extends RegisteredAction<FunctionVisibility, DefaultFunctionArgs, infer R>
++        ? Awaited<R>
++        : never;
+-- 
+2.43.0
+
