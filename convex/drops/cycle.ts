@@ -3,7 +3,7 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v, type Infer } from "convex/values";
 import { isTeamEmail } from "../lib/access";
-import { DROP } from "../lib/config";
+import { DROP, dropsEnabled } from "../lib/config";
 import { fail } from "../lib/errors";
 import { emailPool } from "../lib/pools";
 import { sendEmail } from "../services/resend";
@@ -273,6 +273,7 @@ export const match = internalMutation({
 
 // Admin: Start drop. Inserts the drop and schedules every phase; entries are created right after.
 export async function startDrop(ctx: MutationCtx, by: string): Promise<Id<"drops">> {
+  if (!dropsEnabled()) fail("validation_failed", "Drops are turned off (DROP_ENABLED=false).");
   if ((await openDrop(ctx.db)) !== null) fail("validation_failed", "A drop is already open.");
   const now = Date.now();
   const choosingEndsAt = now + DROP.choosingMs;
