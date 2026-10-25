@@ -48,7 +48,7 @@ For each teammate with active Spotify Premium:
      - `http://127.0.0.1:3000/spotify/callback`
    - Which APIs: Web API. Accept the terms and save.
 2. Settings → copy the **Client ID**. Send azhao8 the label (`melos-<first name>`), the owner's name, and the Client ID. Client IDs aren't secret.
-3. Settings → **View client secret** → send it to azhao8 privately, never in the team chat. azhao8 adds it to `.env.secrets.local` as `SPOTIFY_CLIENT_SECRET_<LABEL>` (uppercase, dashes as underscores, for example `SPOTIFY_CLIENT_SECRET_MELOS_ALEX`).
+3. Settings → **View client secret** → send it to azhao8 privately, never in the team chat. A teammate on the team list enters it on `/admin` → Spotify → Add an app (or Replace secret), then taps **Check app**. The old Convex variable `SPOTIFY_CLIENT_SECRET_<LABEL>` still works as a fallback.
 4. **User Management** → add the team's own Spotify accounts first (name, and the email of their Spotify account). Each app allows 5 users, counting everyone.
 5. Keep Premium active through Sunday. The app stops working if it lapses.
 

@@ -39,7 +39,8 @@ export const SPOTIFY = {
   likedSongsLimit: 200,
   timeRanges: ["short_term", "medium_term"],
   callbackPath: "/spotify/callback",
-  // Each app's client secret lives in the env var SPOTIFY_CLIENT_SECRET_<LABEL> (uppercase, dashes as underscores).
+  // Each app's client secret is saved on the admin page (spotifyAppSecrets). The env var
+  // SPOTIFY_CLIENT_SECRET_<LABEL> (uppercase, dashes as underscores) is the fallback for apps set up before that.
   secretEnvName: (label: string) => `SPOTIFY_CLIENT_SECRET_${label.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`,
 } as const;
 

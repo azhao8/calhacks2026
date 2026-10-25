@@ -47,3 +47,13 @@ export async function assignWaitingRequests(ctx: MutationCtx): Promise<number> {
   }
   return assigned;
 }
+
+// The client secret saved on the admin page, or null (the env var fallback applies). Server-only:
+// only internal functions that hand credentials to a Spotify call may use this.
+export async function savedSecret(ctx: QueryCtx, appId: Id<"spotifyApps">): Promise<string | null> {
+  const row = await ctx.db
+    .query("spotifyAppSecrets")
+    .withIndex("by_appId", (q) => q.eq("appId", appId))
+    .first();
+  return row?.secret ?? null;
+}

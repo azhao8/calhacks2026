@@ -210,8 +210,8 @@ describe("school, about you, preferences", () => {
     await b.as.mutation(api.onboarding.saveAboutYou, { firstName: "Sam", spotifyEmail: "sam@gmail.com" });
     const queue = await t.query(internal.onboarding.admin.queue, {});
     expect(queue.rows.map((r) => [r.firstName, r.spotifyEmail, r.appLabel, r.status])).toEqual([
-      ["Maya", "maya@gmail.com", "melos-alex", "requested"],
-      ["Sam", "sam@gmail.com", "melos-sam", "requested"],
+      ["Maya", "maya@gmail.com", "melos-alex", "needs_adding"],
+      ["Sam", "sam@gmail.com", "melos-sam", "needs_adding"],
     ]);
     expect(queue.apps.map((app) => [app.label, app.used, app.capacity])).toEqual([
       ["melos-alex", 1, 5],
@@ -239,7 +239,7 @@ describe("school, about you, preferences", () => {
     await late.as.mutation(api.onboarding.saveAboutYou, { firstName: "Late", spotifyEmail: "late@gmail.com" });
     expect(await late.as.query(api.onboarding.access, {})).toEqual({ status: "no_capacity", refused: false, spotifyEmail: "late@gmail.com" });
     const queue = await t.query(internal.onboarding.admin.queue, {});
-    expect(queue.flags.noCapacity).toBe(1);
+    expect(queue.counts.no_app).toBe(1);
     // The capacity flow continues to preferences, so the wait isn't wasted.
     expect(await onboardingOf(t, late.userId)).toBe("needs_preferences");
 
@@ -392,7 +392,7 @@ describe("Spotify connect", () => {
     expect(await onboardingOf(t, s.userId)).toBe("waiting_for_spotify");
     expect(await s.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: true, spotifyEmail: "alex@gmail.com" });
     const queue = await t.query(internal.onboarding.admin.queue, {});
-    expect(queue.flags.refused).toBe(1);
+    expect(queue.counts.refused).toBe(1);
     await t.run(async (ctx) => {
       expect(await ctx.db.query("spotifyTokens").collect()).toHaveLength(0);
     });
@@ -704,7 +704,7 @@ describe("acceptance audit fixes", () => {
     expect(await onboardingOf(t, s.userId)).toBe("waiting_for_spotify");
     expect(await s.as.query(api.onboarding.access, {})).toMatchObject({ status: "requested", refused: true });
     const queue = await t.query(internal.onboarding.admin.queue, {});
-    expect(queue.flags.refused).toBe(1);
+    expect(queue.counts.refused).toBe(1);
     expect(queue.rows[0].appLabel).toBe("melos-alex"); // keeps its app slot
     const added = await t.mutation(internal.onboarding.admin.markAdded, { accessId: queue.rows[0].accessId, adminEmail: "o@berkeley.edu" });
     expect(added).toEqual({ changed: true, emailQueued: true });

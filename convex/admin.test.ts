@@ -140,9 +140,9 @@ test("admin functions refuse signed-out and non-team accounts on the server", as
   await expect(as(t, a).query(api.admin.helpNotes, {})).rejects.toThrow(/forbidden/);
   await expect(as(t, a).mutation(api.admin.markHelpNoteHandled, { noteId })).rejects.toThrow(/forbidden/);
 
-  expect(await as(t, a).query(api.admin.whoami, {})).toEqual({ signedIn: true, isAdmin: false });
+  expect(await as(t, a).query(api.admin.whoami, {})).toMatchObject({ signedIn: true, isAdmin: false });
   // ADMIN_EMAILS is matched after trimming and lowercasing.
-  expect(await as(t, team).query(api.admin.whoami, {})).toEqual({ signedIn: true, isAdmin: true });
+  expect(await as(t, team).query(api.admin.whoami, {})).toMatchObject({ signedIn: true, isAdmin: true });
 });
 
 test("the funnel counts real students only", async () => {

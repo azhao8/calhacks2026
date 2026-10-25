@@ -4,7 +4,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { refreshTokens, SpotifyAuthError } from "../services/spotify";
-import { accessFor } from "./apps";
+import { accessFor, savedSecret } from "./apps";
 
 // Spotify tokens are server-only: only internal functions read them, and no query returns them (§8.8).
 
@@ -26,7 +26,7 @@ export const tokensFor = internalQuery({
       accessToken: v.string(),
       refreshToken: v.string(),
       expiresAt: v.number(),
-      app: v.object({ clientId: v.string(), label: v.string() }),
+      app: v.object({ clientId: v.string(), label: v.string(), secret: v.union(v.string(), v.null()) }),
     }),
   ),
   handler: async (ctx, { userId }) => {
@@ -42,7 +42,7 @@ export const tokensFor = internalQuery({
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       expiresAt: tokens.expiresAt,
-      app: { clientId: app.clientId, label: app.label },
+      app: { clientId: app.clientId, label: app.label, secret: await savedSecret(ctx, app._id) },
     };
   },
 });

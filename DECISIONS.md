@@ -151,3 +151,9 @@ Entry format:
 - Why: Vercel canceled both git-triggered production builds from the PR #13 and #14 merges as "Ignored Build Step" before any build ran, so `main` stopped deploying on push; the production build had to be started by hand.
 - Replaces: the `vercel.json` skip rule in the 19:02 PT entry. Still implements `CLAUDE.md` §8.1 "Preview deploys are off".
 - Affects: `vercel.json`, `README.md`, `docs/setup.md`; no screens or data contracts.
+
+## 2026-10-25 00:15 PT · azhao8 · Spotify client secrets are entered on the admin page
+- Changed: each Spotify app's client secret is typed into the admin page and stored in a new server-only table, `spotifyAppSecrets` (appId, secret, setAt, setBy), kept apart from `spotifyApps` so no query that reads apps can return it. It is write-only: no query returns it, and the page shows only whether one is saved, when, and by whom. The Convex env var `SPOTIFY_CLIENT_SECRET_<LABEL>` stays as a fallback for apps set up before this. "Check app" verifies the client ID and secret with Spotify's client credentials grant, which touches no user. Connecting refuses before Spotify consent when the assigned app has no secret. `spotifyApps` gains `checkedAt` and `checkOk` for the last check.
+- Why: the owner asked to manage every Spotify app from the admin page without setting Convex variables by hand while onboarding real students tonight. The secret is stored like student Spotify tokens already are: plain in a table no query returns.
+- Replaces: BASELINE — client secrets only in Convex environment variables (`CLAUDE.md` §8.5 `spotifyApps`, §8.9, §8.10).
+- Affects: S07 (connect), S17 (Spotify tab); `convex/schema.ts`, `convex/onboarding/admin.ts`, `convex/admin/queue.ts`, `convex/services/spotify.ts`.
