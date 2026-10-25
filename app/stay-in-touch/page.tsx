@@ -152,7 +152,7 @@ function Share({ meetupId, partnerName }: { meetupId: Id<"meetups">; partnerName
   return (
     <Screen object="mic" menu top={<ScreenTitle lead={name ? `Only ${name} can see it.` : "Only the person from your plan can see it."}>Want to stay in touch?</ScreenTitle>}>
       <Panel className="flex flex-col gap-3">
-        <div className="grid gap-3">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-3">
           <ConnectorButton
             kind="phone"
             sent={shared.phone !== null}
@@ -214,7 +214,7 @@ function Share({ meetupId, partnerName }: { meetupId: Id<"meetups">; partnerName
           {(["phone", "instagram"] as const).map((kind) =>
             shared[kind] === null ? null : (
               <div key={kind} className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-semibold wrap-break-word tabular-nums">
+                <span className={kind === "phone" ? "min-w-0 font-semibold tabular-nums" : "min-w-0 flex-1 font-semibold wrap-anywhere"}>
                   {kind === "phone" ? formatPhone(shared[kind]!) : instagramDisplay(shared[kind]!)}
                 </span>
                 <Button variant="quiet" loading={busy === `stop-${kind}`} disabled={!online} onClick={() => stop(kind)}>
