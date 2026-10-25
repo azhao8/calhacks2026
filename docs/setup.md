@@ -20,7 +20,7 @@ Everything here is a human step (accounts, keys, DNS). Do it now so no build str
    - In the repo, copy `.env.secrets.example` to `.env.secrets.local` (gitignored) and fill it in.
    - Run `scripts/push-secrets.sh dev`. It sets each filled value with `npx convex env set`, and generates the Apify webhook secret and the Spotify state secret the first time.
    - Production gets the same command with `prod`, once the production deployment exists (Claude will ask first).
-7. **Vercel:** vercel.com → Add New → Project → import `azhao8/calhacks2026`. Leave the build settings as detected: `vercel.json` sets the build command and skips every non-production build.
+7. **Vercel:** vercel.com → Add New → Project → import `azhao8/calhacks2026`. Leave the build settings as detected: `vercel.json` sets the build command. Preview deployments are turned off in the project's settings (the project field `previewDeploymentsDisabled`), so only `main` builds.
    - Environment Variables → `CONVEX_DEPLOY_KEY` = the production deploy key (Convex dashboard → melos → Production → Settings → Generate Production Deploy Key). Under Environments, leave only **Production** checked.
    - Settings → Domains → add `melos.azhao.dev`, then create the CNAME record Vercel shows at the DNS provider for `azhao.dev`.
 
