@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import type { MeView, PlanView } from "@/convex/lib/views";
 import type { Onboarding } from "@/convex/lib/validators";
 import type { Id } from "@/convex/_generated/dataModel";
-import { homeRoute, isActivePlan, onboardingStep, redirectFor, ROUTES } from "./routes";
+import { homeRoute, isActivePlan, onboardingStep, redirectFor, revealHref, ROUTES } from "./routes";
 
 const me = (onboarding: Onboarding, school: { name: string; themeId: string } | null = { name: "UC Berkeley", themeId: "berkeley" }) =>
   ({
@@ -31,16 +31,37 @@ describe("homeRoute", () => {
     expect(homeRoute(me("needs_review"), null)).toBe(ROUTES.taste);
   });
 
-  test("ready students see a live plan before their week", () => {
-    expect(homeRoute(me("ready"), null)).toBe(ROUTES.week);
+  test("ready students with nothing going on see the drop", () => {
+    expect(homeRoute(me("ready"), null)).toBe(ROUTES.drop);
+    expect(homeRoute(me("ready"), null, { kind: "none" })).toBe(ROUTES.drop);
+    expect(homeRoute(me("ready"), null, { kind: "choosing" })).toBe(ROUTES.drop);
+    expect(homeRoute(me("ready"), null, { kind: "done" })).toBe(ROUTES.drop);
+  });
+
+  test("a live, revealed plan comes before the drop", () => {
     for (const stage of ["offer", "waiting", "set", "meetup_day"] as const) {
-      expect(homeRoute(me("ready"), plan(stage))).toBe(ROUTES.plan);
+      expect(homeRoute(me("ready"), plan(stage), { kind: "accepted" })).toBe(ROUTES.plan);
     }
   });
 
-  test("an ended plan leaves the student on their week", () => {
-    expect(homeRoute(me("ready"), plan("after"))).toBe(ROUTES.week);
-    expect(homeRoute(me("ready"), plan("called_off"))).toBe(ROUTES.week);
+  test("a matched plan not yet revealed opens the reveal", () => {
+    const drop = { kind: "reveal" as const, meetupId: "m1" };
+    expect(homeRoute(me("ready"), null, drop)).toBe("/reveal?meetupId=m1");
+    expect(homeRoute(me("ready"), plan("set"), drop)).toBe("/reveal?meetupId=m1");
+    expect(revealHref("a b")).toBe("/reveal?meetupId=a%20b");
+  });
+
+  test("meetup day comes before everything", () => {
+    expect(homeRoute(me("ready"), plan("meetup_day"), { kind: "reveal", meetupId: "m1" })).toBe(ROUTES.plan);
+  });
+
+  test("an ended plan leaves the student on the drop", () => {
+    expect(homeRoute(me("ready"), plan("after"), { kind: "none" })).toBe(ROUTES.drop);
+    expect(homeRoute(me("ready"), plan("called_off"), { kind: "none" })).toBe(ROUTES.drop);
+  });
+
+  test("onboarding ignores the drop", () => {
+    expect(homeRoute(me("needs_review"), null, { kind: "reveal", meetupId: "m1" })).toBe(ROUTES.taste);
   });
 });
 
@@ -62,6 +83,18 @@ describe("redirectFor", () => {
     expect(redirectFor(ROUTES.week, null)).toBe(ROUTES.welcome);
     expect(redirectFor(ROUTES.plan, null)).toBe(ROUTES.welcome);
     expect(redirectFor(ROUTES.menu, null)).toBe(ROUTES.welcome);
+  });
+
+  test("the drop and the reveal open only once ready", () => {
+    expect(redirectFor(ROUTES.drop, me("ready"))).toBeNull();
+    expect(redirectFor(ROUTES.reveal, me("ready"))).toBeNull();
+    expect(redirectFor(ROUTES.drop, me("needs_review"))).toBe(ROUTES.welcome);
+    expect(redirectFor(ROUTES.reveal, me("analyzing"))).toBe(ROUTES.welcome);
+    expect(redirectFor(ROUTES.reveal, null)).toBe(ROUTES.welcome);
+  });
+
+  test("the retired week always goes home", () => {
+    expect(redirectFor(ROUTES.week, me("ready"))).toBe(ROUTES.welcome);
   });
 
   test("a deep link past onboarding goes home", () => {

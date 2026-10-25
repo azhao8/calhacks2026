@@ -1,5 +1,6 @@
 import type { MeView, PlanView } from "@/convex/lib/views";
 import type { Onboarding } from "@/convex/lib/validators";
+import type { DropView } from "./drops";
 
 // Canonical routes for S01–S17 (CLAUDE.md §5). Chosen once here; screens import from this file.
 export const ROUTES = {
@@ -14,7 +15,9 @@ export const ROUTES = {
   spotifyCallback: "/spotify/callback", // S07, Spotify's redirect
   analyzing: "/analyzing", // S08
   taste: "/taste", // S09
-  week: "/week", // S10
+  week: "/week", // S10, retired: the page only redirects home
+  drop: "/drop", // the weekly drop
+  reveal: "/reveal", // opening a matched plan, one step at a time (?meetupId=)
   plan: "/plan", // S11 offer, S12 plan set, S13 meetup day
   stayInTouch: "/stay-in-touch", // S14
   contacts: "/contacts", // S15
@@ -35,8 +38,17 @@ export function isActivePlan(plan: Pick<PlanView, "stage"> | null | undefined): 
   return plan != null && live.includes(plan.stage);
 }
 
-// Where a signed-in student belongs right now. Home priority: meetup day > set plan > offer > week.
-export function homeRoute(me: Me, plan: Pick<PlanView, "stage"> | null): Route {
+// The reveal screen for one plan.
+export const revealHref = (meetupId: string) => `${ROUTES.reveal}?meetupId=${encodeURIComponent(meetupId)}`;
+
+// Where a signed-in student belongs right now. Home priority for a ready student: meetup day > a
+// matched plan not yet revealed (the drop says "reveal") > a live, revealed plan > the drop, which
+// shows every drop state including "No drop right now".
+export function homeRoute(
+  me: Me,
+  plan: Pick<PlanView, "stage"> | null,
+  drop: { kind: DropView["kind"]; meetupId?: string } | null = null,
+): string {
   if (me.school === null) return ROUTES.school;
   switch (me.onboarding) {
     case "needs_verification":
@@ -54,7 +66,9 @@ export function homeRoute(me: Me, plan: Pick<PlanView, "stage"> | null): Route {
     case "needs_review":
       return ROUTES.taste;
     case "ready":
-      return isActivePlan(plan) ? ROUTES.plan : ROUTES.week;
+      if (plan?.stage === "meetup_day") return ROUTES.plan;
+      if (drop?.kind === "reveal" && drop.meetupId) return revealHref(drop.meetupId);
+      return isActivePlan(plan) ? ROUTES.plan : ROUTES.drop;
   }
 }
 
@@ -81,7 +95,9 @@ const SIGNED_IN_SCREENS: Partial<Record<Route, (state: Onboarding) => boolean>> 
   [ROUTES.connect]: (s) => s === "needs_spotify_connect",
   [ROUTES.analyzing]: (s) => s === "analyzing",
   [ROUTES.taste]: (s) => s === "needs_review" || s === "ready",
-  [ROUTES.week]: (s) => s === "ready",
+  [ROUTES.week]: () => false, // retired from the core flow; the gate sends it home
+  [ROUTES.drop]: (s) => s === "ready",
+  [ROUTES.reveal]: (s) => s === "ready",
   [ROUTES.plan]: (s) => s === "ready",
   // Sharing and contacts outlive a Spotify disconnect, which sends onboarding back to Connect.
   [ROUTES.stayInTouch]: (s) => atLeast(s, "needs_spotify_connect"),
