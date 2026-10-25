@@ -413,17 +413,39 @@ describe("spot changes reach existing plans", () => {
     });
   }
 
-  test("a later agent spot replaces the fallback without deleting the spot a set plan points to", async () => {
+  test("an automatic spot replacement moves forming plans only; a set plan keeps the spot it was shown", async () => {
     const t = await setup();
     await importRun(t, "p1", [scoutItem({ meetingSpot: null })]);
     const [event] = await t.query(internal.events.admin.list, {});
     expect(event.meetingSpot?.name).toBe("Main entrance of The UC Theatre");
-    const planId = await planFor(t, event.eventId);
+    const setPlan = await planFor(t, event.eventId, "set");
+    const formingPlan = await planFor(t, event.eventId, "forming");
     vi.setSystemTime(Date.now() + 60_000);
     await importRun(t, "p2", [scoutItem({ title: "Another show", startsAt: iso(Date.now() + 4 * DAY), sourceUrl: "https://theuctheatre.org/other" })]);
-    const plan = (await t.run((ctx) => ctx.db.get(planId)))!;
-    const spot = await t.run((ctx) => ctx.db.get(plan.meetingSpotId!));
-    expect(spot?.name).toBe("Bench left of the main doors");
+    const spotOf = async (id: Id<"meetups">) => {
+      const plan = (await t.run((ctx) => ctx.db.get(id)))!;
+      return (await t.run((ctx) => ctx.db.get(plan.meetingSpotId!)))?.name;
+    };
+    // The set plan's spot still exists (it is never deleted) and is unchanged.
+    expect(await spotOf(setPlan)).toBe("Main entrance of The UC Theatre");
+    expect(await spotOf(formingPlan)).toBe("Bench left of the main doors");
+  });
+
+  test("an automatic transit-stop replacement never retimes a set plan", async () => {
+    const t = await setup();
+    const fox = { ...FOX };
+    await importRun(t, "t1", [scoutItem({ venue: fox, meetingSpot: null, sourceName: "fox_theater", sourceUrl: "https://thefoxoakland.com/a" })]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    const setPlan = await planFor(t, event.eventId, "set");
+    const before = (await t.run((ctx) => ctx.db.get(setPlan)))!;
+    vi.setSystemTime(Date.now() + 60_000);
+    const transit = { name: "19th St Oakland BART plaza", howToFind: "Street-level entrance at Broadway and 19th St.", lat: 37.8086, lng: -122.2681, osmId: null, isTransitStop: true, travelMinutes: 15 };
+    await importRun(t, "t2", [scoutItem({ title: "Later show", startsAt: iso(Date.now() + 5 * DAY), venue: fox, meetingSpot: transit, sourceName: "fox_theater", sourceUrl: "https://thefoxoakland.com/b" })]);
+    const after = (await t.run((ctx) => ctx.db.get(setPlan)))!;
+    expect(after).toMatchObject({ meetingSpotId: before.meetingSpotId, meetAt: before.meetAt });
+    const events = await t.query(internal.events.admin.list, {});
+    // The event with a set plan keeps its 30 minute offset; the new show uses the stop's 45.
+    expect(events.map((e) => [e.title, e.meetOffsetMinutes])).toEqual([["Big Thief", 30], ["Later show", 45]]);
   });
 
   test("the team's override moves forming and set plans to the new spot and retimes them", async () => {
