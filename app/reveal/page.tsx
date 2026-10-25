@@ -3,11 +3,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { Button } from "@/components/Button";
 import { InlineError } from "@/components/Card";
 import { RevealLine, RevealPresent } from "@/components/Reveal";
-import { dropsReveal, dropsRevealed, type RevealStep } from "@/app/_lib/drops";
+import type { RevealStep } from "@/app/_lib/drops";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
@@ -40,7 +41,7 @@ function RevealGate() {
 }
 
 function Reveal({ meetupId }: { meetupId: Id<"meetups"> }) {
-  const data = useQuery(dropsReveal, { meetupId });
+  const data = useQuery(api.drops.reveal, { meetupId });
   if (data === undefined) return <LoadingScreen object="records" />;
   return <Steps meetupId={meetupId} steps={data.steps} />;
 }
@@ -48,7 +49,7 @@ function Reveal({ meetupId }: { meetupId: Id<"meetups"> }) {
 function Steps({ meetupId, steps }: { meetupId: Id<"meetups">; steps: RevealStep[] }) {
   const router = useRouter();
   const online = useOnline();
-  const markRevealed = useMutation(dropsRevealed);
+  const markRevealed = useMutation(api.drops.revealed);
   const [opened, setOpened] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

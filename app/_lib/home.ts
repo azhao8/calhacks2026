@@ -1,8 +1,8 @@
 "use client";
 
 import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { MeView } from "@/convex/lib/views";
-import { dropsMine } from "./drops";
 import { homeRoute } from "./routes";
 import { usePlan } from "./views";
 
@@ -11,7 +11,7 @@ import { usePlan } from "./views";
 export function useHomeTarget(me: MeView | undefined): string | null {
   const ready = me != null && me.onboarding === "ready";
   const plan = usePlan(ready ? undefined : "skip");
-  const drop = useQuery(dropsMine, ready ? {} : "skip");
+  const drop = useQuery(api.drops.mine, ready ? {} : "skip");
   if (me == null) return null;
   if (ready && (plan === undefined || drop === undefined)) return null;
   return homeRoute(me, plan ?? null, drop ?? null);
