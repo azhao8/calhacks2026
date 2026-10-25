@@ -1,6 +1,6 @@
 # Integration wiring (temporary)
 
-The coordinator's cross-stream wiring and the admin page, saved as one patch until streams A to D merge into `main`. It applies to the four stream branches merged together at these heads: D `stream-d-screens`, A `stream-a-onboarding`, B `stream-b-events` (e1ab1d1), C `stream-c-matching` (3b2ddba). Verified: applied there, it gives 200 passing tests with clean typecheck and lint.
+The coordinator's cross-stream wiring and the admin page, saved as one patch until streams A to D merge into `main`. It applies to the four stream branches merged together at these heads: stream-d-screens 367909b, stream-a-onboarding b236b84, stream-b-events 851fe35, stream-c-matching 3b2ddba. Verified: applied there, it gives 207 passing tests with clean typecheck and lint.
 
 After the streams are on `main`: `git apply docs/integration/wiring.patch`, regenerate `convex/_generated` with `npx convex codegen`, run the checks, and delete this folder in the same change.
 

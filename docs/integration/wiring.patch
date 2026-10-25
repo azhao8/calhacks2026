@@ -1487,10 +1487,10 @@ index fd675c0..d08d99e 100644
  // Built once per fingerprint object, so scoring every pair in a pool doesn't rebuild them.
  const setCache = new WeakMap<Fingerprint, Record<ItemKind, Set<string>>>();
 diff --git a/convex/onboarding/analysis.ts b/convex/onboarding/analysis.ts
-index 75c8ff8..9d8d4f8 100644
+index a5eef3a..33ed05a 100644
 --- a/convex/onboarding/analysis.ts
 +++ b/convex/onboarding/analysis.ts
-@@ -221,6 +221,8 @@ async function finish(ctx: MutationCtx, job: Doc<"analysisJobs">) {
+@@ -246,6 +246,8 @@ async function finish(ctx: MutationCtx, job: Doc<"analysisJobs">) {
    await ctx.db.patch(job._id, { status: "done", error: undefined, finishedAt: Date.now() });
    const user = await ctx.db.get(job.userId);
    if (user?.onboarding === "analyzing") await ctx.db.patch(job.userId, { onboarding: "needs_review" });
@@ -1499,8 +1499,8 @@ index 75c8ff8..9d8d4f8 100644
  }
  
  export const run = internalAction({
-@@ -460,7 +462,7 @@ export const embedComplete = internalMutation({
-   handler: async (ctx, { context }) => {
+@@ -499,7 +501,7 @@ export const embedComplete = internalMutation({
+     }
      const user = await ctx.db.get(context.userId);
      if (user?.onboarding !== "ready") return null;
 -    // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId: context.userId });
