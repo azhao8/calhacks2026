@@ -125,6 +125,37 @@ describe("the ask picker", () => {
     expect(prompt).not.toContain(student);
   });
 
+  test("Claude judges games and plays too, not only the events closest to the student's music", async () => {
+    const t = await setup();
+    const student = await makeStudent(t, { firstName: "Maya", embedding: unit(1), artists: ["Big Thief"] });
+    // Twelve concerts by an artist the student plays, close to their taste vector, outrank a game
+    // with no performers and no listed price in the rerank.
+    for (let i = 0; i < 12; i++) {
+      await makeEvent(t, { title: `Big Thief night ${i}`, embedding: unit(1), performers: ["Big Thief"] });
+    }
+    const game = await makeEvent(t, {
+      title: "Cal Volleyball vs Stanford",
+      embedding: unit(700),
+      performers: [],
+      priceMin: null,
+      priceMax: null,
+    });
+    await t.run(async (ctx) => ctx.db.patch(game, { kind: "game" }));
+    mocks.generateJson.mockResolvedValue({ picks: [{ id: game, reason: "Loud crowds suit them" }] });
+    await t.mutation(internal.asks.picker.pickForUser, { userId: student });
+    await advance(t, 5000);
+
+    const call = mocks.generateJson.mock.calls[0][0];
+    const sent = JSON.parse(call.prompt as string) as { candidates: { id: string; kind: string }[] };
+    expect(sent.candidates).toHaveLength(13);
+    expect(sent.candidates.find((c) => c.id === game)?.kind).toBe("game");
+    // The prompt asks for what the student would enjoy, not only direct music matches.
+    expect(call.system).not.toMatch(/only on their music taste/);
+    const asks = await asksOf(t, student);
+    expect(asks).toHaveLength(3);
+    expect(asks.find((a) => a.eventId === game)?.pickReason).toBe("Loud crowds suit them");
+  });
+
   test("demo students say yes to every ask", async () => {
     const t = await setup();
     mocks.generateJson.mockRejectedValue(new Error("Claude is down"));
