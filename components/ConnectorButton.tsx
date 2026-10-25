@@ -30,13 +30,13 @@ export function ConnectorButton({
       aria-expanded={pressed}
       onClick={sent ? undefined : onClick}
       className={cx(
-        "inline-flex min-h-12 items-center justify-center gap-2 rounded-pill border-[1.5px] bg-surface py-2 pr-4.5 pl-3.5 font-semibold",
+        "inline-flex min-h-12 min-w-0 items-center justify-center gap-2 rounded-pill text-center border-[1.5px] bg-surface py-2 pr-4.5 pl-3.5 font-semibold",
         sent ? "cursor-default border-success text-success" : "cursor-pointer border-line-strong text-ink",
         pressed && !sent && "border-accent",
       )}
     >
       <Icon name={sent ? "check" : k.icon} />
-      {sent ? k.sent : (label ?? k.share)}
+      <span className="min-w-0">{sent ? k.sent : (label ?? k.share)}</span>
     </button>
   );
 }

@@ -51,10 +51,11 @@ export function checkPhone(raw: string): Checked {
   return { ok: false, error: "Enter a 10 digit US number, or start with + and your country code." };
 }
 
-// "+15105550123" → "(510) 555-0123"; other numbers show as stored.
+// "+15105550123" → "(510) 555‑0123" with a non-breaking hyphen, so a narrow screen wraps it only
+// at the space; other numbers show as stored.
 export function formatPhone(value: string): string {
   const us = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(value);
-  return us ? `(${us[1]}) ${us[2]}-${us[3]}` : value;
+  return us ? `(${us[1]}) ${us[2]}\u2011${us[3]}` : value;
 }
 
 // Instagram handles: 1 to 30 letters, numbers, periods and underscores; no leading, trailing or

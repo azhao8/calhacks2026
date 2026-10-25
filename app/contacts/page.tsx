@@ -40,8 +40,8 @@ export default function ContactsPage() {
             <li key={c.meetupId}>
               <Panel className="flex flex-col gap-3">
                 <div>
-                  <h2 className="text-headline">{c.firstName}</h2>
-                  <p className="text-small text-ink-muted">
+                  <h2 className="text-headline wrap-anywhere">{c.firstName}</h2>
+                  <p className="text-small wrap-anywhere text-ink-muted">
                     {c.eventTitle} · {c.dayLabel}
                   </p>
                 </div>
@@ -98,11 +98,11 @@ function MyShares() {
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {mine.map((share) => (
           <li key={`${share.meetupId}.${share.kind}`} className="flex flex-wrap items-center justify-between gap-2">
-            <span className="flex flex-col">
-              <span className="font-semibold wrap-break-word tabular-nums">
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className={share.kind === "phone" ? "font-semibold tabular-nums" : "font-semibold wrap-anywhere"}>
                 {share.kind === "phone" ? formatPhone(share.value) : instagramDisplay(share.value)}
               </span>
-              <span className="text-caption text-ink-muted">With {share.partnerFirstName}</span>
+              <span className="text-caption wrap-anywhere text-ink-muted">With {share.partnerFirstName}</span>
             </span>
             <Button variant="quiet" loading={busy === `${share.meetupId}.${share.kind}`} disabled={!online} onClick={() => stop(share)}>
               Stop sharing

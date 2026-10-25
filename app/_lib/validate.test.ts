@@ -66,7 +66,7 @@ describe("checkPhone", () => {
   });
 
   test("formats US numbers for display", () => {
-    expect(formatPhone("+15105550123")).toBe("(510) 555-0123");
+    expect(formatPhone("+15105550123")).toBe("(510) 555\u20110123");
     expect(formatPhone("+442079460958")).toBe("+442079460958");
   });
 });
