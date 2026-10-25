@@ -210,7 +210,7 @@ describe("school, about you, preferences", () => {
       ["melos-sam", 1, 5],
     ]);
     expect(await onboardingOf(t, a.userId)).toBe("needs_preferences");
-    expect(await a.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: false });
+    expect(await a.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: false, spotifyEmail: "maya@gmail.com" });
   });
 
   test("validation: blank names and bad emails are refused", async () => {
@@ -229,7 +229,7 @@ describe("school, about you, preferences", () => {
     }
     const late = await student(t, "late@berkeley.edu");
     await late.as.mutation(api.onboarding.saveAboutYou, { firstName: "Late", spotifyEmail: "late@gmail.com" });
-    expect(await late.as.query(api.onboarding.access, {})).toEqual({ status: "no_capacity", refused: false });
+    expect(await late.as.query(api.onboarding.access, {})).toEqual({ status: "no_capacity", refused: false, spotifyEmail: "late@gmail.com" });
     const queue = await t.query(internal.onboarding.admin.queue, {});
     expect(queue.flags.noCapacity).toBe(1);
     // The capacity flow continues to preferences, so the wait isn't wasted.
@@ -237,7 +237,7 @@ describe("school, about you, preferences", () => {
 
     const result = await addApp(t, "melos-sam");
     expect(result.assignedWaiting).toBe(1);
-    expect(await late.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: false });
+    expect(await late.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: false, spotifyEmail: "late@gmail.com" });
   });
 
   test("preferences: surprise me uses the confirmed defaults and moves to waiting", async () => {
@@ -267,6 +267,19 @@ describe("school, about you, preferences", () => {
     }));
     expect(prefs).toMatchObject({ maxTicketPrice: 15, meetWho: ["non_binary", "woman"], area: "campus", source: "custom" });
     expect(user).toMatchObject({ gender: "woman", year: "third", onboarding: "waiting_for_spotify" });
+    expect(await as.query(api.onboarding.preferences, {})).toEqual({
+      maxTicketPrice: 15,
+      meetWho: ["non_binary", "woman"],
+      gender: "woman",
+      year: "third",
+      prefersSimilarYear: true,
+      area: "campus",
+      source: "custom",
+    });
+    // Only the student's own record: someone else sees their own (none yet), and signed out sees nothing.
+    const other = await student(t, "other@berkeley.edu");
+    expect(await other.as.query(api.onboarding.preferences, {})).toBeNull();
+    expect(await t.query(api.onboarding.preferences, {})).toBeNull();
     // Later changes don't move onboarding again.
     await as.mutation(api.onboarding.surpriseMe, {});
     expect(await onboardingOf(t, userId)).toBe("waiting_for_spotify");
@@ -286,7 +299,7 @@ describe("allow-list queue and Mark added", () => {
     expect(first).toEqual({ changed: true, emailQueued: true });
     expect(again).toEqual({ changed: false, emailQueued: false });
     expect(await onboardingOf(t, userId)).toBe("needs_spotify_connect");
-    expect(await as.query(api.onboarding.access, {})).toEqual({ status: "allowlisted", refused: false });
+    expect(await as.query(api.onboarding.access, {})).toEqual({ status: "allowlisted", refused: false, spotifyEmail: "alex@gmail.com" });
     await drain(t);
     expect(emails).toHaveLength(1);
     expect(emails[0].to).toBe("alex@berkeley.edu");
@@ -361,7 +374,7 @@ describe("Spotify connect", () => {
     const state = new URL(await s.as.action(api.spotify.connectUrl, { redirectUri })).searchParams.get("state")!;
     expect(await errorCode(s.as.action(api.spotify.completeConnect, { code: "good", state, redirectUri }))).toBe("spotify_refused");
     expect(await onboardingOf(t, s.userId)).toBe("waiting_for_spotify");
-    expect(await s.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: true });
+    expect(await s.as.query(api.onboarding.access, {})).toEqual({ status: "requested", refused: true, spotifyEmail: "alex@gmail.com" });
     const queue = await t.query(internal.onboarding.admin.queue, {});
     expect(queue.flags.refused).toBe(1);
     await t.run(async (ctx) => {
@@ -381,7 +394,7 @@ describe("analysis and taste review", () => {
     expect(await onboardingOf(t, s.userId)).toBe("analyzing");
     expect(await s.as.query(api.taste.analysis, {})).toMatchObject({ status: "queued" });
     await drain(t);
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "done", error: null });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "done", error: null, failure: null });
     expect(await onboardingOf(t, s.userId)).toBe("needs_review");
 
     const profile = await s.as.query(api.taste.profile, {});
@@ -432,13 +445,13 @@ describe("analysis and taste review", () => {
     claude.fail = true;
     const s = await connected(t);
     await drain(t);
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "failed" });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "failed", failure: "other" });
     expect(await onboardingOf(t, s.userId)).toBe("analyzing"); // failures belong to the job
     const fetches = spotify.requests.length;
     claude.fail = false;
     await s.as.mutation(api.taste.startAnalysis, {});
     await drain(t);
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "done", error: null });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "done", error: null, failure: null });
     expect(spotify.requests.length).toBe(fetches);
   });
 
@@ -448,7 +461,7 @@ describe("analysis and taste review", () => {
     spotify.artists = ["Big Thief", "Clairo"];
     const s = await connected(t);
     await drain(t);
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "too_little_data" });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "too_little_data", failure: "too_little_data" });
     expect(await s.as.query(api.taste.profile, {})).toBeNull();
     expect(claude.calls).toHaveLength(0);
     await t.run(async (ctx) => {
@@ -463,7 +476,7 @@ describe("analysis and taste review", () => {
     const s = await connected(t);
     await drain(t);
     expect(await s.as.query(api.taste.profile, {})).toBeNull();
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "failed" });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "failed", failure: "other" });
   });
 
   test("Not quite revises the summary; the correction is kept and the revision counts up", async () => {
@@ -473,7 +486,7 @@ describe("analysis and taste review", () => {
     await drain(t);
     claude.answer = { summary: "Live folk first, with quiet indie for late nights.", labels: ["folk", "late night", "acoustic"], artists: ["Fleet Foxes"] };
     await s.as.mutation(api.taste.correct, { text: "More folk than indie, honestly" });
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "summarizing", error: null });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "summarizing", error: null, failure: null });
     // A second tap while it runs is refused instead of double billing.
     expect(await errorCode(s.as.mutation(api.taste.correct, { text: "again" }))).toBe("retryable");
     await drain(t);
@@ -497,7 +510,7 @@ describe("analysis and taste review", () => {
     claude.fail = true;
     await s.as.mutation(api.taste.correct, { text: "More folk" });
     await drain(t);
-    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "correction_failed" });
+    expect(await s.as.query(api.taste.analysis, {})).toEqual({ status: "failed", error: "correction_failed", failure: "other" });
     expect(await s.as.query(api.taste.profile, {})).toMatchObject({ revision: 0 });
     expect(await t.run(async (ctx) => (await ctx.db.query("tasteProfiles").first())?.correction)).toBe("More folk");
   });

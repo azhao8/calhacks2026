@@ -23,7 +23,11 @@ export const analysis = query({
     if (userId === null) return null;
     const job = await jobFor(ctx, userId);
     if (job === null) return null;
-    return { status: job.status, error: job.error ?? null };
+    return {
+      status: job.status,
+      error: job.error ?? null,
+      failure: job.status !== "failed" ? null : job.error === "too_little_data" ? ("too_little_data" as const) : ("other" as const),
+    };
   },
 });
 

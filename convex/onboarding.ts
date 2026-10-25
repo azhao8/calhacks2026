@@ -5,7 +5,7 @@ import { fail } from "./lib/errors";
 import { normalizeEmail } from "./lib/edu";
 import { SURPRISE_ME } from "./lib/config";
 import { vArea, vGenderSelf, vMeetWho, vYear } from "./lib/validators";
-import { vAccessView } from "./lib/views";
+import { vAccessView, vPreferencesView } from "./lib/views";
 import { requireVerifiedUser } from "./onboarding/guard";
 import { accessFor, pickApp } from "./onboarding/apps";
 import type { MutationCtx } from "./_generated/server";
@@ -139,13 +139,42 @@ export const access = query({
   returns: vAccessView,
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (userId === null) return { status: "none" as const, refused: false };
+    if (userId === null) return { status: "none" as const, refused: false, spotifyEmail: null };
     const row = await accessFor(ctx, userId);
-    if (row === null) return { status: "none" as const, refused: false };
+    if (row === null) return { status: "none" as const, refused: false, spotifyEmail: null };
     if (row.status === "requested" && row.spotifyAppId === undefined) {
-      return { status: "no_capacity" as const, refused: false };
+      return { status: "no_capacity" as const, refused: false, spotifyEmail: row.spotifyEmail };
     }
-    return { status: row.status, refused: row.status === "requested" && row.refusedAt !== undefined };
+    return {
+      status: row.status,
+      refused: row.status === "requested" && row.refusedAt !== undefined,
+      spotifyEmail: row.spotifyEmail,
+    };
+  },
+});
+
+// S05 from the menu: the saved answers, or null before any are saved. The student's own record only.
+export const preferences = query({
+  args: {},
+  returns: vPreferencesView,
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return null;
+    const user = await ctx.db.get(userId);
+    const prefs = await ctx.db
+      .query("preferences")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .first();
+    if (user === null || prefs === null) return null;
+    return {
+      maxTicketPrice: prefs.maxTicketPrice,
+      meetWho: prefs.meetWho,
+      gender: user.gender ?? null,
+      year: user.year ?? null,
+      prefersSimilarYear: prefs.prefersSimilarYear,
+      area: prefs.area,
+      source: prefs.source,
+    };
   },
 });
 

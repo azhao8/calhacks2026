@@ -107,6 +107,26 @@ describe("sign-in with a .edu email code", () => {
     });
   });
 
+  test("the address stored and emailed is exactly the normalized one that was validated", async () => {
+    const t = await setup();
+    // Fullwidth letters fold to ASCII under NFKC before the check.
+    await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: " Alex@Berkeley.\uFF45\uFF44\uFF55 " } });
+    expect(sent.map((m) => m.to)).toEqual(["alex@berkeley.edu"]);
+    await t.run(async (ctx) => {
+      const [user] = await ctx.db.query("users").collect();
+      expect(user.email).toBe("alex@berkeley.edu");
+      expect(user.emailDomain).toBe("berkeley.edu");
+    });
+    // A lookalike that stays non-ASCII is refused, with nothing stored or sent.
+    expect(await errorCode(t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "alex@berkeley.\u0435du" } }))).toBe(
+      "not_edu_email",
+    );
+    expect(sent).toHaveLength(1);
+    await t.run(async (ctx) => {
+      expect(await ctx.db.query("users").collect()).toHaveLength(1);
+    });
+  });
+
   test("students from other .edu schools default to the open school", async () => {
     const t = await setup();
     await t.action(api.auth.signIn, { provider: "resend-otp", params: { email: "sam@mit.edu" } });

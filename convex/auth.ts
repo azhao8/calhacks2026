@@ -1,6 +1,7 @@
 import { convexAuth } from "@convex-dev/auth/server";
 import { Email } from "@convex-dev/auth/providers/Email";
 import { SIGN_IN } from "./lib/config";
+import { normalizeEmail } from "./lib/edu";
 import { sendEmail } from "./services/resend";
 import { createOrUpdateUser, generateCode, OTP_PROVIDER_ID } from "./onboarding/signIn";
 
@@ -9,9 +10,10 @@ const ResendOTP = Email({
   id: OTP_PROVIDER_ID,
   maxAge: SIGN_IN.codeTtlSeconds,
   generateVerificationToken: async () => generateCode(),
+  // The callback validated and stored normalizeEmail(input); the code goes to exactly that address.
   sendVerificationRequest: async ({ identifier, token }) => {
     await sendEmail({
-      to: identifier.trim().toLowerCase(),
+      to: normalizeEmail(identifier),
       subject: `Your Melos code is ${token}`,
       text: [
         `Your Melos code is ${token}.`,

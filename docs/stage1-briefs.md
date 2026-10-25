@@ -10,12 +10,21 @@ Rules:
 - Work on your own branch; open a PR into main when done; never merge it yourself.
 - Touch only the files and tables listed for your stream. `convex/schema.ts`, `package.json`, the lockfile, `convex/lib/*`, and `convex/services/{claude,voyage,resend}.ts` are shared: if you need a change there (a new field, index, dependency, or a contract change in `convex/lib/views.ts`), say so in your PR description under "Needs from coordinator" (or message the coordinator if you can), and work around it until then; don't edit them.
 - The public function names and return types in your files are already fixed as contract stubs (they throw "not built yet"). Keep the names, args, and `returns` validators; replace the bodies.
-- Convex: never push to the shared dev deployment (`elated-barracuda-447`); every push replaces its whole set of functions. Get an isolated backend instead. In a cloud session: `CONVEX_AGENT_MODE=anonymous npx convex dev --once` runs a local backend on your machine (beta; see docs.convex.dev/cli/agent-mode). On a laptop: `npx convex dev --configure existing --project melos --dev-deployment local`. Then `npm run seed`.
+- Convex: never push to the shared dev deployment (`elated-barracuda-447`); every push replaces its whole set of functions. In a cloud session (Convex's local backend can't be downloaded there): test in memory with convex-test, and regenerate types with `CONVEX_DEPLOY_KEY="$MELOS_DEV_DEPLOY_KEY" npx convex codegen`, which uploads code for analysis only and never makes it live; never run any other Convex command with that key. On a laptop: `npx convex dev --configure existing --project melos --dev-deployment local`, then `npm run seed`.
+- Cross-stream calls: never reference another stream's functions (they aren't on `main` yet). Build your callee names exactly as listed under "Fixed cross-stream names", and leave `// INTEGRATION: <exact call>` comments where you call another stream; the coordinator wires them after merge.
 - Secrets: set only the ones you need on your own backend with `npx convex env set`, from environment variables the user provided (never print values). If a key isn't available, mock that service in your tests and leave live checks to Stage 2 integration.
 - `npm run build` needs `NEXT_PUBLIC_CONVEX_URL`; use the URL your own `npx convex dev` wrote to `.env.local`.
 - Test with convex-test (vitest, `npm test`) for every state transition and withholding rule you build, plus `npm run typecheck`, `npm run lint`, and `npm run build`.
 - Ask the user before anything sensitive (secrets on shared deployments, production, DNS, real email to people outside the team).
 - When done: summarize changed files, verified behavior, remaining stubs, and integration notes in the PR description, then report back.
+
+## Fixed cross-stream names
+
+- A: Convex Auth email provider id `"resend-otp"`; `internal.onboarding.admin.queue`, `internal.onboarding.admin.markAdded({ accessId, adminEmail })`, `internal.onboarding.admin.upsertSpotifyApp({ label, ownerName, clientId })`.
+- B: `internal.events.admin.{imports, list, pull, edit, feature, findNow}`; the webhook as an httpAction exported from `convex/events/webhook.ts` for `POST /apify/webhook` (the coordinator registers the route).
+- C: `internal.asks.picker.pickForUser({ userId })` (A calls it on taste confirm), `internal.asks.picker.pickAfterImport({})` (B calls it after an import publishes events), `internal.plans.release.forUser({ userId })` (A calls it on Spotify disconnect), `internal.matching.admin.{runNow, runs}`, `internal.demo.admin.{seed, reset, setClockOffset, actAs}`.
+- E (coordinator): `api.admin.*` (team-gated wrappers, funnel, help notes) and the admin page.
+- If a name turns out impossible, a stream uses the nearest workable name and tells the coordinator.
 
 ## A — Onboarding backend
 Owns: `convex/auth.ts`, `convex/http.ts` (auth routes only), `convex/onboarding.ts`, `convex/spotify.ts`, `convex/taste.ts`, `convex/settings.ts`, `convex/schools.ts`, `convex/me.ts`, new `convex/onboarding/**`, `convex/services/spotify.ts`, `convex/ai/taste*`, `convex/ai/labels.ts` (the fixed ~150 label list). Tables: users, preferences, spotifyApps, spotifyAccess, spotifyTokens, tasteSnapshots, analysisJobs, tasteProfiles, universities.
