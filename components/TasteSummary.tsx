@@ -13,6 +13,7 @@ export function TasteSummary({
   onConfirm,
   onCorrect,
   busy,
+  disabled,
   children,
 }: {
   summary: string;
@@ -23,6 +24,8 @@ export function TasteSummary({
   onConfirm?: () => void;
   onCorrect?: () => void;
   busy?: boolean;
+  // Blocks both choices without a spinner, for example while a correction is being written.
+  disabled?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -52,10 +55,10 @@ export function TasteSummary({
         <Ok>Saved. You can change this anytime.</Ok>
       ) : onConfirm || onCorrect ? (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
-          <Button block onClick={onConfirm} loading={busy}>
+          <Button block onClick={onConfirm} loading={busy} disabled={disabled}>
             That&apos;s me
           </Button>
-          <Button block variant="secondary" onClick={onCorrect} disabled={busy}>
+          <Button block variant="secondary" onClick={onCorrect} disabled={busy || disabled}>
             Not quite
           </Button>
         </div>

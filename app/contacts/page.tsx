@@ -1,11 +1,18 @@
 "use client";
 
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Button } from "@/components/Button";
+import { InlineError } from "@/components/Card";
+import { errorCopy } from "@/app/_lib/errors";
 import { InfoCard } from "@/components/InfoCard";
 import { StateView } from "@/components/StateView";
-import { useGate } from "@/app/_lib/hooks";
+import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
-import { useContacts } from "@/app/_lib/views";
+import { useContacts, useMyActiveShares, type MyShare } from "@/app/_lib/views";
 import { formatPhone, instagramDisplay } from "@/app/_lib/validate";
+import { Optional } from "@/app/_components/Optional";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S15 Contacts (component InfoCard): only values people from your plans chose to share with you.
@@ -55,6 +62,56 @@ export default function ContactsPage() {
           ))}
         </ul>
       )}
+      <Optional>
+        <MyShares />
+      </Optional>
     </Screen>
+  );
+}
+
+// What this student shared, from any plan, with a way to stop (S15). Stopping hides the value in
+// Melos from now on; it can't remove a copy someone already saved.
+function MyShares() {
+  const mine = useMyActiveShares();
+  const stopSharing = useMutation(api.contacts.stopSharing);
+  const online = useOnline();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  if (mine === undefined || mine.length === 0) return null;
+
+  async function stop(share: MyShare) {
+    const key = `${share.meetupId}.${share.kind}`;
+    setBusy(key);
+    setError(null);
+    try {
+      await stopSharing({ meetupId: share.meetupId, kind: share.kind });
+    } catch (e) {
+      setError(errorCopy(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Panel className="flex flex-col gap-2">
+      <h2 className="text-headline">What you shared</h2>
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {mine.map((share) => (
+          <li key={`${share.meetupId}.${share.kind}`} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="flex flex-col">
+              <span className="font-semibold wrap-break-word tabular-nums">
+                {share.kind === "phone" ? formatPhone(share.value) : instagramDisplay(share.value)}
+              </span>
+              <span className="text-caption text-ink-muted">With {share.partnerFirstName}</span>
+            </span>
+            <Button variant="quiet" loading={busy === `${share.meetupId}.${share.kind}`} disabled={!online} onClick={() => stop(share)}>
+              Stop sharing
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {error ? <InlineError>{error}</InlineError> : null}
+      <p className="text-caption text-ink-muted">Stop sharing hides it in Melos from now on. It can&apos;t remove a copy someone already saved.</p>
+    </Panel>
   );
 }

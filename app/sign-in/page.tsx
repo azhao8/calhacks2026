@@ -64,7 +64,14 @@ export default function SignInPage() {
       setCode("");
       setStep("code");
     } catch (e) {
-      setError(errorCopy(e, { fallback: "We couldn't send a code. Try again in a moment." }));
+      if (errorCode(e) === "code_cooldown" && step === "email") {
+        // A valid code went out moments ago, so go to the code step anyway.
+        setSentAt(Date.now());
+        setCode("");
+        setStep("code");
+      } else {
+        setError(errorCopy(e, { fallback: "We couldn't send a code. Try again in a moment." }));
+      }
     } finally {
       setBusy(null);
     }

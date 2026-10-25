@@ -39,3 +39,10 @@ export const usePlan = (skip?: Skip) => useQuery(api.plans.current, args(skip)) 
 export const useContacts = (skip?: Skip) => useQuery(api.contacts.list, args(skip)) as ContactView[] | undefined;
 export const useMyShares = (meetupId: Id<"meetups">) =>
   useQuery(api.contacts.myShares, { meetupId }) as MySharesView | undefined;
+
+// The student's own active shares (S15) and recent plans where sharing is still open (S14).
+export type MyShare = { meetupId: Id<"meetups">; partnerFirstName: string; kind: "phone" | "instagram"; value: string };
+export type Shareable = { meetupId: Id<"meetups">; partnerFirstName: string; eventTitle: string; startsAt: number };
+
+export const useMyActiveShares = (skip?: Skip) => useQuery(api.contacts.mine, args(skip)) as MyShare[] | undefined;
+export const useShareable = (skip?: Skip) => useQuery(api.contacts.shareable, args(skip)) as Shareable[] | undefined;

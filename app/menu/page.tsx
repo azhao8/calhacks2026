@@ -14,7 +14,7 @@ import { MenuCloseButton } from "@/components/MenuButton";
 import { TextArea } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
-import { ROUTES } from "@/app/_lib/routes";
+import { atLeast, ROUTES } from "@/app/_lib/routes";
 import { useAccess } from "@/app/_lib/views";
 import { checkNote } from "@/app/_lib/validate";
 import { Confirm } from "@/app/_components/Confirm";
@@ -68,11 +68,12 @@ function Menu({ me }: { me: NonNullable<MeView> }) {
 
       <Section title="Melos">
         {ready ? <Row href={ROUTES.welcome}>Home</Row> : null}
+        {ready ? <Row href={ROUTES.week}>Your week</Row> : null}
         {me.onboarding === "needs_review" || ready ? <Row href={ROUTES.taste}>Your taste summary</Row> : null}
         {me.onboarding !== "needs_verification" && me.onboarding !== "needs_about_you" ? (
           <Row href={ROUTES.preferences}>Preferences</Row>
         ) : null}
-        {ready ? <Row href={ROUTES.contacts}>Recent connections</Row> : null}
+        {atLeast(me.onboarding, "needs_spotify_connect") ? <Row href={ROUTES.contacts}>Recent connections</Row> : null}
         <Row href={ROUTES.privacy}>Privacy</Row>
       </Section>
 

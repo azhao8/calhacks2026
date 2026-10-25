@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { PlanView, WeekCard } from "@/convex/lib/views";
@@ -14,25 +13,30 @@ import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { isActivePlan, ROUTES } from "@/app/_lib/routes";
 import { useWeek } from "@/app/_lib/views";
+import { Optional } from "@/app/_components/Optional";
+import { ShareablePrompt, stayInTouchHref } from "@/app/_components/ShareablePrompt";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S10 Your week (mockups week.png, empty.png). Up to 3 asks, stacked, showing only the day, time,
 // price and distance. Offers arrive live: when one does, the plan screen takes over.
 export default function WeekPage() {
-  const router = useRouter();
   const gate = useGate(ROUTES.week);
   const ready = gate.status === "ready" && gate.me !== null;
   const cards = useWeek(ready ? undefined : "skip");
   const plan = gate.status === "ready" ? gate.plan : undefined;
-  const active = isActivePlan(plan);
+  if (!ready || cards === undefined || plan === undefined) return <LoadingScreen object="ticket" title="Loading your week" />;
 
-  useEffect(() => {
-    if (active) router.replace(ROUTES.plan);
-  }, [active, router]);
-
-  if (!ready || cards === undefined || plan === undefined || active) return <LoadingScreen object="ticket" title="Loading your week" />;
-
-  const notices = <PlanNotices plan={plan} />;
+  // Home goes to the plan first (homeRoute); here the week stays reachable with a way back to it.
+  const notices = (
+    <>
+      {isActivePlan(plan) ? <ActivePlanBanner /> : null}
+      <PlanNotices plan={plan} />
+      {/* Without stream C's shareable query, fall back to the completed plan's own prompt. */}
+      <Optional fallback={plan && plan.stage === "after" && plan.canShare ? <AfterSharePrompt plan={plan} /> : null}>
+        <ShareablePrompt exclude={isActivePlan(plan) ? plan?.meetupId : undefined} />
+      </Optional>
+    </>
+  );
 
   if (cards.length === 0) {
     return (
@@ -130,20 +134,39 @@ function PlanNotices({ plan }: { plan: PlanView | null }) {
       </Card>
     );
   }
-  if (plan.stage === "after" && plan.canShare) {
-    return (
-      <Card>
-        <p className="font-display text-title">Want to stay in touch?</p>
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
-          <Link href={ROUTES.stayInTouch} onClick={dismiss} className={buttonClasses({ block: true })}>
-            Share
-          </Link>
-          <Button variant="secondary" block onClick={dismiss}>
-            Not now
-          </Button>
-        </div>
-      </Card>
-    );
-  }
   return null;
+}
+
+function AfterSharePrompt({ plan }: { plan: PlanView }) {
+  const key = `seen.${plan.meetupId}.after`;
+  const [dismissed, setDismissed] = useState(() => getFlag(key));
+  if (dismissed) return null;
+  const dismiss = () => {
+    setFlag(key);
+    setDismissed(true);
+  };
+  return (
+    <Card>
+      <p className="font-display text-title">Want to stay in touch?</p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
+        <Link href={stayInTouchHref(plan.meetupId)} onClick={dismiss} className={buttonClasses({ block: true })}>
+          Share
+        </Link>
+        <Button variant="secondary" block onClick={dismiss}>
+          Not now
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function ActivePlanBanner() {
+  return (
+    <Panel className="flex flex-col gap-3">
+      <p className="text-body text-ink">You have a plan in progress.</p>
+      <Link href={ROUTES.plan} className={buttonClasses({ block: true })}>
+        Open your plan
+      </Link>
+    </Panel>
+  );
 }

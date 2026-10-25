@@ -13,7 +13,8 @@ import { TextArea } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ONBOARDING_STEP, ROUTES } from "@/app/_lib/routes";
-import { useTasteProfile } from "@/app/_lib/views";
+import { revisionState } from "@/app/_lib/tasteRevision";
+import { useAnalysis, useTasteProfile } from "@/app/_lib/views";
 import { checkNote } from "@/app/_lib/validate";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
@@ -29,6 +30,7 @@ function Review({ me }: { me: NonNullable<MeView> }) {
   const router = useRouter();
   const online = useOnline();
   const profile = useTasteProfile();
+  const job = useAnalysis();
   const correct = useMutation(api.taste.correct);
   const confirm = useMutation(api.taste.confirm);
   const [editing, setEditing] = useState(false);
@@ -36,7 +38,8 @@ function Review({ me }: { me: NonNullable<MeView> }) {
   const [busy, setBusy] = useState<"confirm" | "correct" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
-  const [sentRevision, setSentRevision] = useState<number | null>(null);
+  // The revision the last correction was sent against, and its words, kept until a newer revision lands.
+  const [sent, setSent] = useState<{ revision: number; text: string } | null>(null);
   const onboarding = me.onboarding !== "ready";
 
   if (profile === undefined) return <LoadingScreen object="cassette" />;
@@ -55,7 +58,10 @@ function Review({ me }: { me: NonNullable<MeView> }) {
     );
   }
 
-  const revised = sentRevision !== null && profile.revision > sentRevision;
+  const state = revisionState(job, sent?.revision ?? null, profile.revision);
+  const revised = state === "revised";
+  const rewriting = state === "rewriting";
+  const keptText = revised ? null : (sent?.text ?? null);
 
   async function onConfirm() {
     setBusy("confirm");
@@ -69,7 +75,23 @@ function Review({ me }: { me: NonNullable<MeView> }) {
     }
   }
 
-  async function onCorrect(event: FormEvent) {
+  async function send(words: string) {
+    setBusy("correct");
+    setError(null);
+    try {
+      await correct({ text: words });
+      // The text stays kept until profile.revision goes up (see revisionState).
+      setSent({ revision: profile!.revision, text: words });
+      setEditing(false);
+    } catch (e) {
+      // Keep the typed correction so nothing is lost.
+      setError(errorCopy(e, { fallback: "We couldn't save your change. Your words are still here. Try again." }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function onCorrect(event: FormEvent) {
     event.preventDefault();
     const checked = checkNote(text, 500, "Tell us what to change.");
     if (!checked.ok) {
@@ -77,19 +99,12 @@ function Review({ me }: { me: NonNullable<MeView> }) {
       return;
     }
     setFieldError(null);
-    setBusy("correct");
-    setError(null);
-    try {
-      await correct({ text: checked.value });
-      setSentRevision(profile!.revision);
-      setEditing(false);
-      setText("");
-    } catch (e) {
-      // Keep the typed correction so nothing is lost.
-      setError(errorCopy(e, { fallback: "We couldn't save your change. Your words are still here. Try again." }));
-    } finally {
-      setBusy(null);
-    }
+    void send(checked.value);
+  }
+
+  function startEditing() {
+    setText(keptText ?? "");
+    setEditing(true);
   }
 
   return (
@@ -104,15 +119,27 @@ function Review({ me }: { me: NonNullable<MeView> }) {
           We changed it. Take another look.
         </p>
       ) : null}
+      {rewriting ? <StateView kind="loading" title="Rewriting your summary" body="This takes a few seconds." className="rounded-lg bg-backdrop-vignette" /> : null}
+      {state === "failed" ? (
+        <div className="flex flex-col gap-3 rounded-lg bg-backdrop-vignette p-4">
+          <InlineError>We couldn&apos;t rewrite your summary. {keptText ? "Your words are still here." : "Try again."}</InlineError>
+          {keptText ? (
+            <Button variant="secondary" block loading={busy === "correct"} disabled={!online} onClick={() => void send(keptText)}>
+              Try again
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
       <TasteSummary
         eyebrow={revised ? "Your revised summary" : "Here is how you sound"}
         summary={profile.summary}
         artists={profile.artists}
         labels={profile.labels}
-        confirmed={profile.confirmed && !editing && !revised}
+        confirmed={profile.confirmed && !editing && !revised && !rewriting}
         busy={busy === "confirm"}
+        disabled={rewriting || busy === "correct"}
         onConfirm={editing ? undefined : onConfirm}
-        onCorrect={editing ? undefined : () => setEditing(true)}
+        onCorrect={editing ? undefined : startEditing}
       >
         {editing ? (
           <form onSubmit={onCorrect} noValidate className="flex flex-col gap-3">
@@ -135,8 +162,8 @@ function Review({ me }: { me: NonNullable<MeView> }) {
           </form>
         ) : null}
       </TasteSummary>
-      {profile.confirmed && !editing && !revised ? (
-        <Button variant="secondary" block onClick={() => setEditing(true)}>
+      {profile.confirmed && !editing && !revised && !rewriting ? (
+        <Button variant="secondary" block onClick={startEditing}>
           Not quite
         </Button>
       ) : null}

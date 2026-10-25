@@ -81,6 +81,12 @@ describe("redirectFor", () => {
     expect(redirectFor(ROUTES.menu, me("analyzing"))).toBeNull();
   });
 
+  test("contacts and sharing stay reachable after a Spotify disconnect", () => {
+    expect(redirectFor(ROUTES.contacts, me("needs_spotify_connect"))).toBeNull();
+    expect(redirectFor(ROUTES.stayInTouch, me("analyzing"))).toBeNull();
+    expect(redirectFor(ROUTES.contacts, me("waiting_for_spotify"))).toBe(ROUTES.welcome);
+  });
+
   test("About you can't be redone after onboarding", () => {
     expect(redirectFor(ROUTES.aboutYou, me("ready"))).toBe(ROUTES.welcome);
   });
