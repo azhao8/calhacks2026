@@ -1,7 +1,7 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { legacyAsksOn, TIMING } from "../lib/config";
+import { TIMING } from "../lib/config";
 
 // Wakes the matcher for one event (CLAUDE.md §6.4). A yes or a reopened seat runs it about 15 seconds
 // later; changes inside that window join the same run through `events.matcherWakeAt`.
@@ -10,8 +10,6 @@ export async function wakeMatcher(
   eventId: Id<"events">,
   trigger: "yes" | "seat_open",
 ): Promise<void> {
-  // Drops: no live matching on a yes. Reopened seats still wake it, for the demo refill.
-  if (trigger === "yes" && !legacyAsksOn()) return;
   const event = await ctx.db.get(eventId);
   if (event === null) return;
   const real = Date.now();

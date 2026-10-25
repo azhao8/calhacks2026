@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { MeView } from "@/convex/lib/views";
+import type { MeView, PlanView } from "@/convex/lib/views";
 import { Button } from "@/components/Button";
 import { InlineError, Ok } from "@/components/Card";
 import { Icon } from "@/components/Icon";
@@ -14,8 +14,7 @@ import { MenuCloseButton } from "@/components/MenuButton";
 import { TextArea } from "@/components/TextField";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
-import { useHomeTarget } from "@/app/_lib/home";
-import { atLeast, ROUTES } from "@/app/_lib/routes";
+import { atLeast, homeRoute, ROUTES } from "@/app/_lib/routes";
 import { useAccess } from "@/app/_lib/views";
 import { checkNote } from "@/app/_lib/validate";
 import { Confirm } from "@/app/_components/Confirm";
@@ -25,7 +24,7 @@ import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 export default function MenuPage() {
   const gate = useGate(ROUTES.menu);
   if (gate.status === "loading" || gate.me === null) return <LoadingScreen object="none" />;
-  return <Menu me={gate.me} />;
+  return <Menu me={gate.me} plan={gate.plan} />;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -46,13 +45,12 @@ function Row({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
-function Menu({ me }: { me: NonNullable<MeView> }) {
+function Menu({ me, plan }: { me: NonNullable<MeView>; plan: PlanView | null | undefined }) {
   const router = useRouter();
   const ready = me.onboarding === "ready";
-  const home = useHomeTarget(me);
   // Close goes to the student's home screen, never back through browser history: opened from a
   // link (Gmail, the "ready" email), history back would leave Melos.
-  const close = () => router.replace(home ?? ROUTES.welcome);
+  const close = () => router.replace(plan === undefined ? ROUTES.welcome : homeRoute(me, plan));
 
   return (
     <Screen object="none" quiet right={<MenuCloseButton onClick={close} />} top={<ScreenTitle>Menu</ScreenTitle>}>
@@ -71,6 +69,7 @@ function Menu({ me }: { me: NonNullable<MeView> }) {
 
       <Section title="Melos">
         {ready ? <Row href={ROUTES.welcome}>Home</Row> : null}
+        {ready ? <Row href={ROUTES.week}>Your week</Row> : null}
         {me.onboarding === "needs_review" || ready ? <Row href={ROUTES.taste}>Your taste summary</Row> : null}
         {me.onboarding !== "needs_verification" && me.onboarding !== "needs_about_you" ? (
           <Row href={ROUTES.preferences}>Preferences</Row>

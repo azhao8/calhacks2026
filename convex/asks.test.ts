@@ -5,9 +5,6 @@ import type { Id } from "./_generated/dataModel";
 import { knownPrice, withinArea, withinBudget } from "./asks/rules";
 import { advance, asUser, DAY, HOUR, makeAsk, makeEvent, makeStudent, setup, type T } from "./testing.helpers";
 
-// These suites cover the pre-drop asks and live matching, which drops gate off (DECISIONS.md, Oct 25).
-process.env.MELOS_LEGACY_ASKS = "1";
-
 const mocks = vi.hoisted(() => ({ generateJson: vi.fn() }));
 vi.mock("./services/claude", () => ({ generateJson: mocks.generateJson }));
 

@@ -24,8 +24,6 @@ import {
   vSpotChosenBy,
   vTicket,
   vYear,
-  vDropStatus,
-  vDropEntryState,
 } from "./lib/validators";
 import { EMBEDDING } from "./lib/config";
 
@@ -245,29 +243,12 @@ export default defineSchema({
     teamFields: v.optional(v.array(v.string())),
     // Consecutive runs that covered this event's source without seeing it; flagged at 2, reset on sight (§6.1).
     missedRuns: v.optional(v.number()),
-    // Drops: who would enjoy it, written once per event by Claude from public data, and its vector.
-    audienceProfile: v.optional(
-      v.object({
-        audience: v.string(),
-        labels: v.array(v.string()),
-        energy: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
-        // The event fields the profile was written from, so a changed event gets a new one.
-        sourceKey: v.string(),
-        writtenAt: v.number(),
-      }),
-    ),
-    audienceEmbedding: v.optional(v.array(v.float64())),
   })
     .index("by_status_startsAt", ["status", "startsAt"])
     .index("by_dedupeKey", ["dedupeKey"])
     .index("by_venue", ["venueId"])
     .vectorIndex("by_embedding", {
       vectorField: "embedding",
-      dimensions: EMBEDDING.dimensions,
-      filterFields: ["status"],
-    })
-    .vectorIndex("by_audienceEmbedding", {
-      vectorField: "audienceEmbedding",
       dimensions: EMBEDDING.dimensions,
       filterFields: ["status"],
     }),
@@ -380,38 +361,6 @@ export default defineSchema({
     createdAt: v.number(),
     handledAt: v.optional(v.number()),
   }),
-
-  // Drops (DECISIONS.md, Oct 25): everyone moves through each phase together. At most one drop is
-  // choosing or confirming at a time.
-  drops: defineTable({
-    status: vDropStatus,
-    startedAt: v.number(),
-    choosingEndsAt: v.number(),
-    matchAt: v.number(),
-    endedChoosingAt: v.optional(v.number()),
-    matchedAt: v.optional(v.number()),
-    startedBy: v.string(),
-  }).index("by_status", ["status"]),
-
-  // One student's place in a drop. `choices` and `index` are server-only: no query returns the count.
-  dropEntries: defineTable({
-    dropId: v.id("drops"),
-    userId: v.id("users"),
-    choices: v.array(v.id("events")),
-    index: v.number(),
-    state: vDropEntryState,
-    eventId: v.optional(v.id("events")),
-    meetupId: v.optional(v.id("meetups")),
-    revealedAt: v.optional(v.number()),
-    isDemo: v.boolean(),
-    createdAt: v.number(),
-    decidedAt: v.optional(v.number()),
-    acceptedAt: v.optional(v.number()),
-    endedAt: v.optional(v.number()),
-  })
-    .index("by_drop_user", ["dropId", "userId"])
-    .index("by_drop_state", ["dropId", "state"])
-    .index("by_user", ["userId"]),
 
   demoSettings: defineTable({
     clockOffsetMs: v.number(),

@@ -4,8 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { z } from "zod";
 import { isTeamEmail } from "../lib/access";
-import { legacyAsksOn, MATCHING, MODELS, SURPRISE_ME, TIMING } from "../lib/config";
-import { joinLate } from "../drops/cycle";
+import { MATCHING, MODELS, SURPRISE_ME, TIMING } from "../lib/config";
 import { generateJson } from "../services/claude";
 import { aiPool } from "../lib/pools";
 import { itemSets } from "../matching/taste";
@@ -23,11 +22,6 @@ export const pickForUser = internalMutation({
   args: { userId: v.id("users") },
   returns: v.null(),
   handler: async (ctx, { userId }) => {
-    // Drops: a student who becomes ready while choosing is open gets their own choices instead.
-    if (!legacyAsksOn()) {
-      await joinLate(ctx, userId);
-      return null;
-    }
     await aiPool.enqueueAction(ctx, internal.asks.picker.run, { userId });
     return null;
   },
@@ -39,7 +33,6 @@ export const pickAfterImport = internalMutation({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
-    if (!legacyAsksOn()) return 0;
     const users = await ctx.db.query("users").collect();
     let queued = 0;
     for (const user of users) {

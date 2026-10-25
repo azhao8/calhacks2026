@@ -33,7 +33,7 @@ export default function PlanPage() {
   const gone = plan !== undefined && !isActivePlan(plan);
 
   useEffect(() => {
-    if (gone && ended === null) router.replace(ROUTES.welcome);
+    if (gone && ended === null) router.replace(ROUTES.week);
   }, [gone, ended, router]);
 
   if (ended !== null) return <AfterLeaving ended={ended} />;
@@ -327,8 +327,8 @@ function AfterLeaving({ ended }: { ended: Ended }) {
         <ScreenTitle>{title}</ScreenTitle>
         <p className="text-body text-ink">{body}</p>
       </Panel>
-      <Link href={ROUTES.welcome} className={buttonClasses({ block: true })}>
-        Back home
+      <Link href={ROUTES.week} className={buttonClasses({ block: true })}>
+        Back to your week
       </Link>
     </Screen>
   );
