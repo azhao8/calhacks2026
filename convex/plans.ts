@@ -167,7 +167,7 @@ export const current = query({
         timeLabel: timeLabel(event.startsAt),
         priceLabel: eventPriceLabel(event),
       },
-      hook: plan.hook,
+      hook: partnerSeat !== null ? plan.hook : null,
       me: {
         seat: seat.seat === "offered" ? "offered" : "in",
         ticket: seat.ticket,
@@ -196,6 +196,43 @@ export const current = query({
       canLeave: plan.status === "set" && (meetingTimeReached || planNow >= plan.meetAt) && seat.leftAt === undefined,
       canShare: eligible,
     };
+  },
+});
+
+// The student's most recent seat that ended with no answer or "Next time" in the last 24 hours, so
+// home can acknowledge it. Nothing about the partner; identity from the session only.
+const LAST_ENDED_FOR_MS = 24 * 60 * 60 * 1000;
+
+export const lastEnded = query({
+  args: {},
+  returns: v.union(
+    v.null(),
+    v.object({
+      meetupId: v.id("meetups"),
+      outReason: v.union(v.literal("no_answer"), v.literal("next_time")),
+      outAt: v.number(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const userId = await verifiedViewerId(ctx);
+    if (userId === null) return null;
+    const outSeats = await ctx.db
+      .query("meetupMembers")
+      .withIndex("by_user_seat", (q) => q.eq("userId", userId).eq("seat", "out"))
+      .collect();
+    let latest: { meetupId: Id<"meetups">; outReason: "no_answer" | "next_time"; outAt: number } | null = null;
+    for (const seat of outSeats) {
+      if (seat.outAt === undefined || (seat.outReason !== "no_answer" && seat.outReason !== "next_time")) continue;
+      const plan = await ctx.db.get(seat.meetupId);
+      if (plan === null) continue;
+      // outAt is on the plan's clock.
+      const { now } = await planClock(ctx.db, plan);
+      if (now - seat.outAt > LAST_ENDED_FOR_MS) continue;
+      if (latest === null || seat.outAt > latest.outAt) {
+        latest = { meetupId: seat.meetupId, outReason: seat.outReason, outAt: seat.outAt };
+      }
+    }
+    return latest;
   },
 });
 
