@@ -49,12 +49,12 @@ export async function entriesIn(db: DatabaseReader, dropId: Id<"drops">, state: 
     .collect();
 }
 
-// Onboarding ready and holding no active plan. Demo students hold one seat per event, so they always
-// take part.
+// Onboarding ready and holding no active plan (a seat they left at the meeting time doesn't count:
+// they're no longer part of it). Demo students hold one seat per event, so they always take part.
 async function isEligible(db: DatabaseReader, user: Doc<"users">): Promise<boolean> {
   if (user.onboarding !== "ready") return false;
   if (user.isDemo) return true;
-  return (await heldSeats(db, user._id)).length === 0;
+  return (await heldSeats(db, user._id)).every(({ seat }) => seat.leftAt !== undefined);
 }
 
 // Published events near the drop window, with their venue's area.
@@ -219,6 +219,16 @@ export async function joinLate(ctx: MutationCtx, userId: Id<"users">): Promise<v
   if (user === null || !(await isEligible(ctx.db, user))) return;
   await createEntry(ctx, drop, user);
 }
+
+// A student freed from a plan (seat out, left, or the plan done or called off) joins while choosing.
+export const joinLateFor = internalMutation({
+  args: { userId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, { userId }) => {
+    await joinLate(ctx, userId);
+    return null;
+  },
+});
 
 // Choosing ends: demo students finish, students still on cards are turned away, and students on an
 // event screen get 24 hours from now to accept (matchAt moves, and the match is scheduled there).

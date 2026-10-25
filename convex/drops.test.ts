@@ -577,3 +577,82 @@ describe("audience jobs in flight", () => {
     expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(1);
   });
 });
+
+describe("students freed from a plan join an open drop", () => {
+  // A set plan for a real student and a demo student, for an event at `startsAt`.
+  async function setPlan(t: T, userId: Id<"users">, startsAt: number) {
+    const eventId = await makeEvent(t, { startsAt, title: "Earlier show" });
+    const demo = await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: `p${startsAt}`, email: `p${startsAt}@demo.invalid` });
+    return await t.run(async (ctx) => {
+      const event = (await ctx.db.get(eventId))!;
+      const meetAt = event.startsAt - 30 * 60_000;
+      const meetupId = await ctx.db.insert("meetups", {
+        eventId,
+        status: "set",
+        marker: 12,
+        meetAt,
+        cutoffAt: meetAt - 2 * HOUR,
+        hook: "",
+        icebreaker: "",
+        hookFromClaude: false,
+        isDemoPlan: false,
+        setAt: Date.now(),
+        createdAt: Date.now(),
+      });
+      const seats: Id<"meetupMembers">[] = [];
+      for (const id of [userId, demo]) {
+        seats.push(
+          await ctx.db.insert("meetupMembers", {
+            meetupId,
+            userId: id,
+            seat: "in",
+            offeredAt: Date.now(),
+            offerExpiresAt: Date.now(),
+            ticket: "none",
+          }),
+        );
+      }
+      return { meetupId, seatId: seats[0] };
+    });
+  }
+
+  test("held at start: no entry; seat goes out during choosing: an entry", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const { seatId } = await setPlan(t, sam, START + DAY);
+    await startDrop(t, admin);
+    expect(await entryOf(t, sam)).toBeNull();
+    await asUser(t, sam).mutation(api.plans.cantMakeIt, { seatId });
+    await advance(t, 1000);
+    expect((await asUser(t, sam).query(api.drops.mine, {})).kind).toBe("choosing");
+  });
+
+  test("the plan completes during choosing: an entry", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const { meetupId } = await setPlan(t, sam, T0 - 3 * HOUR);
+    await startDrop(t, admin);
+    expect(await entryOf(t, sam)).toBeNull();
+    await advance(t, HOUR + 1000);
+    await t.mutation(internal.plans.reconcile.run, { meetupId });
+    await advance(t, 1000);
+    expect((await t.run(async (ctx) => ctx.db.get(meetupId)))!.status).toBe("done");
+    expect((await entryOf(t, sam))?.state).toBe("choosing");
+  });
+
+  test("the plan ends during confirming: no entry", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const { meetupId } = await setPlan(t, sam, T0 - 3 * HOUR);
+    await startDrop(t, admin);
+    await admin.mutation(api.admin.drops.endChoosing, {});
+    await advance(t, HOUR + 1000);
+    await t.mutation(internal.plans.reconcile.run, { meetupId });
+    await advance(t, 1000);
+    expect((await t.run(async (ctx) => ctx.db.get(meetupId)))!.status).toBe("done");
+    expect(await entryOf(t, sam)).toBeNull();
+  });
+});
