@@ -33,13 +33,8 @@ export function ChoiceCard({
     <article ref={ref} aria-label={`${when}, ${price}`} className={cardClasses(true)}>
       <p className="text-small font-semibold text-accent">Only for you, only this drop</p>
       <h2 className="font-display text-title tabular-nums">
-        {/* The day and the time each stay on one line. */}
-        {when.split(" · ").map((part, i) => (
-          <span key={i} className="whitespace-nowrap">
-            {i > 0 ? " · " : null}
-            {part}
-          </span>
-        ))}
+        {/* Keeps "Oct 29 ·" and "8:00 pm" whole while the line can still wrap between words. */}
+        {when.replace(/(?<!·) (?=\d|am|pm|·)/g, "\u00a0")}
       </h2>
       <Meta>
         <MetaItem icon="ticket">{price}</MetaItem>
