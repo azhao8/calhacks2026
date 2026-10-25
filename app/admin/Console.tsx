@@ -9,10 +9,12 @@ import { cx } from "@/components/cx";
 import { Icon } from "@/components/Icon";
 import { SpotifyTab, type StudentFocus } from "./Spotify";
 import { DangerTab, StudentsTab } from "./Students";
+import { DropTab } from "./Drop";
 import { DemoTab, EventsTab, FunnelList, FunnelTab, HelpTab, MatchingTab, NeedsActionTab, type TabKey } from "./Tabs";
 
 // The signed-in S17 page: a sticky header with who is signed in, tabs with live counts, one tab at a time.
 const TABS: { key: TabKey; label: string }[] = [
+  { key: "drop", label: "Drop" },
   { key: "action", label: "Needs action" },
   { key: "students", label: "Students" },
   { key: "spotify", label: "Spotify" },
@@ -29,9 +31,9 @@ export function Admin({ email }: { email: string | null }) {
   // The open tab lives in the address, so a reload or a shared link keeps it. This component only
   // renders in the browser (after whoami loads), so reading the address here is safe.
   const [tab, setTab] = useState<TabKey>(() => {
-    if (typeof window === "undefined") return "action";
+    if (typeof window === "undefined") return "drop";
     const fromUrl = new URLSearchParams(window.location.search).get("tab");
-    return isTab(fromUrl) ? fromUrl : "action";
+    return isTab(fromUrl) ? fromUrl : "drop";
   });
   const [focus, setFocus] = useState<StudentFocus>({ status: "all", appId: "all" });
   const counts = useCounts();
@@ -93,6 +95,7 @@ export function Admin({ email }: { email: string | null }) {
       </div>
       <DemoClockWarning onOpen={() => go("demo")} />
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 pt-4 pb-[calc(3rem+env(safe-area-inset-bottom))]">
+        {tab === "drop" ? <DropTab /> : null}
         {tab === "action" ? <NeedsActionTab go={go} /> : null}
         {tab === "spotify" ? <SpotifyTab focus={focus} onFocus={setFocus} /> : null}
         {tab === "events" ? <EventsTab /> : null}
