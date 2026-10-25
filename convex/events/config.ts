@@ -8,6 +8,8 @@ export const CATALOG = {
   transitStopMaxMeters: 1500,
   // An agent spot this close to a team-seeded spot reuses the team spot.
   teamSpotReuseMeters: 60,
+  // A venue this close with a matching name is the same venue under another OpenStreetMap ID.
+  sameVenueMeters: 150,
   // Upcoming events missing from two runs in a row are flagged, never deleted.
   missingRunsToFlag: 2,
   // Nominatim allows at most 1 request per second.

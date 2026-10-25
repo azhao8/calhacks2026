@@ -7,8 +7,9 @@ import { directionsUrl, metersBetween } from "../lib/format";
 import { fail } from "../lib/errors";
 import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
-import { CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
+import { ADULT_REASON, CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
 import { cleanNote, isHttpUrl } from "./checks";
+import { moveVenueSpot } from "./venues";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
 
@@ -75,6 +76,10 @@ const vListedEvent = v.object({
   flaggedMissing: v.boolean(),
   pulled: v.boolean(),
   teamFields: v.array(v.string()),
+  venueId: v.union(v.id("venues"), v.null()),
+  // True when the team can undo the rejection with `restore` (pulled, 21+, or a merged duplicate).
+  restorable: v.boolean(),
+  lastSeenAt: v.number(),
 });
 
 // Published, rejected (with reasons), and flagged-missing events, soonest first.
@@ -91,10 +96,22 @@ export const list = internalQuery({
     const statuses = status ? [status] : (["published", "rejected", "scraped"] as const);
     const out = [];
     for (const s of statuses) {
-      const rows = await ctx.db
-        .query("events")
-        .withIndex("by_status_startsAt", (q) => (includePast ? q.eq("status", s) : q.eq("status", s).gt("startsAt", now)))
-        .take(500);
+      // Rejected rows are listed by when a run last saw them, including ones with no start time (startsAt 0).
+      const rows =
+        s === "rejected"
+          ? (
+              await ctx.db
+                .query("events")
+                .withIndex("by_status_startsAt", (q) => q.eq("status", s))
+                .collect()
+            )
+              .filter((e) => includePast || e.startsAt > now || e.startsAt === 0)
+              .sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+              .slice(0, 500)
+          : await ctx.db
+              .query("events")
+              .withIndex("by_status_startsAt", (q) => (includePast ? q.eq("status", s) : q.eq("status", s).gt("startsAt", now)))
+              .take(500);
       for (const event of rows) {
         // Missing from two runs in a row where its source ran.
         const flagged = event.status === "published" && (event.missedRuns ?? 0) >= CATALOG.missingRunsToFlag;
@@ -130,10 +147,15 @@ export const list = internalQuery({
           flaggedMissing: flagged,
           pulled: event.rejectReason === PULLED_REASON,
           teamFields: event.teamFields ?? [],
+          venueId: event.venueId ?? null,
+          restorable: event.rejectReason !== undefined && STICKY_REASONS.has(event.rejectReason),
+          lastSeenAt: event.lastSeenAt,
         });
       }
     }
-    out.sort((a, b) => a.startsAt - b.startsAt);
+    // Rejected alone: most recently seen first. Otherwise: soonest first.
+    if (status === "rejected") out.sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+    else out.sort((a, b) => a.startsAt - b.startsAt);
     return out.slice(0, Math.min(limit ?? 200, 500));
   },
 });
@@ -196,7 +218,15 @@ export const restore = internalMutation({
     if (event.rejectReason === undefined || !STICKY_REASONS.has(event.rejectReason)) {
       fail("validation_failed", "Only a pulled or 21+ event can be restored");
     }
-    await ctx.db.patch(eventId, { status: "published", rejectReason: undefined });
+    // Clearing a 21+ rejection locks ageLimit, so the next import can't re-reject it.
+    const clearsAdult = event.rejectReason === ADULT_REASON;
+    await ctx.db.patch(eventId, {
+      status: "published",
+      rejectReason: undefined,
+      ...(clearsAdult ? { ageLimit: null, teamFields: [...new Set([...(event.teamFields ?? []), "ageLimit"])] } : {}),
+    });
+    if (event.embedding === undefined) await ctx.scheduler.runAfter(0, internal.events.admin.reembed, { eventId });
+    await ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
     return null;
   },
 });
@@ -235,6 +265,12 @@ export const edit = internalMutation({
   handler: async (ctx, { eventId, patch, editedBy }) => {
     const event = await ctx.db.get(eventId);
     if (event === null) fail("validation_failed", "No such event");
+    for (const price of [patch.priceMin, patch.priceMax]) {
+      // A typed "$15" arrives as NaN; only null or a finite amount of at least 0 is a price.
+      if (price !== undefined && price !== null && !(Number.isFinite(price) && price >= 0)) {
+        fail("validation_failed", "A price must be a number of dollars, 0 or more, or empty");
+      }
+    }
     const { ticketUrl, freeEntryNote, ...rest } = patch;
     if (ticketUrl && !isHttpUrl(ticketUrl)) fail("validation_failed", "The ticket link must be an http or https URL");
     const next = { ...rest } as Record<string, unknown>;
@@ -303,13 +339,8 @@ export const overrideSpot = internalMutation({
       verifiedAt: Date.now(),
     });
     const meetOffsetMinutes = args.meetOffsetMinutes ?? venue.meetOffsetMinutes ?? TIMING.meetOffsetMinutes;
-    await ctx.db.patch(venue._id, { meetingSpotId: spotId, meetOffsetMinutes, updatedAt: Date.now() });
-    for (const event of await ctx.db
-      .query("events")
-      .withIndex("by_venue", (q) => q.eq("venueId", venue._id))
-      .collect()) {
-      await ctx.db.patch(event._id, { meetingSpotId: spotId, meetOffsetMinutes });
-    }
+    // Every show at the venue, and every forming or set plan for them, moves to the team's spot.
+    await moveVenueSpot(ctx, venue, spotId, meetOffsetMinutes, { now: Date.now() });
     return spotId;
   },
 });

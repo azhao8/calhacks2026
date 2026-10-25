@@ -1,10 +1,11 @@
 import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { TIMING } from "../lib/config";
 import { directionsUrl, metersBetween } from "../lib/format";
 import { CATALOG, VENUE_NOT_FOUND } from "./config";
-import { areaFor, distanceFromCampus, looksLikeAddress, normalizeName } from "./checks";
+import { areaFor, distanceFromCampus, looksLikeAddress, normalizeName, sameShowTitles } from "./checks";
 
 // Venues and meeting spots (CLAUDE.md §6.1). One venue per OpenStreetMap ID; one meeting spot per venue.
 
@@ -147,6 +148,36 @@ async function chooseSpot(
   return { spotId, meetOffsetMinutes: TIMING.meetOffsetMinutes };
 }
 
+// Moves a venue (and those of its events that used `fromSpotId`, or all of them) to a new meeting spot, carrying
+// the change to every forming or set plan for those events. A spot a plan points to is never deleted, so a plan
+// always keeps its meeting place; when the meeting offset changes, the plans are retimed.
+export async function moveVenueSpot(
+  ctx: MutationCtx,
+  venue: Doc<"venues">,
+  toSpotId: Id<"meetingSpots">,
+  meetOffsetMinutes: number,
+  options: { onlyFrom?: Id<"meetingSpots">; now: number },
+): Promise<void> {
+  await ctx.db.patch(venue._id, { meetingSpotId: toSpotId, meetOffsetMinutes, updatedAt: options.now });
+  const events = await ctx.db
+    .query("events")
+    .withIndex("by_venue", (q) => q.eq("venueId", venue._id))
+    .collect();
+  for (const event of events) {
+    if (options.onlyFrom !== undefined && event.meetingSpotId !== options.onlyFrom) continue;
+    const retime = event.meetOffsetMinutes !== meetOffsetMinutes;
+    await ctx.db.patch(event._id, { meetingSpotId: toSpotId, meetOffsetMinutes });
+    for (const status of ["forming", "set"] as const) {
+      const plans = await ctx.db
+        .query("meetups")
+        .withIndex("by_event_status", (q) => q.eq("eventId", event._id).eq("status", status))
+        .collect();
+      for (const plan of plans) await ctx.db.patch(plan._id, { meetingSpotId: toSpotId });
+    }
+    if (retime) await ctx.runMutation(internal.plans.retime.forEvent, { eventId: event._id });
+  }
+}
+
 // Checks for the OSM ID before inserting, inside one transaction, so two imports at once can't create a duplicate.
 export const resolve = internalMutation({
   args: {
@@ -165,10 +196,23 @@ export const resolve = internalMutation({
     v.object({ ok: v.literal(false), reason: v.string() }),
   ),
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("venues")
-      .withIndex("by_osmId", (q) => q.eq("osmId", args.osmId))
-      .unique();
+    // One venue can sit under two OSM IDs (a building way and an amenity node a few meters apart): a venue within
+    // about 150 m whose name or aliases match is the same venue. The table is small, so a scan is fine.
+    const existing =
+      (await ctx.db
+        .query("venues")
+        .withIndex("by_osmId", (q) => q.eq("osmId", args.osmId))
+        .unique()) ??
+      (await ctx.db.query("venues").collect()).find(
+        (venue) =>
+          metersBetween(venue, args) <= CATALOG.sameVenueMeters &&
+          [venue.name, ...venue.aliases].some((known) =>
+            [args.name, args.alias ?? ""].some(
+              (name) => name.length > 0 && sameShowTitles(normalizeName(known), normalizeName(name)),
+            ),
+          ),
+      ) ??
+      null;
     let venue: Doc<"venues">;
     let created = false;
     // Students see "{title} at {venue}", so the display name is a real name whenever we have one; a street
@@ -224,16 +268,11 @@ export const resolve = internalMutation({
       if (isEntranceFallback(current, venue)) {
         const chosen = await agentSpot(ctx, venue, args.spot, args.now);
         if (chosen !== null) {
-          await ctx.db.patch(venue._id, { meetingSpotId: chosen.spotId, meetOffsetMinutes: chosen.meetOffsetMinutes, updatedAt: args.now });
-          for (const event of await ctx.db
-            .query("events")
-            .withIndex("by_venue", (q) => q.eq("venueId", venue._id))
-            .collect()) {
-            if (event.meetingSpotId === venue.meetingSpotId) {
-              await ctx.db.patch(event._id, { meetingSpotId: chosen.spotId, meetOffsetMinutes: chosen.meetOffsetMinutes });
-            }
-          }
-          await ctx.db.delete(venue.meetingSpotId);
+          // The old fallback row stays: past plans may still point to it.
+          await moveVenueSpot(ctx, venue, chosen.spotId, chosen.meetOffsetMinutes, {
+            onlyFrom: venue.meetingSpotId,
+            now: args.now,
+          });
         }
       }
     }

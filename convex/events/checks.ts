@@ -147,12 +147,12 @@ function looksAdultOnly(item: ScoutItem): boolean {
 }
 
 // Checks that need no venue lookup. Returns the reason shown on the admin page, or null when the item passes.
-export function basicRejectReason(item: ScoutItem, now: number): string | null {
+export function basicRejectReason(item: ScoutItem, now: number, options: { ignoreAdult?: boolean } = {}): string | null {
   const start = parseStart(item.startsAt);
   if (item.startsAt === null || !/^\d{4}-\d{2}-\d{2}/.test(item.startsAt)) return "No date";
   if (start === null) return "No start time";
   if (start <= now) return "Already started";
-  if (looksAdultOnly(item)) return ADULT_REASON;
+  if (!options.ignoreAdult && looksAdultOnly(item)) return ADULT_REASON;
   const hasTicket = isHttpUrl(item.ticketUrl);
   const hasFreeNote = cleanNote(item.freeEntryNote) !== undefined;
   if (!hasTicket && !hasFreeNote) return "No official ticket or RSVP link and no free entry note";

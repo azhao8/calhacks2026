@@ -54,6 +54,11 @@ describe("taste validator", () => {
     expect(() => validateTaste({ ...ok, summary: "x".repeat(241) }, input)).toThrow(TasteValidationError);
     expect(() => validateTaste({ ...ok, summary: "Indie — folk." }, input)).toThrow(TasteValidationError);
     expect(() => validateTaste({ ...ok, summary: "Indie folk!" }, input)).toThrow(TasteValidationError);
+    // Word-joining hyphens become spaces, so "lo-fi" never reaches the screen.
+    expect(validateTaste({ ...ok, summary: "Lo-fi beats and hip-hop for late nights." }, input).summary).toBe(
+      "Lo fi beats and hip hop for late nights.",
+    );
+    expect(() => validateTaste({ ...ok, summary: "Indie - folk." }, input)).toThrow(TasteValidationError);
     expect(() => validateTaste({ ...ok, labels: ["indie folk", "vibes"] }, input)).toThrow(TasteValidationError);
     expect(() => validateTaste({ ...ok, artists: ["Made Up"] }, input)).toThrow(TasteValidationError);
   });

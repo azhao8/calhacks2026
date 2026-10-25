@@ -384,13 +384,151 @@ describe("meeting spot on a later event", () => {
     ]);
     const events = await t.query(internal.events.admin.list, {});
     expect(events.map((e) => e.meetingSpot?.name)).toEqual(Array(3).fill("Bench left of the main doors"));
-    const spots = await t.run((ctx) => ctx.db.query("meetingSpots").collect());
-    expect(spots.some((s) => s.name.startsWith("Main entrance"))).toBe(false);
+    // The old fallback row is kept (past plans may point to it), but nothing current uses it.
     // A later spot never replaces one the agent already chose.
     vi.setSystemTime(Date.now() + 60_000);
     await importRun(t, "ms2", [scoutItem({ title: "D", startsAt: iso(start + 3 * DAY), meetingSpot: { ...spot, name: "Other bench" }, sourceUrl: "https://theuctheatre.org/d" })]);
     const after = await t.query(internal.events.admin.list, {});
     expect(new Set(after.map((e) => e.meetingSpot?.name))).toEqual(new Set(["Bench left of the main doors"]));
+  });
+});
+
+describe("spot changes reach existing plans", () => {
+  async function planFor(t: Awaited<ReturnType<typeof setup>>, eventId: Id<"events">, status: "forming" | "set" = "set") {
+    return await t.run(async (ctx) => {
+      const event = (await ctx.db.get(eventId))!;
+      return await ctx.db.insert("meetups", {
+        eventId,
+        status,
+        marker: 42,
+        meetingSpotId: event.meetingSpotId,
+        meetAt: event.startsAt - 30 * 60_000,
+        cutoffAt: event.startsAt - 150 * 60_000,
+        hook: "You both have Big Thief on repeat.",
+        icebreaker: "Which song first?",
+        hookFromClaude: false,
+        isDemoPlan: false,
+        createdAt: Date.now(),
+      });
+    });
+  }
+
+  test("a later agent spot replaces the fallback without deleting the spot a set plan points to", async () => {
+    const t = await setup();
+    await importRun(t, "p1", [scoutItem({ meetingSpot: null })]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    expect(event.meetingSpot?.name).toBe("Main entrance of The UC Theatre");
+    const planId = await planFor(t, event.eventId);
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "p2", [scoutItem({ title: "Another show", startsAt: iso(Date.now() + 4 * DAY), sourceUrl: "https://theuctheatre.org/other" })]);
+    const plan = (await t.run((ctx) => ctx.db.get(planId)))!;
+    const spot = await t.run((ctx) => ctx.db.get(plan.meetingSpotId!));
+    expect(spot?.name).toBe("Bench left of the main doors");
+  });
+
+  test("the team's override moves forming and set plans to the new spot and retimes them", async () => {
+    const t = await setup();
+    await importRun(t, "o1", [scoutItem()]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    const setPlan = await planFor(t, event.eventId, "set");
+    const formingPlan = await planFor(t, event.eventId, "forming");
+    const spotId = await t.mutation(internal.events.admin.overrideSpot, {
+      venueId: event.venueId!,
+      name: "Box office window",
+      howToFind: "The box office window under the marquee.",
+      lat: 37.87172,
+      lng: -122.27075,
+      meetOffsetMinutes: 45,
+    });
+    for (const id of [setPlan, formingPlan]) {
+      const plan = (await t.run((ctx) => ctx.db.get(id)))!;
+      expect(plan.meetingSpotId).toBe(spotId);
+      expect(plan.meetAt).toBe(event.startsAt - 45 * 60_000);
+    }
+  });
+});
+
+describe("admin list and edit", () => {
+  test("rows carry venueId and restorable; edit refuses a price that isn't a number", async () => {
+    const t = await setup();
+    await importRun(t, "r1", [scoutItem(), scoutItem({ title: "Late set", ageLimit: 21, sourceUrl: "https://theuctheatre.org/late" })]);
+    const rows = await t.query(internal.events.admin.list, {});
+    const published = rows.find((r) => r.status === "published")!;
+    const adult = rows.find((r) => r.status === "rejected")!;
+    expect(published.venueId).not.toBeNull();
+    expect(published.restorable).toBe(false);
+    expect(adult.restorable).toBe(true);
+    for (const bad of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+      await expect(
+        t.mutation(internal.events.admin.edit, { eventId: published.eventId, patch: { priceMin: bad } }),
+      ).rejects.toThrow(/price must be a number/);
+    }
+    await t.mutation(internal.events.admin.edit, { eventId: published.eventId, patch: { priceMin: 0, priceMax: null } });
+    expect((await t.query(internal.events.admin.list, {})).find((r) => r.eventId === published.eventId)).toMatchObject({ priceMin: 0, priceMax: null });
+  });
+});
+
+describe("audit items 4 to 7", () => {
+  test("a 21+ rejection the team restores stays published on the next import", async () => {
+    const t = await setup();
+    const adult = scoutItem({ title: "Late set", ageLimit: 21, sourceUrl: "https://theuctheatre.org/late" });
+    await importRun(t, "c1", [adult]);
+    const [row] = await t.query(internal.events.admin.list, { status: "rejected" });
+    await t.mutation(internal.events.admin.restore, { eventId: row.eventId });
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "c2", [adult]);
+    const [after] = await t.query(internal.events.admin.list, {});
+    expect(after).toMatchObject({ status: "published", ageLimit: null, rejectReason: null });
+    expect(after.teamFields).toContain("ageLimit");
+  });
+
+  test("a cleared 21+ listing still fails its other checks", async () => {
+    const t = await setup();
+    await importRun(t, "c3", [scoutItem({ title: "Late set", ageLimit: 21, sourceUrl: "https://theuctheatre.org/late" })]);
+    const [row] = await t.query(internal.events.admin.list, { status: "rejected" });
+    await t.mutation(internal.events.admin.restore, { eventId: row.eventId });
+    vi.setSystemTime(Date.now() + 60_000);
+    // Same show, now with no ticket link: a softer check never unpublishes a published event.
+    await importRun(t, "c4", [scoutItem({ title: "Late set", ageLimit: 21, ticketUrl: null, sourceUrl: "https://theuctheatre.org/late" })]);
+    expect((await t.query(internal.events.admin.list, {}))[0].status).toBe("published");
+  });
+
+  test("rejected events with no start time appear on the rejected list, most recent first", async () => {
+    const t = await setup();
+    await importRun(t, "n1", [scoutItem({ title: "Someday", startsAt: null, sourceUrl: "https://x.test/someday" })]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "n2", [scoutItem({ title: "Mystery", ticketUrl: null, sourceUrl: "https://x.test/mystery" })]);
+    const rejected = await t.query(internal.events.admin.list, { status: "rejected" });
+    expect(rejected.map((r) => [r.title, r.rejectReason])).toEqual([
+      ["Mystery", "No official ticket or RSVP link and no free entry note"],
+      ["Someday", "No date"],
+    ]);
+  });
+
+  test("one venue under two nearby OSM IDs stays one venue with one event", async () => {
+    const t = await setup();
+    await importRun(t, "v1", [
+      scoutItem(),
+      scoutItem({
+        sourceName: "uc_berkeley_events",
+        sourceUrl: "https://events.berkeley.edu/big-thief",
+        venue: { name: "The UC Theatre Taube Family Music Hall", address: "2036 University Ave, Berkeley", osmId: "node/999", lat: 37.87166, lng: -122.27061 },
+      }),
+    ]);
+    const venues = await t.run((ctx) => ctx.db.query("venues").collect());
+    expect(venues).toHaveLength(1);
+    expect(await t.query(internal.events.admin.list, {})).toHaveLength(1);
+  });
+
+  test("a more official source with no price keeps the price another source found", async () => {
+    const t = await setup();
+    await importRun(t, "pr1", [
+      scoutItem({ sourceName: "eventbrite", sourceKind: "listing", sourceUrl: "https://eventbrite.com/e/1", price: { min: 30, max: 30, source: "listing", sourceUrl: null } }),
+    ]);
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "pr2", [scoutItem({ price: { min: null, max: null, source: "not_found", checked: ["listing", "ticket_page", "search"] } })]);
+    const [event] = await t.query(internal.events.admin.list, {});
+    expect(event).toMatchObject({ sourceName: "venue_site:uc_theatre", priceMin: 30, priceMax: 30 });
   });
 });
 

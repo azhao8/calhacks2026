@@ -277,7 +277,7 @@ export async function acceptSeat(ctx: MutationCtx, seat: Seat): Promise<void> {
 
   const bothIn = active.length === 2 && active.every((other) => other._id === seat._id || other.seat === "in");
   if (bothIn) {
-    await ctx.db.patch(plan._id, { status: "set" });
+    await ctx.db.patch(plan._id, { status: "set", ...(plan.setAt === undefined ? { setAt: now } : {}) });
     for (const member of active) {
       const memberUser = await ctx.db.get(member.userId);
       if (memberUser?.isDemo) {
@@ -330,6 +330,20 @@ export async function afterSeatOut(ctx: MutationCtx, meetupId: Id<"meetups">): P
     return;
   }
   if (active.length >= 2) return;
+  // A demo student never holds a plan alone: it would soak up the next real yes before blossom can
+  // pair real students with each other. Their seat goes out and the plan is called off.
+  const onlyUser = await ctx.db.get(active[0].userId);
+  if (onlyUser?.isDemo) {
+    const demoSeat = active[0];
+    await ctx.db.patch(demoSeat._id, {
+      seat: "out",
+      outReason: demoSeat.seat === "offered" ? "no_answer" : "cant_make_it",
+      outAt: now,
+    });
+    await closeAsk(ctx, demoSeat.userId, plan.eventId, "dropped");
+    await ctx.db.patch(meetupId, { status: "called_off", endReason: "demo_alone" });
+    return;
+  }
   if (now >= plan.cutoffAt) {
     await ctx.db.patch(meetupId, { status: "called_off", endReason: "nobody_by_cutoff", cutoffPassedAt: plan.cutoffPassedAt ?? now });
     await freeStudent(ctx, active[0].userId, plan.eventId);
@@ -355,7 +369,8 @@ export async function cantMakeIt(ctx: MutationCtx, seat: Seat, reason: "cant_mak
   const plan = await ctx.db.get(seat.meetupId);
   if (plan === null || !isActivePlan(plan)) fail("seat_unavailable");
   const { now } = await planClock(ctx.db, plan);
-  if (now >= plan.meetAt) fail("validation_failed", "From the meeting time on, use leave");
+  // From the meeting time on the screen offers "I need to leave" instead.
+  if (now >= plan.meetAt) fail("seat_unavailable");
   await dropSeat(ctx, seat, reason);
 }
 

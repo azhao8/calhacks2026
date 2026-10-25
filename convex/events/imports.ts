@@ -194,16 +194,21 @@ export const upsertEvent = internalMutation({
     venueId: v.optional(v.id("venues")),
     venueKey: v.string(),
     rejectReason: v.optional(v.string()),
+    // The reason with the 21+ check skipped, for an event the team has cleared (restored after a 21+ rejection).
+    rejectReasonIfCleared: v.optional(v.string()),
     apifyRunId: v.string(),
     seenAt: v.number(),
   },
   returns: v.object({ outcome: vOutcome, eventId: v.id("events"), needsEmbedding: v.boolean() }),
-  handler: async (ctx, { event, venueId, venueKey, rejectReason, apifyRunId, seenAt }) => {
+  handler: async (ctx, { event, venueId, venueKey, rejectReason: listedReason, rejectReasonIfCleared, apifyRunId, seenAt }) => {
     const key = dedupeKey(venueKey, event.startsAt, event.title);
     const { sourceKind, ...fields } = event;
     const sourceName = fields.sourceName.startsWith(`${sourceKind}:`) ? fields.sourceName : `${sourceKind}:${fields.sourceName}`;
     const existing = await findExisting(ctx, venueId, key, event, sourceName, seenAt);
     const venue = venueId ? await ctx.db.get(venueId) : null;
+    // The team locks ageLimit when it restores a 21+ rejection; later listings can't re-reject it as 21+.
+    const cleared = listedReason === ADULT_REASON && (existing?.teamFields ?? []).includes("ageLimit");
+    const rejectReason = cleared ? rejectReasonIfCleared : listedReason;
 
     if (existing === null) {
       const eventId = await ctx.db.insert("events", {
@@ -260,6 +265,12 @@ export const upsertEvent = internalMutation({
     }
 
     const incoming = withoutTeamFields(fields, existing.teamFields);
+    // A source that found no price never wipes a price another source found.
+    if (fields.priceSource.startsWith("not_found") && (existing.priceMin !== null || existing.priceMax !== null)) {
+      delete incoming.priceMin;
+      delete incoming.priceMax;
+      delete incoming.priceSource;
+    }
     const next = { ...existing, ...incoming };
     const priceChanged = existing.priceMin !== next.priceMin || existing.priceMax !== next.priceMax;
     const timeChanged = existing.startsAt !== next.startsAt;
@@ -463,10 +474,15 @@ export const run = internalAction({
     for (const item of items) {
       try {
         let rejectReason = basicRejectReason(item, now) ?? undefined;
+        let rejectReasonIfCleared =
+          rejectReason === ADULT_REASON ? (basicRejectReason(item, now, { ignoreAdult: true }) ?? undefined) : rejectReason;
         let venueId: Id<"venues"> | undefined;
-        const venue = await resolveVenueFor(ctx, item, now, { lookup: rejectReason === undefined, misses });
+        const venue = await resolveVenueFor(ctx, item, now, { lookup: rejectReasonIfCleared === undefined, misses });
         if ("venueId" in venue) venueId = venue.venueId;
-        else if (rejectReason === undefined) rejectReason = venue.reason;
+        else {
+          if (rejectReason === undefined) rejectReason = venue.reason;
+          if (rejectReasonIfCleared === undefined) rejectReasonIfCleared = venue.reason;
+        }
         // A rejected item without a start time still gets a stable row so its reason shows once.
         const dayOnly = Date.parse(item.startsAt?.slice(0, 10) ?? "");
         const startsAt = parseStart(item.startsAt) ?? (Number.isNaN(dayOnly) ? 0 : dayOnly);
@@ -475,6 +491,7 @@ export const run = internalAction({
           venueId,
           venueKey: venueId ?? `name:${normalizeName(item.venue.name)}`,
           rejectReason,
+          rejectReasonIfCleared,
           apifyRunId,
           seenAt: receivedAt,
         });

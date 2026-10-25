@@ -1,6 +1,8 @@
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import { directionsUrl } from "./lib/format";
+import { directionsUrl, metersBetween } from "./lib/format";
+
+const SEEDED_SPOT_RADIUS_M = 50;
 
 // Idempotent base data: schools and the team's known meeting spots (CLAUDE.md §8.5).
 // Run with: npx convex run seed:run
@@ -88,10 +90,15 @@ export const run = internalMutation({
     let spots = 0;
     for (const spot of TEAM_SPOTS) {
       const doc = { ...spot, directionsUrl: directionsUrl(spot.lat, spot.lng), chosenBy: "team" as const };
-      const existing = await ctx.db
-        .query("meetingSpots")
-        .withIndex("by_name", (q) => q.eq("name", spot.name))
-        .unique();
+      // Names aren't unique: a team override or an agent spot elsewhere can share a seeded spot's name.
+      // The seeded row is the oldest team spot of that name near the seeded point; others are left alone.
+      const existing =
+        (
+          await ctx.db
+            .query("meetingSpots")
+            .withIndex("by_name", (q) => q.eq("name", spot.name))
+            .collect()
+        ).find((row) => row.chosenBy === "team" && metersBetween(row, spot) <= SEEDED_SPOT_RADIUS_M) ?? null;
       if (existing) {
         await ctx.db.patch(existing._id, doc);
       } else {
