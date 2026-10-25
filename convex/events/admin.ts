@@ -8,7 +8,11 @@ import { fail } from "../lib/errors";
 import { scoutActorId, startRun } from "../services/apify";
 import { embed } from "../services/voyage";
 import { ADULT_REASON, CATALOG, DUPLICATE_REASON, PULLED_REASON, STICKY_REASONS } from "./config";
-import { cleanNote, isHttpUrl } from "./checks";
+import { cleanNote, isHttpUrl, normalizeTitle, sameShowTitles, sourceRank } from "./checks";
+import type { Id } from "../_generated/dataModel";
+import { scheduleAskClose } from "../asks/close";
+import { wakeMatcher } from "../matching/wake";
+import { eventCutoff } from "../plans/model";
 import { moveVenueSpot } from "./venues";
 
 // Internal functions behind S17's Events panel. The coordinator's admin wrappers check ADMIN_EMAILS first.
@@ -174,8 +178,9 @@ export const pull = internalMutation({
   },
 });
 
-// Folds a duplicate into the event it repeats: the duplicate leaves the catalog for good (its asks and plans are
-// released), and the kept event takes a price the duplicate found when it had none.
+// Folds a duplicate into the event it repeats: the duplicate leaves the catalog for good, its open asks move to
+// the kept event, its plans (if any) are released, and the kept event takes a price the duplicate found when it
+// had none.
 export const mergeDuplicate = internalMutation({
   args: { keepId: v.id("events"), dropId: v.id("events") },
   returns: v.null(),
@@ -187,9 +192,126 @@ export const mergeDuplicate = internalMutation({
     if (keep.priceMin === null && keep.priceMax === null && (drop.priceMin !== null || drop.priceMax !== null)) {
       await ctx.db.patch(keepId, { priceMin: drop.priceMin, priceMax: drop.priceMax, priceSource: drop.priceSource });
     }
+    // The two copies were always one event, so a student's open ask moves with it rather than closing: a yes
+    // stays a yes, and no weekly slot is spent on our duplicate.
+    const strength = { pending: 0, no: 1, yes: 2 } as const;
+    let yesMoved = false;
+    for (const answer of ["pending", "no", "yes"] as const) {
+      const asks = await ctx.db
+        .query("asks")
+        .withIndex("by_event_answer", (q) => q.eq("eventId", dropId).eq("answer", answer))
+        .collect();
+      for (const ask of asks) {
+        if (ask.closedReason !== undefined) continue;
+        const onKept = await ctx.db
+          .query("asks")
+          .withIndex("by_user_event", (q) => q.eq("userId", ask.userId).eq("eventId", keepId))
+          .first();
+        if (onKept === null) {
+          await ctx.db.patch(ask._id, { eventId: keepId });
+          await scheduleAskClose(ctx, ask._id, eventCutoff(keep));
+          if (ask.answer === "yes") yesMoved = true;
+          continue;
+        }
+        if (onKept.closedReason === undefined && strength[ask.answer] > strength[onKept.answer]) {
+          await ctx.db.patch(onKept._id, { answer: ask.answer, answeredAt: ask.answeredAt });
+          if (ask.answer === "yes") yesMoved = true;
+        }
+        await ctx.db.delete(ask._id);
+      }
+    }
+    if (yesMoved) await wakeMatcher(ctx, keepId, "yes");
     await ctx.db.patch(dropId, { status: "rejected", rejectReason: DUPLICATE_REASON, featured: false });
     await ctx.runMutation(internal.plans.release.forEvent, { eventId: dropId });
     return null;
+  },
+});
+
+// Finds published upcoming events already stored twice (same venue, same start, the same show by title) and folds
+// each extra copy into the one people hold. Never strands a student:
+// - keep: the copy with a forming or set plan; else the one with more open asks; else the more official source;
+//   else the more specific title;
+// - a group where two copies both hold plans is left alone and reported, for the team;
+// - a dropped copy's open asks move to the kept copy (see mergeDuplicate); it holds no plans.
+// Dry run by default: it reports what it would do and changes nothing.
+export const mergeDuplicates = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  returns: v.array(
+    v.object({
+      keep: v.object({ eventId: v.id("events"), title: v.string() }),
+      drop: v.array(v.object({ eventId: v.id("events"), title: v.string(), openAsks: v.number() })),
+      skipped: v.union(v.string(), v.null()),
+    }),
+  ),
+  handler: async (ctx, { dryRun }) => {
+    const now = Date.now();
+    const upcoming = await ctx.db
+      .query("events")
+      .withIndex("by_status_startsAt", (q) => q.eq("status", "published").gt("startsAt", now))
+      .collect();
+    const holders = async (eventId: Id<"events">) => {
+      let plans = 0;
+      for (const status of ["forming", "set"] as const) {
+        plans += (
+          await ctx.db
+            .query("meetups")
+            .withIndex("by_event_status", (q) => q.eq("eventId", eventId).eq("status", status))
+            .collect()
+        ).length;
+      }
+      let openAsks = 0;
+      for (const answer of ["pending", "yes"] as const) {
+        openAsks += (
+          await ctx.db
+            .query("asks")
+            .withIndex("by_event_answer", (q) => q.eq("eventId", eventId).eq("answer", answer))
+            .collect()
+        ).filter((ask) => ask.closedReason === undefined).length;
+      }
+      return { plans, openAsks };
+    };
+    const seen = new Set<string>();
+    const report = [];
+    for (const event of upcoming) {
+      if (seen.has(event._id) || event.venueId === undefined) continue;
+      // Matching isn't transitive ("Cal Volleyball" matches both "… vs Stanford" and "… vs UCLA"), so a member
+      // joins only if it matches every member already in the group, has not been grouped before, and is still
+      // published.
+      const group = [event];
+      for (const other of upcoming) {
+        if (other._id === event._id || seen.has(other._id) || other.status !== "published") continue;
+        if (other.venueId !== event.venueId || other.startsAt !== event.startsAt) continue;
+        if (group.every((member) => sameShowTitles(normalizeTitle(member.title), normalizeTitle(other.title)))) {
+          group.push(other);
+        }
+      }
+      for (const member of group) seen.add(member._id);
+      if (group.length < 2) continue;
+      const scored = [];
+      for (const member of group) scored.push({ member, ...(await holders(member._id)) });
+      scored.sort(
+        (a, b) =>
+          b.plans - a.plans ||
+          b.openAsks - a.openAsks ||
+          sourceRank(b.member.sourceName.split(":")[0]) - sourceRank(a.member.sourceName.split(":")[0]) ||
+          // The more specific title ("Cal Volleyball vs Stanford" over "Cal Volleyball") says which show it is.
+          b.member.title.length - a.member.title.length ||
+          a.member.scrapedAt - b.member.scrapedAt,
+      );
+      const [keep, ...drops] = scored;
+      const skipped = drops.some((d) => d.plans > 0) ? "Two copies both hold plans; merge by hand" : null;
+      if (dryRun === false && skipped === null) {
+        for (const drop of drops) {
+          await ctx.runMutation(internal.events.admin.mergeDuplicate, { keepId: keep.member._id, dropId: drop.member._id });
+        }
+      }
+      report.push({
+        keep: { eventId: keep.member._id, title: keep.member.title },
+        drop: drops.map((d) => ({ eventId: d.member._id, title: d.member.title, openAsks: d.openAsks })),
+        skipped,
+      });
+    }
+    return report;
   },
 });
 

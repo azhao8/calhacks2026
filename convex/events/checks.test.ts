@@ -6,6 +6,7 @@ import {
   placeMatches,
   titlesOverlap,
   sameShowTitles,
+  canonicalTeams,
   looksLikeAddress,
   basicRejectReason,
   dedupeKey,
@@ -145,6 +146,16 @@ describe("review fixes", () => {
     expect(sameShowTitles(normalizeTitle("Jazz night"), normalizeTitle("Folk night"))).toBe(false);
     expect(looksLikeAddress("2121 Allston Way")).toBe(true);
     expect(looksLikeAddress("The UC Theatre")).toBe(false);
+  });
+
+  test("Cal's teams match however a source names them; different opponents never do", () => {
+    const n = normalizeTitle;
+    expect(sameShowTitles(n("California Volleyball vs Stanford"), n("Cal Volleyball vs Stanford (Big Spike & Camper Reunion - Blue Out)"))).toBe(true);
+    expect(sameShowTitles(n("California Golden Bears Football vs Stanford"), n("Cal Football vs Stanford"))).toBe(true);
+    expect(sameShowTitles(n("Golden Bears Men's Basketball vs Radford"), n("Cal Men's Basketball vs Radford"))).toBe(true);
+    expect(sameShowTitles(n("Cal Volleyball vs Stanford"), n("Cal Volleyball vs UCLA"))).toBe(false);
+    expect(sameShowTitles(n("Jessie Reyez: A Little Vengeance Tour 2026"), n("A Little Vengeance Tour 2026: Jessie Reyez"))).toBe(true);
+    expect(canonicalTeams(n("California Golden Bears vs Stanford"))).toBe("cal vs stanford");
   });
 
   test("titles overlap only on whole words", () => {

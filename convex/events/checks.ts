@@ -110,9 +110,15 @@ export function titlesOverlap(a: string, b: string): boolean {
 // they open with the same three words, or most of the shorter one's words appear in the longer one:
 // "Iestyn Davies, countertenor; Oliver Wass, harp" and "Iestyn Davies, countertenor Oliver Wass, Baroque harp".
 export function sameShowTitles(a: string, b: string): boolean {
-  if (titlesOverlap(a, b)) return true;
-  const wordsA = a.split(" ").filter(Boolean);
-  const wordsB = b.split(" ").filter(Boolean);
+  const ca = canonicalTeams(a);
+  const cb = canonicalTeams(b);
+  // Two games against different opponents are never one show, however alike the rest reads.
+  const oppA = opponentOf(ca);
+  const oppB = opponentOf(cb);
+  if (oppA !== null && oppB !== null && oppA !== oppB) return false;
+  if (titlesOverlap(ca, cb)) return true;
+  const wordsA = ca.split(" ").filter(Boolean);
+  const wordsB = cb.split(" ").filter(Boolean);
   if (wordsA.length >= 3 && wordsB.length >= 3 && wordsA.slice(0, 3).join(" ") === wordsB.slice(0, 3).join(" ")) {
     return true;
   }
@@ -120,6 +126,21 @@ export function sameShowTitles(a: string, b: string): boolean {
   if (shorter.length < 2) return false;
   const inLonger = new Set(longer);
   return shorter.filter((word) => inLonger.has(word)).length / shorter.length >= 0.8;
+}
+
+// One name for Cal's teams, however a source writes it: "California Golden Bears", "Golden Bears",
+// "California", "UC Berkeley" and "Cal" all become "cal". Applied to normalized titles, for matching only.
+export function canonicalTeams(normalized: string): string {
+  return ` ${normalized} `
+    .replace(/ (uc berkeley|california golden bears|cal golden bears|golden bears|california) /g, " cal ")
+    .replace(/( cal)+ /g, " cal ")
+    .trim();
+}
+
+// The first word after "vs" (or "versus") in a normalized title: "cal volleyball vs stanford" gives "stanford".
+function opponentOf(normalized: string): string | null {
+  const match = / (?:vs|versus|v) ([a-z0-9]+)/.exec(` ${normalized}`);
+  return match ? match[1] : null;
 }
 
 // A venue "name" that is really a street address, like "2121 Allston Way".

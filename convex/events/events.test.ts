@@ -9,6 +9,7 @@ import { apifyWebhook, SECRET_HEADER } from "./webhook";
 import { PULLED_REASON } from "./config";
 import realRun from "./fixtures/uc-theatre-run.json";
 import fullRunDuplicates from "./fixtures/full-run-duplicates.json";
+import devDuplicatePairs from "./fixtures/dev-duplicate-pairs.json";
 
 // Outside services are mocked at their convex/services seams.
 const apify = vi.hoisted(() => ({
@@ -551,6 +552,198 @@ describe("audit items 4 to 7", () => {
     await importRun(t, "pr2", [scoutItem({ price: { min: null, max: null, source: "not_found", checked: ["listing", "ticket_page", "search"] } })]);
     const [event] = await t.query(internal.events.admin.list, {});
     expect(event).toMatchObject({ sourceName: "venue_site:uc_theatre", priceMin: 30, priceMax: 30 });
+  });
+});
+
+describe("one show, two titles (dev, before the fix)", () => {
+  const HAAS = { name: "Haas Pavilion", address: "Haas Pavilion, Berkeley, CA", osmId: "way/1001", lat: 37.8693, lng: -122.262 };
+  // Eight published rows read from dev (elated-barracuda-447): four shows, each published twice.
+  function itemFrom(row: (typeof devDuplicatePairs)[number]) {
+    const [sourceKind, sourceName] = row.sourceName.split(":");
+    return scoutItem({
+      title: row.title,
+      kind: row.kind,
+      startsAt: iso(row.startsAt),
+      venue: row.venueName === "Haas Pavilion" ? HAAS : FOX,
+      price:
+        row.priceMin === null && row.priceMax === null
+          ? { min: null, max: null, source: "not_found", sourceUrl: null }
+          : { min: row.priceMin, max: row.priceMax, source: "listing", sourceUrl: null },
+      ticketUrl: row.ticketUrl,
+      performers: row.performers,
+      tags: row.tags,
+      meetingSpot: null,
+      sourceName,
+      sourceKind,
+      sourceUrl: row.sourceUrl,
+    });
+  }
+
+  test("Cal and California games, and reordered tour titles from one source, publish once each", async () => {
+    const t = await setup();
+    const row = await importRun(t, "dupes", devDuplicatePairs.map(itemFrom));
+    const published = await t.query(internal.events.admin.list, {});
+    expect(published.map((e) => e.title).sort()).toEqual([
+      "A Little Vengeance Tour 2026: Jessie Reyez",
+      "Burn The Setlist Tour (The All Request Tour): An Evening With Brandi Carlile",
+      "California Volleyball vs Stanford",
+      "California Women's Basketball vs Vanguard (Exhibition)",
+    ].sort());
+    expect(row.counts).toMatchObject({ received: 8, published: 4 });
+    // The official feed wins over the open web, and keeps the price it found.
+    expect(published.find((e) => e.title.includes("Vanguard"))).toMatchObject({ sourceName: "official_feed:cal_athletics", priceMin: 4 });
+  });
+
+  test("different shows at one venue at the same time stay separate", async () => {
+    const t = await setup();
+    const start = iso(Date.now() + 3 * DAY);
+    await importRun(t, "sep", [
+      scoutItem({ title: "Cal Volleyball vs Stanford", kind: "game", startsAt: start, venue: HAAS, sourceUrl: "https://x.test/1" }),
+      scoutItem({ title: "Cal Volleyball vs UCLA", kind: "game", startsAt: start, venue: HAAS, sourceUrl: "https://x.test/2" }),
+      scoutItem({ title: "Jazz Trio", startsAt: start, sourceUrl: "https://x.test/3" }),
+      scoutItem({ title: "Folk Duo", startsAt: start, sourceUrl: "https://x.test/4" }),
+    ]);
+    expect(await t.query(internal.events.admin.list, {})).toHaveLength(4);
+  });
+});
+
+describe("folding duplicates already published", () => {
+  const HAAS = { name: "Haas Pavilion", address: "Haas Pavilion, Berkeley, CA", osmId: "way/1001", lat: 37.8693, lng: -122.262 };
+
+  // Two copies of one game, as stored before the fix: published apart, then aligned to the same start.
+  async function twoCopies(t: Awaited<ReturnType<typeof setup>>) {
+    const start = Date.now() + 3 * DAY;
+    await importRun(t, "old", [
+      scoutItem({ title: "California Volleyball vs Stanford", kind: "game", startsAt: iso(start), venue: HAAS, sourceName: "cal_athletics", sourceKind: "official_feed", sourceUrl: "https://calbears.com/1" }),
+      scoutItem({ title: "Cal Volleyball vs Stanford (Blue Out)", kind: "game", startsAt: iso(start + DAY), venue: HAAS, sourceName: "web", sourceKind: "web", sourceUrl: "https://x.test/vb" }),
+    ]);
+    const rows = await t.query(internal.events.admin.list, {});
+    const official = rows.find((r) => r.sourceName.startsWith("official_feed"))!;
+    const web = rows.find((r) => r.sourceName.startsWith("web"))!;
+    await t.run((ctx) => ctx.db.patch(web.eventId, { startsAt: official.startsAt }));
+    return { official, web };
+  }
+
+  async function holdAsk(
+    t: Awaited<ReturnType<typeof setup>>,
+    eventId: Id<"events">,
+    answer: "pending" | "yes" | "no" = "yes",
+    existingUser?: Id<"users">,
+  ): Promise<Id<"users">> {
+    return await t.run(async (ctx) => {
+      const userId = existingUser ?? (await ctx.db.insert("users", { firstName: "Sam" }));
+      await ctx.db.insert("asks", {
+        userId,
+        eventId,
+        createdAt: Date.now(),
+        answer,
+        ...(answer === "pending" ? {} : { answeredAt: Date.now() }),
+      });
+      return userId;
+    });
+  }
+
+  const asksOf = (t: Awaited<ReturnType<typeof setup>>, userId: Id<"users">) =>
+    t.run((ctx) =>
+      ctx.db
+        .query("asks")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .collect(),
+    );
+
+  async function holdPlan(t: Awaited<ReturnType<typeof setup>>, eventId: Id<"events">) {
+    await t.run(async (ctx) => {
+      const event = (await ctx.db.get(eventId))!;
+      await ctx.db.insert("meetups", {
+        eventId, status: "set", marker: 12, meetingSpotId: event.meetingSpotId,
+        meetAt: event.startsAt - 30 * 60_000, cutoffAt: event.startsAt - 150 * 60_000,
+        hook: "h", icebreaker: "i", hookFromClaude: false, isDemoPlan: false, createdAt: Date.now(),
+      });
+    });
+  }
+
+  test("a dry run reports and changes nothing; the copy people hold is kept", async () => {
+    const t = await setup();
+    const { official, web } = await twoCopies(t);
+    await holdAsk(t, web.eventId);
+    const dry = await t.mutation(internal.events.admin.mergeDuplicates, {});
+    expect(dry).toEqual([
+      { keep: { eventId: web.eventId, title: web.title }, drop: [{ eventId: official.eventId, title: official.title, openAsks: 0 }], skipped: null },
+    ]);
+    expect(await t.query(internal.events.admin.list, { status: "published" })).toHaveLength(2);
+    await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    const published = await t.query(internal.events.admin.list, { status: "published" });
+    expect(published.map((e) => e.eventId)).toEqual([web.eventId]);
+  });
+
+  test("with no one holding either copy, the more official source is kept", async () => {
+    const t = await setup();
+    const { official } = await twoCopies(t);
+    await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    expect((await t.query(internal.events.admin.list, { status: "published" })).map((e) => e.eventId)).toEqual([official.eventId]);
+  });
+
+  test("a yes on the dropped copy becomes a yes on the kept copy, and the matcher wakes", async () => {
+    const t = await setup();
+    const { official, web } = await twoCopies(t);
+    await holdPlan(t, official.eventId); // so the official copy is kept
+    const sam = await holdAsk(t, web.eventId, "yes");
+    await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    const asks = await asksOf(t, sam);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({ eventId: official.eventId, answer: "yes" });
+    expect(asks[0].closedReason).toBeUndefined();
+    const kept = (await t.run((ctx) => ctx.db.get(official.eventId)))!;
+    expect(kept.matcherWakeAt).toBeGreaterThan(Date.now());
+  });
+
+  test("a student with both copies ends with one ask and gets a weekly slot back", async () => {
+    const t = await setup();
+    const { official, web } = await twoCopies(t);
+    await holdPlan(t, official.eventId);
+    const sam = await holdAsk(t, official.eventId, "pending");
+    await holdAsk(t, web.eventId, "yes", sam);
+    expect(await asksOf(t, sam)).toHaveLength(2);
+    await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    const asks = await asksOf(t, sam);
+    expect(asks).toHaveLength(1);
+    // The stronger answer (yes over pending) carries onto the kept ask.
+    expect(asks[0]).toMatchObject({ eventId: official.eventId, answer: "yes" });
+    expect((await t.run((ctx) => ctx.db.get(official.eventId)))!.matcherWakeAt).toBeGreaterThan(Date.now());
+  });
+
+  test("matching isn't transitive: two different games never fold through a vaguer third title", async () => {
+    for (const order of [["Cal Volleyball vs Stanford", "Cal Volleyball", "Cal Volleyball vs UCLA"], ["Cal Volleyball", "Cal Volleyball vs Stanford", "Cal Volleyball vs UCLA"]]) {
+      const t = await setup();
+      const start = Date.now() + 3 * DAY;
+      // Published apart (a day each), then aligned to the same start, as stored before the fix.
+      await importRun(
+        t,
+        `abc-${order[0]}`,
+        order.map((title, i) =>
+          scoutItem({ title, kind: "game", startsAt: iso(start + i * DAY), venue: HAAS, sourceUrl: `https://x.test/${i}` }),
+        ),
+      );
+      const rows = await t.query(internal.events.admin.list, {});
+      await t.run(async (ctx) => {
+        for (const row of rows) await ctx.db.patch(row.eventId, { startsAt: start });
+      });
+      await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+      const published = (await t.query(internal.events.admin.list, { status: "published" })).map((e) => e.title);
+      expect(published).toContain("Cal Volleyball vs Stanford");
+      expect(published).toContain("Cal Volleyball vs UCLA");
+      expect(published).toHaveLength(2);
+    }
+  });
+
+  test("two copies that both hold plans are left alone and reported", async () => {
+    const t = await setup();
+    const { official, web } = await twoCopies(t);
+    await holdPlan(t, official.eventId);
+    await holdPlan(t, web.eventId);
+    const report = await t.mutation(internal.events.admin.mergeDuplicates, { dryRun: false });
+    expect(report[0].skipped).toBe("Two copies both hold plans; merge by hand");
+    expect(await t.query(internal.events.admin.list, { status: "published" })).toHaveLength(2);
   });
 });
 
