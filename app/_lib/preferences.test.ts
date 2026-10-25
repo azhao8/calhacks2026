@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { budgetMax, meetWhoSelection, toggleMeetWho, toggleSingle } from "./preferences";
+import { budgetIdFor, budgetMax, meetWhoSelection, toggleMeetWho, toggleSingle } from "./preferences";
 
 describe("toggleMeetWho", () => {
   test("Anyone stands alone", () => {
@@ -32,4 +32,12 @@ test("toggleSingle clears on a second tap", () => {
   expect(toggleSingle(null, "grad")).toBe("grad");
   expect(toggleSingle("grad", "grad")).toBeNull();
   expect(toggleSingle("grad", "first")).toBe("first");
+});
+
+test("budgetIdFor maps a saved maximum back to a choice, never above it", () => {
+  expect(budgetIdFor(null)).toBe("any");
+  expect(budgetIdFor(0)).toBe("free");
+  expect(budgetIdFor(25)).toBe("25");
+  expect(budgetIdFor(30)).toBe("25");
+  expect(budgetIdFor(10)).toBe("free");
 });

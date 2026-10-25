@@ -15,7 +15,8 @@ const STAGE: Record<string, string> = {
   queued: "Reading your top artists",
   fetching: "Reading your top artists",
   summarizing: "Writing your summary",
-  embedding: "Saving your taste",
+  // "embedding" runs after "That's me" while the taste vector is saved; it reads as finished.
+  embedding: "Almost there",
   done: "Almost there",
 };
 
@@ -52,13 +53,23 @@ export default function AnalyzingPage() {
   }
 
   const failed = job?.status === "failed" || startError !== null;
+  const tooLittle = job?.status === "failed" && job.failure === "too_little_data" && startError === null;
   return (
     <Screen object="cassette" top={<ScreenTitle>Getting to know your music</ScreenTitle>}>
-      {failed ? (
+      {tooLittle ? (
+        <StateView
+          kind="empty"
+          icon="music"
+          title="There isn't enough listening on your Spotify yet"
+          body="We need at least a few artists you play often. Listen for a few days, then come back."
+          action={null}
+          className="rounded-lg bg-backdrop-vignette"
+        />
+      ) : failed ? (
         <StateView
           kind="error"
           title="We couldn't read your Spotify yet"
-          body={startError ?? "If your account is new or quiet, there may not be enough listening yet. Try again, or come back after a few days of listening."}
+          body={startError ?? "Something went wrong while reading your music. Try again."}
           onAction={retry}
           actionLoading={retrying}
           className="rounded-lg bg-backdrop-vignette"

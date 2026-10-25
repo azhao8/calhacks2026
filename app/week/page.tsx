@@ -30,7 +30,7 @@ export default function WeekPage() {
     if (active) router.replace(ROUTES.plan);
   }, [active, router]);
 
-  if (!ready || cards === undefined || plan === undefined || active) return <LoadingScreen object="ticket" title="Finding shows that sound like you" />;
+  if (!ready || cards === undefined || plan === undefined || active) return <LoadingScreen object="ticket" title="Loading your week" />;
 
   const notices = <PlanNotices plan={plan} />;
 
@@ -120,7 +120,9 @@ function PlanNotices({ plan }: { plan: PlanView | null }) {
     return (
       <Card>
         <p role="status" className="text-body text-ink">
-          We couldn&apos;t find anyone else in time. You can still go if you have a ticket.
+          {plan.notice === "event_pulled"
+            ? "This event isn't on Melos anymore. If you already have a ticket, check the official listing before you go."
+            : "We couldn't find anyone else in time. You can still go if you have a ticket."}
         </p>
         <Button variant="secondary" block onClick={dismiss}>
           Got it

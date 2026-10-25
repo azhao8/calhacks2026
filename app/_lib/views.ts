@@ -10,6 +10,7 @@ import type {
   vAnalysisView,
   vContactView,
   vMySharesView,
+  vPreferencesView,
   vTasteView,
   WeekCard,
 } from "@/convex/lib/views";
@@ -23,6 +24,7 @@ export type AnalysisView = Infer<typeof vAnalysisView>;
 export type TasteView = Infer<typeof vTasteView>;
 export type ContactView = Infer<typeof vContactView>;
 export type MySharesView = Infer<typeof vMySharesView>;
+export type PreferencesView = Infer<typeof vPreferencesView>;
 
 type Skip = "skip" | undefined;
 const args = (skip: Skip) => (skip === "skip" ? ("skip" as const) : {});
@@ -30,6 +32,8 @@ const args = (skip: Skip) => (skip === "skip" ? ("skip" as const) : {});
 export const useAccess = (skip?: Skip) => useQuery(api.onboarding.access, args(skip)) as AccessView | undefined;
 export const useAnalysis = (skip?: Skip) => useQuery(api.taste.analysis, args(skip)) as AnalysisView | undefined;
 export const useTasteProfile = (skip?: Skip) => useQuery(api.taste.profile, args(skip)) as TasteView | undefined;
+export const usePreferences = (skip?: Skip) =>
+  useQuery(api.onboarding.preferences, args(skip)) as PreferencesView | undefined;
 export const useWeek = (skip?: Skip) => useQuery(api.week.mine, args(skip)) as WeekCard[] | undefined;
 export const usePlan = (skip?: Skip) => useQuery(api.plans.current, args(skip)) as PlanView | null | undefined;
 export const useContacts = (skip?: Skip) => useQuery(api.contacts.list, args(skip)) as ContactView[] | undefined;

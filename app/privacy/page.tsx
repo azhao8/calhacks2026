@@ -41,15 +41,8 @@ export default function PrivacyPage() {
           <p>Claude (Anthropic) writes taste summaries and conversation starters from artist, track and genre names. Voyage turns those summaries into numbers for matching. Neither receives your email, phone, Instagram, gender or year.</p>
           <p>Resend sends our emails. Events come from public listings, and map data comes from OpenStreetMap.</p>
         </Part>
-        <Part title="Disconnecting and deleting">
+        <Part title="Disconnecting">
           <p>You can disconnect Spotify from the menu at any time. When you do, we delete your Spotify data, your taste summary and your taste profile.</p>
-          <p>
-            To delete your account, email{" "}
-            <a href="mailto:hello@melos.azhao.dev" className="font-semibold text-accent underline underline-offset-3">
-              hello@melos.azhao.dev
-            </a>
-            .
-          </p>
         </Part>
         <Part title="Map data">
           <p>

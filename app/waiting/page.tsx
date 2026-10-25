@@ -22,12 +22,22 @@ export default function WaitingPage() {
     );
   } else if (access.refused) {
     body = (
-      <ScreenTitle lead="Make sure you sign in to Spotify with the account whose email you gave us. If you used a different account, switch accounts in Spotify. We'll email you when you can try again.">
+      <ScreenTitle
+        lead={
+          access.spotifyEmail
+            ? `Make sure you sign in to Spotify as ${access.spotifyEmail}. If you used a different account, switch accounts in Spotify. We'll email you when you can try again.`
+            : "Make sure you sign in to Spotify with the account whose email you gave us. If you used a different account, switch accounts in Spotify. We'll email you when you can try again."
+        }
+      >
         Spotify hasn&apos;t let us in yet.
       </ScreenTitle>
     );
   } else {
-    body = <ScreenTitle>You&apos;re on the list. We&apos;ll email you when Spotify is ready to connect.</ScreenTitle>;
+    body = (
+      <ScreenTitle lead={access.spotifyEmail ? `The Spotify account we're adding: ${access.spotifyEmail}` : undefined}>
+        You&apos;re on the list. We&apos;ll email you when Spotify is ready to connect.
+      </ScreenTitle>
+    );
   }
 
   return (

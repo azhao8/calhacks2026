@@ -17,6 +17,14 @@ export function budgetMax(id: BudgetId): number | null {
   return BUDGETS.find((b) => b.id === id)!.max;
 }
 
+// The saved maximum back to a choice. A value that isn't one of the choices picks the largest
+// choice under it, so nothing shown is more than the student agreed to.
+export function budgetIdFor(max: number | null): BudgetId {
+  if (max === null) return "any";
+  const fits = BUDGETS.filter((b) => b.max !== null && b.max <= max);
+  return fits.length > 0 ? fits[fits.length - 1].id : "free";
+}
+
 export const MEET_OPTIONS = [
   { id: "anyone", label: "Anyone" },
   { id: "woman", label: "Women" },
