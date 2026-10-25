@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { Backdrop, type BackdropObject } from "@/components/Backdrop";
 import { cx } from "@/components/cx";
 import { MenuButton } from "@/components/MenuButton";
@@ -36,7 +37,9 @@ export function Screen({
       <div className="relative z-1 mx-auto flex min-h-dvh w-full max-w-120 flex-col justify-between gap-8 px-4 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))]">
         <div className="flex flex-col gap-4">
           <header className="flex min-h-12 items-center justify-between gap-3">
-            <Wordmark />
+            <Link href={ROUTES.welcome} aria-label="Melos home" className="inline-flex min-h-12 items-center">
+              <Wordmark />
+            </Link>
             {right ??
               (menu ? (
                 <MenuButton href={ROUTES.menu} />
@@ -67,11 +70,24 @@ export function LoadingScreen({ object = "none", title = "Loading" }: { object?:
   );
 }
 
-// Big screen title in the sky.
-export function ScreenTitle({ eyebrow, children, lead, display }: { eyebrow?: string; children: ReactNode; lead?: ReactNode; display?: boolean }) {
+// Big screen title in the sky. `inkEyebrow` keeps the eyebrow white where the accent would sit on
+// the bright sky and blend in (the welcome screen).
+export function ScreenTitle({
+  eyebrow,
+  inkEyebrow,
+  children,
+  lead,
+  display,
+}: {
+  eyebrow?: string;
+  inkEyebrow?: boolean;
+  children: ReactNode;
+  lead?: ReactNode;
+  display?: boolean;
+}) {
   return (
     <div className="flex flex-col gap-2">
-      {eyebrow ? <p className="text-small font-semibold text-accent">{eyebrow}</p> : null}
+      {eyebrow ? <p className={cx("text-small font-semibold", inkEyebrow ? "text-ink" : "text-accent")}>{eyebrow}</p> : null}
       <h1 className={display ? "font-display text-display text-balance" : "font-display text-title text-balance"}>{children}</h1>
       {lead ? <div className="text-body text-ink">{lead}</div> : null}
     </div>
