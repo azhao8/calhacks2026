@@ -24,7 +24,8 @@ export function MatchCard({
 }) {
   return (
     <article className={cardClasses(stage === "invite", true)}>
-      <div className="flex flex-col gap-2 bg-surface-brand p-5">
+      {/* The card clips its rounded corners, so everything inside wraps rather than running under the edge. */}
+      <div className="flex min-w-0 flex-col gap-2 bg-surface-brand p-5">
         <p className="text-caption text-accent">{eyebrow ?? EYEBROW[stage]}</p>
         <h1 className="font-display text-title text-balance wrap-break-word">{title}</h1>
         <Meta>
@@ -32,7 +33,7 @@ export function MatchCard({
           {price ? <MetaItem icon="ticket">{price}</MetaItem> : null}
         </Meta>
       </div>
-      <div className="flex flex-col gap-4 p-5">{children}</div>
+      <div className="flex min-w-0 flex-col gap-4 p-5">{children}</div>
     </article>
   );
 }

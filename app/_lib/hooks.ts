@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { MeView, PlanView } from "@/convex/lib/views";
 import { getDeviceSchool, parseDeviceSchool, subscribeDeviceSchool, type DeviceSchool } from "./device";
+import { rememberNext } from "./nav";
 import { redirectFor, type Route } from "./routes";
 import { usePlan } from "./views";
 
@@ -79,8 +80,10 @@ export function useGate(route: Route): Gate {
   const target = me === undefined ? null : redirectFor(route, me);
 
   useEffect(() => {
+    // Signed out on a deep link: remember where they were going for after sign in.
+    if (me === null && target !== null) rememberNext(pathname, window.location.search);
     if (target !== null && target !== pathname) router.replace(target);
-  }, [target, pathname, router]);
+  }, [me, target, pathname, router]);
 
   if (me === undefined || target !== null) return { status: "loading" };
   return { status: "ready", me, plan: me?.onboarding === "ready" ? plan : null };

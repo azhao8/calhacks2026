@@ -411,6 +411,38 @@ const flows = {
     return { buttons };
   },
 
+  // A signed-out deep link comes back after sign in (when the account may open it), and the school
+  // picker starts on the only open school.
+  async "nav-deep-link-after-sign-in"(browser) {
+    const out = {};
+    for (const [name, path, signedInAs, expect] of [
+      ["ready student, /contacts", "/contacts", F.me("ready"), "/contacts"],
+      ["mid-onboarding, /plan", "/plan", F.me("waiting_for_spotify"), "/waiting"],
+    ]) {
+      const { context, page, mock } = await open(browser, visitor({ ...ready(), "me:get": null }));
+      await page.goto(BASE + path);
+      await wait(page, 1000);
+      const bounced = at(page);
+      await link(page, "I already have an account").click();
+      await wait(page);
+      // A real sign in leaves a session in storage; the mock serves the signed-in student from now on.
+      await MockConvex.signIn(context);
+      mock.data["me:get"] = signedInAs;
+      mock.set("me:get", signedInAs);
+      await wait(page, 2000);
+      out[name] = { bounced, landed: at(page), pass: at(page) === expect };
+      await context.close();
+    }
+    {
+      const { context, page } = await open(browser, visitor());
+      await page.goto(BASE + "/school");
+      await wait(page);
+      out.schoolContinueEnabled = await btn(page, "Continue").isEnabled();
+      await context.close();
+    }
+    return out;
+  },
+
   // Menu close goes home, never back through browser history.
   async "nav-menu-close"(browser) {
     const out = {};

@@ -10,7 +10,7 @@ type Look = { variant?: ButtonVariant; block?: boolean; className?: string };
 // Shared with links styled as buttons (Buy your ticket, Open directions).
 export function buttonClasses({ variant = "primary", block, className }: Look): string {
   return cx(
-    "inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center gap-2 rounded-pill border-[1.5px] py-2.5 text-center text-body-strong leading-[1.3]",
+    "inline-flex min-h-12 min-w-12 max-w-full cursor-pointer items-center justify-center gap-2 rounded-pill border-[1.5px] py-2.5 text-center text-body-strong leading-[1.3]",
     "transition-[background-color,border-color,color,transform] duration-160 ease-out motion-safe:active:scale-[0.98]",
     // A loading button is natively disabled too (so a form can't submit twice) but keeps its look.
     "not-aria-busy:disabled:cursor-not-allowed not-aria-busy:disabled:border-transparent not-aria-busy:disabled:bg-surface-raised not-aria-busy:disabled:text-ink-faint",
@@ -72,8 +72,9 @@ type ButtonLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & Look & { icon?:
 export function ButtonLink({ variant, block, className, icon, children, ...rest }: ButtonLinkProps) {
   return (
     <a target="_blank" rel="noopener noreferrer" {...rest} className={buttonClasses({ variant, block, className })}>
-      {icon ? <Icon name={icon} /> : null}
-      {children}
+      {icon ? <Icon name={icon} className="flex-none" /> : null}
+      {/* At large text sizes a long word wraps inside the button rather than running past the card. */}
+      <span className="min-w-0 wrap-break-word">{children}</span>
     </a>
   );
 }
