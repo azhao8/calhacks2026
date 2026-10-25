@@ -1,0 +1,155 @@
+[
+  {
+    "title": "Pigeons Playing Ping Pong",
+    "kind": "concert",
+    "startsAt": "2026-11-01T19:00:00-08:00",
+    "venue": {
+      "name": "The UC Theatre",
+      "address": "2036 University Ave, Berkeley, CA 94704",
+      "osmId": "node/4070522012",
+      "lat": 37.871806,
+      "lng": -122.269814
+    },
+    "price": {
+      "min": 35,
+      "max": null,
+      "source": "listing",
+      "sourceUrl": "https://www.theuctheatre.org/",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://www.theuctheatre.org/shows/pigeons-playing-ping-pong-01-nov#tickets",
+    "freeEntryNote": null,
+    "performers": [
+      "Pigeons Playing Ping Pong",
+      "Dizgo"
+    ],
+    "tags": [
+      "Funk"
+    ],
+    "ageLimit": null,
+    "meetingSpot": null,
+    "sourceUrl": "https://www.theuctheatre.org/shows/pigeons-playing-ping-pong-01-nov",
+    "sourceName": "uc_theatre",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T03:07:38.719Z"
+  },
+  {
+    "title": "Bridge City Sinners",
+    "kind": "concert",
+    "startsAt": "2026-10-29T19:30:00-07:00",
+    "venue": {
+      "name": "The UC Theatre",
+      "address": "2036 University Ave, Berkeley, CA 94704",
+      "osmId": "node/4070522012",
+      "lat": 37.871806,
+      "lng": -122.269814
+    },
+    "price": {
+      "min": 25,
+      "max": 25,
+      "source": "listing",
+      "sourceUrl": "https://www.theuctheatre.org/",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://www.theuctheatre.org/shows/bridge-city-sinners-29-oct#tickets",
+    "freeEntryNote": null,
+    "performers": [
+      "Bridge City Sinners",
+      "Liam St. John",
+      "Shawn D\u2019Amario"
+    ],
+    "tags": [
+      "Folk"
+    ],
+    "ageLimit": null,
+    "meetingSpot": null,
+    "sourceUrl": "https://www.theuctheatre.org/shows/bridge-city-sinners-29-oct",
+    "sourceName": "uc_theatre",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T03:07:38.718Z"
+  },
+  {
+    "title": "Mumiy Troll",
+    "kind": "concert",
+    "startsAt": "2026-10-28T20:00:00-07:00",
+    "venue": {
+      "name": "The UC Theatre",
+      "address": "2036 University Ave, Berkeley, CA 94704",
+      "osmId": "node/4070522012",
+      "lat": 37.871806,
+      "lng": -122.269814
+    },
+    "price": {
+      "min": 60,
+      "max": null,
+      "source": "listing",
+      "sourceUrl": "https://www.theuctheatre.org/",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://www.theuctheatre.org/shows/mumiy-troll-28-oct#tickets",
+    "freeEntryNote": null,
+    "performers": [
+      "Mumiy Troll"
+    ],
+    "tags": [
+      "Rock"
+    ],
+    "ageLimit": null,
+    "meetingSpot": null,
+    "sourceUrl": "https://www.theuctheatre.org/shows/mumiy-troll-28-oct",
+    "sourceName": "uc_theatre",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T03:07:38.717Z"
+  },
+  {
+    "title": "Plini - An Unnameable Desire North American Tour",
+    "kind": "concert",
+    "startsAt": "2026-11-06T19:00:00-08:00",
+    "venue": {
+      "name": "The UC Theatre",
+      "address": "2036 University Ave, Berkeley, CA 94704",
+      "osmId": "node/4070522012",
+      "lat": 37.871806,
+      "lng": -122.269814
+    },
+    "price": {
+      "min": 27.5,
+      "max": 27.5,
+      "source": "listing",
+      "sourceUrl": "https://www.theuctheatre.org/",
+      "checked": [
+        "listing"
+      ]
+    },
+    "ticketUrl": "https://www.theuctheatre.org/shows/plini-an-unnameable-desire-north-american-tour-06-nov#tickets",
+    "freeEntryNote": null,
+    "performers": [
+      "Plini",
+      "Portraits",
+      "Night Verses"
+    ],
+    "tags": [
+      "Rock"
+    ],
+    "ageLimit": null,
+    "meetingSpot": {
+      "name": "University & Shattuck bus stop",
+      "howToFind": "The bus stop at the corner of University Avenue and Shattuck Avenue, about a block east of the theatre's marquee on University Ave.",
+      "lat": 37.872201,
+      "lng": -122.268776,
+      "osmId": "node/2066853143",
+      "isTransitStop": false,
+      "travelMinutes": 0
+    },
+    "sourceUrl": "https://www.theuctheatre.org/shows/plini-an-unnameable-desire-north-american-tour-06-nov",
+    "sourceName": "uc_theatre",
+    "sourceKind": "venue_site",
+    "scrapedAt": "2026-10-25T03:07:54.829Z"
+  }
+]

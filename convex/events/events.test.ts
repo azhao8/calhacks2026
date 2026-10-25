@@ -7,6 +7,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { apifyWebhook, SECRET_HEADER } from "./webhook";
 import { PULLED_REASON } from "./config";
+import realRun from "./fixtures/uc-theatre-run.json";
 
 // Outside services are mocked at their convex/services seams.
 const apify = vi.hoisted(() => ({
@@ -297,6 +298,43 @@ describe("review regressions", () => {
     expect(geocode.searchPlaces).toHaveBeenCalledTimes(1);
     const rows = await t.query(internal.events.admin.list, { status: "rejected" });
     expect(rows.map((r) => r.rejectReason)).toEqual(["Venue not found on the map", "Venue not found on the map", "Venue not found on the map"]);
+  });
+});
+
+describe("a real scout run", () => {
+  // Apify run 6L51sZ3WeSDFYMu4X (UC Theatre only, 5 events max), saved as a fixture.
+  test("its four UC Theatre items import as four published events at one venue with the agent's spot", async () => {
+    const t = await setup();
+    const row = await importRun(t, "6L51sZ3WeSDFYMu4X", realRun, { sources: [{ name: "uc_theatre", kind: "venue_site", status: "succeeded" }] });
+    expect(row.counts).toEqual({ received: 4, published: 4, updated: 0, rejected: 0, duplicates: 0 });
+    const events = await t.query(internal.events.admin.list, {});
+    expect(new Set(events.map((e) => e.venueName))).toEqual(new Set(["The UC Theatre"]));
+    expect(new Set(events.map((e) => e.meetingSpot?.name))).toEqual(new Set(["University & Shattuck bus stop"]));
+    const pigeons = events.find((e) => e.title === "Pigeons Playing Ping Pong")!;
+    // Nov 1, 7 pm Pacific (PST) and "from $35".
+    expect(pigeons).toMatchObject({ startsAt: Date.parse("2026-11-02T03:00:00Z"), priceMin: 35, priceMax: null, area: "campus" });
+  });
+});
+
+describe("meeting spot on a later event", () => {
+  test("the agent's spot on the venue's fourth event replaces the main entrance from the first", async () => {
+    const t = await setup();
+    const start = Date.now() + 2 * DAY;
+    const spot = scoutItem().meetingSpot;
+    await importRun(t, "ms1", [
+      scoutItem({ title: "A", startsAt: iso(start), meetingSpot: null, sourceUrl: "https://theuctheatre.org/a" }),
+      scoutItem({ title: "B", startsAt: iso(start + DAY), meetingSpot: null, sourceUrl: "https://theuctheatre.org/b" }),
+      scoutItem({ title: "C", startsAt: iso(start + 2 * DAY), meetingSpot: spot, sourceUrl: "https://theuctheatre.org/c" }),
+    ]);
+    const events = await t.query(internal.events.admin.list, {});
+    expect(events.map((e) => e.meetingSpot?.name)).toEqual(Array(3).fill("Bench left of the main doors"));
+    const spots = await t.run((ctx) => ctx.db.query("meetingSpots").collect());
+    expect(spots.some((s) => s.name.startsWith("Main entrance"))).toBe(false);
+    // A later spot never replaces one the agent already chose.
+    vi.setSystemTime(Date.now() + 60_000);
+    await importRun(t, "ms2", [scoutItem({ title: "D", startsAt: iso(start + 3 * DAY), meetingSpot: { ...spot, name: "Other bench" }, sourceUrl: "https://theuctheatre.org/d" })]);
+    const after = await t.query(internal.events.admin.list, {});
+    expect(new Set(after.map((e) => e.meetingSpot?.name))).toEqual(new Set(["Bench left of the main doors"]));
   });
 });
 

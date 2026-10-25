@@ -83,13 +83,13 @@ async function nearbyTeamSpot(
   return best;
 }
 
-// The agent's spot if it follows the rules; otherwise the venue's main entrance.
-async function chooseSpot(
+// The agent's spot if it follows the rules, or null.
+async function agentSpot(
   ctx: MutationCtx,
   venue: Doc<"venues">,
   proposed: (typeof vSpotInput)["type"] | null,
   now: number,
-): Promise<{ spotId: Id<"meetingSpots">; meetOffsetMinutes: number }> {
+): Promise<{ spotId: Id<"meetingSpots">; meetOffsetMinutes: number } | null> {
   const area = venue.area;
   if (proposed !== null) {
     const meters = metersBetween(proposed, venue);
@@ -116,6 +116,23 @@ async function chooseSpot(
       return { spotId, meetOffsetMinutes };
     }
   }
+  return null;
+}
+
+function isEntranceFallback(spot: Doc<"meetingSpots"> | null, venue: Doc<"venues">): boolean {
+  return spot !== null && spot.chosenBy === "agent" && spot.osmId === venue.osmId && spot.lat === venue.lat && spot.lng === venue.lng;
+}
+
+// The agent's spot if it follows the rules; otherwise the venue's main entrance.
+async function chooseSpot(
+  ctx: MutationCtx,
+  venue: Doc<"venues">,
+  proposed: (typeof vSpotInput)["type"] | null,
+  now: number,
+): Promise<{ spotId: Id<"meetingSpots">; meetOffsetMinutes: number }> {
+  const chosen = await agentSpot(ctx, venue, proposed, now);
+  if (chosen !== null) return chosen;
+  const area = venue.area;
   const spotId = await ctx.db.insert("meetingSpots", {
     name: `Main entrance of ${venue.name}`,
     howToFind: `Out front of the main entrance of ${venue.name}${streetOf(venue.address, venue.name) ? ` on ${streetOf(venue.address, venue.name)}` : ""}.`,
@@ -183,6 +200,25 @@ export const resolve = internalMutation({
     if (venue.meetingSpotId === undefined) {
       const { spotId, meetOffsetMinutes } = await chooseSpot(ctx, venue, args.spot, args.now);
       await ctx.db.patch(venue._id, { meetingSpotId: spotId, meetOffsetMinutes, updatedAt: args.now });
+    } else if (args.spot !== null) {
+      // The agent may attach its spot to any of a venue's events: a valid spot replaces the main-entrance
+      // fallback, never a spot the agent or the team already chose.
+      const current = await ctx.db.get(venue.meetingSpotId);
+      if (isEntranceFallback(current, venue)) {
+        const chosen = await agentSpot(ctx, venue, args.spot, args.now);
+        if (chosen !== null) {
+          await ctx.db.patch(venue._id, { meetingSpotId: chosen.spotId, meetOffsetMinutes: chosen.meetOffsetMinutes, updatedAt: args.now });
+          for (const event of await ctx.db
+            .query("events")
+            .withIndex("by_venue", (q) => q.eq("venueId", venue._id))
+            .collect()) {
+            if (event.meetingSpotId === venue.meetingSpotId) {
+              await ctx.db.patch(event._id, { meetingSpotId: chosen.spotId, meetOffsetMinutes: chosen.meetOffsetMinutes });
+            }
+          }
+          await ctx.db.delete(venue.meetingSpotId);
+        }
+      }
     }
     return { ok: true as const, venueId: venue._id, created };
   },
