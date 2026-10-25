@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { Button } from "@/components/Button";
 import { Card, InlineError, Meta, MetaItem } from "@/components/Card";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { DropTimer } from "@/components/DropTimer";
+import { animate, FLIP_IN } from "@/components/DropMotion";
+import { WaveRing } from "@/components/WaveRing";
 import { countdownDigits, dropPhase, dropsApi, useDrop, whenLabel, type DropEvent, type DropView } from "@/app/_lib/drop";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useNow, useOnline } from "@/app/_lib/hooks";
@@ -111,7 +113,7 @@ function Choosing({
       price={drop.card.price}
       pending={pending === "seeMore" ? "seeMore" : pending === "passForever" ? "pass" : null}
       locked={locked}
-      onSeeMore={() => void run("seeMore")}
+      onSeeMore={() => run("seeMore")}
       onPass={() => {
         void run("passForever").then((ok) => {
           if (ok) setPasses((n) => n + 1);
@@ -134,9 +136,18 @@ function Deciding({
 }) {
   const now = useNow(1000);
   const busy = pending !== null;
+  // The event turns in, the other side of the card See more turned over.
+  const card = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    animate(card.current, FLIP_IN, { duration: 340, easing: "cubic-bezier(0.25, 1, 0.5, 1)" });
+  }, []);
   return (
     <>
-      <EventRecap event={drop.event} />
+      <div ref={card}>
+        <WaveRing>
+          <EventRecap event={drop.event} />
+        </WaveRing>
+      </div>
       {/* Locked: these two buttons are the only way on. Stacked so the countdown never wraps. */}
       <div className="flex flex-col gap-3">
         <Button block onClick={() => void run("accept")} loading={pending === "accept"} disabled={busy || locked}>
@@ -146,6 +157,7 @@ function Deciding({
           Next time
         </Button>
       </div>
+      <p className="text-center text-small text-ink-muted">Declining forfeits this drop.</p>
     </>
   );
 }

@@ -5,15 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { Button } from "@/components/Button";
-import { InlineError } from "@/components/Card";
-import { RevealLine, RevealPresent } from "@/components/Reveal";
+import { RevealSequence } from "@/components/Reveal";
 import type { RevealStep } from "@/app/_lib/drops";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
-import { revealLine } from "@/app/_lib/revealCopy";
-import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
+import { revealLine, revealScreen } from "@/app/_lib/revealCopy";
+import { LoadingScreen } from "@/app/_components/Screen";
 
 // Reveal: a matched plan opened one tap at a time, like a present. What both share comes first and
 // the partner's first name last; then the plan. A reload starts the steps again, which is fine.
@@ -50,20 +48,13 @@ function Steps({ meetupId, steps }: { meetupId: Id<"meetups">; steps: RevealStep
   const router = useRouter();
   const online = useOnline();
   const markRevealed = useMutation(api.drops.revealed);
-  const [opened, setOpened] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The steps are live: never show more than the server still sends.
-  const shown = Math.min(opened, steps.length);
-  const done = shown >= steps.length;
-  const lines = steps.slice(0, shown).map(revealLine);
-  const latest = lines.at(-1);
-
-  // The open control disappears after the last step; keyboard focus moves to what comes next.
+  // Nothing to open (the plan ended meanwhile): home picks the screen, so a reload never traps anyone.
   useEffect(() => {
-    if (done && opened > 0) document.getElementById("see-plan")?.focus();
-  }, [done, opened]);
+    if (steps.length === 0) router.replace(ROUTES.welcome);
+  }, [steps.length, router]);
 
   async function finish() {
     setBusy(true);
@@ -77,29 +68,18 @@ function Steps({ meetupId, steps }: { meetupId: Id<"meetups">; steps: RevealStep
     }
   }
 
+  if (steps.length === 0) return <LoadingScreen object="records" />;
   return (
-    <Screen object="records" menu top={<ScreenTitle eyebrow="Your drop">{done ? "Your plan is ready" : "Something's waiting for you"}</ScreenTitle>}>
-      {/* Each opened step is read out once. */}
-      <p aria-live="polite" className="sr-only">
-        {latest ? [latest.line, latest.detail].filter(Boolean).join(" ") : ""}
-      </p>
-      {lines.length > 0 ? (
-        <ol aria-label="What you share" className="flex flex-col gap-2">
-          {lines.map((l, i) => (
-            <RevealLine key={i} line={l.line} detail={l.detail} latest={i === lines.length - 1} />
-          ))}
-        </ol>
-      ) : null}
-      {done ? (
-        <>
-          <Button id="see-plan" block loading={busy} disabled={!online} onClick={finish}>
-            See your plan
-          </Button>
-          {error ? <InlineError>{error}</InlineError> : null}
-        </>
-      ) : (
-        <RevealPresent opened={shown} total={steps.length} onOpen={() => setOpened(shown + 1)} />
-      )}
-    </Screen>
+    <RevealSequence
+      screens={steps.map(revealScreen)}
+      announce={steps.map((step) => {
+        const l = revealLine(step);
+        return [l.line, l.detail].filter(Boolean).join(" ");
+      })}
+      onFinish={finish}
+      busy={busy}
+      error={error}
+      disabled={!online}
+    />
   );
 }
