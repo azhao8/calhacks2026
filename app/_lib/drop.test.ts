@@ -80,7 +80,7 @@ describe("announcedTimeLeft", () => {
 describe("dropPhase", () => {
   test("reads the phase when the view has one", () => {
     expect(dropPhase({ kind: "done", endsAt: 0, phase: "confirming" } as never)).toBe("confirming");
-    expect(dropPhase({ kind: "done", endsAt: 0 })).toBeUndefined();
+    expect(dropPhase({ kind: "done", endsAt: 0 } as never)).toBeUndefined();
     expect(dropPhase({ kind: "none" })).toBeUndefined();
   });
 });
