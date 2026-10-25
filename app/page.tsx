@@ -7,8 +7,8 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { buttonClasses } from "@/components/Button";
 import { StateView } from "@/components/StateView";
-import { useHomeTarget } from "@/app/_lib/home";
-import { ROUTES } from "@/app/_lib/routes";
+import { homeRoute, ROUTES } from "@/app/_lib/routes";
+import { usePlan } from "@/app/_lib/views";
 import { Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S01 Welcome for visitors (mockup welcome.png). Signed-in students go straight to the screen their
@@ -16,7 +16,9 @@ import { Screen, ScreenTitle } from "@/app/_components/Screen";
 export default function Home() {
   const router = useRouter();
   const me = useQuery(api.me.get);
-  const target = useHomeTarget(me);
+  const plan = usePlan(me && me.onboarding === "ready" ? undefined : "skip");
+  const planReady = !me || me.onboarding !== "ready" || plan !== undefined;
+  const target = me && planReady ? homeRoute(me, plan ?? null) : null;
 
   useEffect(() => {
     if (target !== null) router.replace(target);

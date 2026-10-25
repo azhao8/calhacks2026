@@ -113,19 +113,3 @@ export const vMatchTrigger = v.union(
   v.literal("sweep"),
   v.literal("admin"),
 );
-
-// Drops (DECISIONS.md, Oct 25).
-export const vDropStatus = v.union(v.literal("choosing"), v.literal("confirming"), v.literal("matched"));
-export type DropStatus = Infer<typeof vDropStatus>;
-
-export const vDropEntryState = v.union(
-  v.literal("choosing"),
-  v.literal("deciding"),
-  v.literal("accepted"),
-  v.literal("passed"),
-  v.literal("declined"),
-  v.literal("turned_away"),
-  v.literal("matched"),
-  v.literal("unmatched"),
-);
-export type DropEntryState = Infer<typeof vDropEntryState>;

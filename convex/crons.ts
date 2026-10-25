@@ -11,7 +11,4 @@ crons.interval("matcher sweep", { minutes: TIMING.matcherSweepMinutes }, interna
 // The rolling 7-day ask window frees room over time; top students back up to 3 asks.
 crons.interval("ask top-up", { hours: 6 }, internal.asks.picker.pickAfterImport, {});
 
-// Drops: audience profiles for events that are missing one or changed; also the retry after a failure.
-crons.interval("audience profiles", { hours: 1 }, internal.drops.audience.backfill, {});
-
 export default crons;

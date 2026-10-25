@@ -6,9 +6,6 @@ import { accepts, cosine, rarityWeight, similarYear } from "./matching/taste";
 import { containsPronoun, templateHook, validateHook } from "./ai/hooks";
 import { advance, asUser, makeAsk, makeEvent, makeStudent, MINUTE, plansFor, seatsFor, setup } from "./testing.helpers";
 
-// These suites cover the pre-drop asks and live matching, which drops gate off (DECISIONS.md, Oct 25).
-process.env.MELOS_LEGACY_ASKS = "1";
-
 const mocks = vi.hoisted(() => ({ generateJson: vi.fn() }));
 vi.mock("./services/claude", () => ({ generateJson: mocks.generateJson }));
 

@@ -4,7 +4,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { isTeamEmail } from "../lib/access";
 import { demoClockOffsetMs } from "../lib/clock";
-import { legacyAsksOn, MATCHING, SURPRISE_ME, TIMING } from "../lib/config";
+import { MATCHING, SURPRISE_ME, TIMING } from "../lib/config";
 import { vMatchTrigger } from "../lib/validators";
 import {
   canHoldSeat,
@@ -79,9 +79,8 @@ export async function runMatcher(
   const offset = await demoClockOffsetMs(ctx.db);
 
   // The pool: real students and team accounts who said yes, are ready, and hold no seat.
-  // Drops: there is no live pool. Only open seats are refilled (by demo students).
   const yesAsks = (
-    !legacyAsksOn() ? [] : await ctx.db
+    await ctx.db
       .query("asks")
       .withIndex("by_event_answer", (q) => q.eq("eventId", eventId).eq("answer", "yes"))
       .collect()
@@ -390,7 +389,7 @@ export const sweep = internalMutation({
     for (const eventId of toMatch) {
       await ctx.scheduler.runAfter(0, internal.matching.run.forEvent, { eventId, trigger: "sweep" });
     }
-    for (const userId of legacyAsksOn() ? toPick : []) {
+    for (const userId of toPick) {
       await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
     }
     let plans = 0;

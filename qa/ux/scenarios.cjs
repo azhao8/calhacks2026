@@ -27,16 +27,6 @@ const ready = (over = {}) => ({
 const onboarding = (state, over = {}) => ({ ...ready(), "me:get": F.me(state), "plans:current": null, ...over });
 const visitor = (over = {}) => ({ "me:get": null, "schools:list": F.schools, ...over });
 
-const T0 = Date.now();
-const DROP_EVENT = { title: "Indie folk night", venue: "The UC Theatre", startsAt: Date.UTC(2026, 9, 30, 3, 0), price: "$18 to $25", kind: "concert" };
-const DROP = {
-  none: { kind: "none" },
-  choosing: { kind: "choosing", endsAt: T0 + 2 * 3600e3, card: { startsAt: Date.UTC(2026, 9, 30, 3, 0), price: "$18 to $25" } },
-  deciding: { kind: "deciding", endsAt: T0 + 2 * 3600e3, acceptBy: T0 + 24 * 3600e3 - 1000, event: DROP_EVENT },
-  accepted: { kind: "accepted", endsAt: T0 + 3600e3, matchAt: Date.UTC(2026, 9, 26, 12, 30), event: DROP_EVENT },
-  done: { kind: "done", endsAt: T0 + 45 * 60e3 },
-};
-
 const scenarios = [
   // S01 Welcome
   { id: "s01-welcome", screen: "S01 Welcome", path: "/", data: visitor(), variants: [...ALL, "reduced"] },
@@ -160,14 +150,6 @@ const scenarios = [
   { id: "x17-19-about-you-saved", screen: "S04 About you", path: "/about-you", data: onboarding("needs_preferences", { "onboarding:access": { ...F.access.requested, spotifyEmail: "sam.spotify@gmail.com" } }) },
   { id: "x17-9-refill-offer-newcomer", screen: "S11 Offer", path: "/plan", data: ready({ "plans:current": F.plan("offer", { me: { seat: "offered", ticket: "none", offerExpiresAt: Date.now() + 3600000, left: false }, partner: { firstName: "Maya", seat: "in", ticket: "none", left: false }, notice: "partner_replaced", previousPartnerFirstName: "Alex" }) }) },
   { id: "x17-31-offer-partner-dropped", screen: "S11 Offer", path: "/plan", data: ready({ "plans:current": F.plan("offer", { partner: null, notice: "partner_dropped", previousPartnerFirstName: "Maya" }) }) },
-  // The Drop (/drop). Times are relative to when the harness starts.
-  { id: "drop-none", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.none }) },
-  { id: "drop-choosing", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.choosing }), variants: [...ALL, "offline", "reduced"] },
-  { id: "drop-deciding", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.deciding }), variants: [...ALL, "offline"] },
-  { id: "drop-deciding-fail", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.deciding }), handlers: { "drops:accept": () => { throw fail("offer_expired"); } }, script: "tapDropAccept" },
-  { id: "drop-accepted", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.accepted }), variants: ALL },
-  { id: "drop-done", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.done }) },
-  { id: "drop-loading", screen: "Drop", path: "/drop", data: ready({ "drops:mine": hold }) },
 ];
 
 module.exports = { scenarios, ready, onboarding, visitor };

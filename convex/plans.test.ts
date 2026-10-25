@@ -17,9 +17,6 @@ import {
   type T,
 } from "./testing.helpers";
 
-// These suites cover the pre-drop asks and live matching, which drops gate off (DECISIONS.md, Oct 25).
-process.env.MELOS_LEGACY_ASKS = "1";
-
 vi.mock("./services/claude", () => ({
   generateJson: vi.fn(async () => {
     throw new Error("Claude is not available in tests");
