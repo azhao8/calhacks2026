@@ -227,6 +227,8 @@ export default defineSchema({
     missingSince: v.optional(v.number()),
     embedding: v.optional(v.array(v.float64())),
     matcherWakeAt: v.optional(v.number()),
+    // Fields the team edited on the admin page; later imports leave them alone (§6.1 team control).
+    teamFields: v.optional(v.array(v.string())),
   })
     .index("by_status_startsAt", ["status", "startsAt"])
     .index("by_dedupeKey", ["dedupeKey"])
