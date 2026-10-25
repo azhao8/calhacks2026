@@ -65,7 +65,12 @@ export const share = mutation({
     const userId = (await requireVerifiedUser(ctx))._id;
     if ((await eligibility(ctx, userId, args.meetupId)) === null) fail("forbidden");
     const value = normalizeShare(args.kind, args.value);
-    if (value === null) fail("validation_failed", args.kind === "phone" ? "Check the phone number" : "Check the handle");
+    if (value === null) fail(
+        "validation_failed",
+        args.kind === "phone"
+          ? "That doesn't look like a phone number. Include the area code."
+          : "That doesn't look like an Instagram handle.",
+      );
     const existing = (await activeShares(ctx, userId, args.meetupId)).filter((share) => share.kind === args.kind);
     const now = Date.now();
     if (existing.length > 0) {
@@ -147,5 +152,82 @@ export const list = query({
         dayLabel: contact.dayLabel,
         shares: contact.shares,
       }));
+  },
+});
+
+// How long after an event Stay in touch stays offered on its own screen.
+const SHAREABLE_FOR_MS = 7 * 24 * 60 * 60 * 1000;
+
+// S14: recent plans where this student may still share (both were in at the meeting time), newest
+// first, so Stay in touch survives a newer offer arriving. share and stopSharing accept these IDs.
+export const shareable = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      meetupId: v.id("meetups"),
+      partnerFirstName: v.string(),
+      eventTitle: v.string(),
+      startsAt: v.number(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const userId = await verifiedViewerId(ctx);
+    if (userId === null) return [];
+    const mySeats = await ctx.db
+      .query("meetupMembers")
+      .withIndex("by_user_seat", (q) => q.eq("userId", userId).eq("seat", "in"))
+      .collect();
+    const result = [];
+    for (const seat of mySeats) {
+      const eligible = await eligibility(ctx, userId, seat.meetupId);
+      if (eligible === null) continue;
+      const event = await ctx.db.get(eligible.plan.eventId);
+      if (event === null || Date.now() - event.startsAt > SHAREABLE_FOR_MS) continue;
+      const partner = await ctx.db.get(eligible.partnerSeat.userId);
+      if (partner === null) continue;
+      result.push({
+        meetupId: seat.meetupId,
+        partnerFirstName: partner.firstName ?? "",
+        eventTitle: event.title,
+        startsAt: event.startsAt,
+      });
+    }
+    return result.sort((a, b) => b.startsAt - a.startsAt);
+  },
+});
+
+// S15: what this student has shared, across plans, so Contacts can offer "Stop sharing".
+export const mine = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      meetupId: v.id("meetups"),
+      partnerFirstName: v.string(),
+      kind: vShareKind,
+      value: v.string(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const userId = await verifiedViewerId(ctx);
+    if (userId === null) return [];
+    const shares = (
+      await ctx.db
+        .query("contactShares")
+        .withIndex("by_user_meetup", (q) => q.eq("userId", userId))
+        .collect()
+    ).filter((share) => share.revokedAt === undefined);
+    const result = [];
+    for (const share of shares) {
+      const eligible = await eligibility(ctx, userId, share.meetupId);
+      if (eligible === null) continue;
+      const partner = await ctx.db.get(eligible.partnerSeat.userId);
+      result.push({
+        meetupId: share.meetupId,
+        partnerFirstName: partner?.firstName ?? "",
+        kind: share.kind,
+        value: share.value,
+      });
+    }
+    return result;
   },
 });

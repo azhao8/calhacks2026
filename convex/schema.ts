@@ -286,6 +286,8 @@ export default defineSchema({
     meetingStartedAt: v.optional(v.number()),
     // Set by reconcile at the cutoff, so live views stop promising a refill (queries don't rerun as time passes).
     cutoffPassedAt: v.optional(v.number()),
+    // The first time both seats were in (plan clock). Gates who keeps the meeting spot after a drop.
+    setAt: v.optional(v.number()),
     createdAt: v.number(),
     endReason: v.optional(v.string()),
   })

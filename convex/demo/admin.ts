@@ -226,6 +226,8 @@ export const reset = internalMutation({
       }
       await ctx.db.delete(user._id);
     }
+    // A rehearsal may have jumped the demo clock; the next run starts from real time.
+    await applyClockOffset(ctx, 0, "reset");
     await seedDemoStudents(ctx);
     return { deletedStudents: demos.length, reopenedSeats, deletedPlans, teamAsksDeleted };
   },
@@ -236,29 +238,35 @@ export const reset = internalMutation({
 export const setClockOffset = internalMutation({
   args: { offsetMs: v.number(), updatedBy: v.optional(v.string()) },
   returns: v.object({ plansReconciled: v.number() }),
-  handler: async (ctx, { offsetMs, updatedBy }) => {
-    const settings = await ctx.db.query("demoSettings").first();
-    const row = { clockOffsetMs: offsetMs, updatedAt: Date.now(), updatedBy };
-    if (settings) await ctx.db.patch(settings._id, row);
-    else await ctx.db.insert("demoSettings", row);
-
-    let plansReconciled = 0;
-    for (const status of ["forming", "set"] as const) {
-      const plans = await ctx.db
-        .query("meetups")
-        .withIndex("by_status", (q) => q.eq("status", status))
-        .collect();
-      for (const plan of plans) {
-        if (!plan.isDemoPlan) continue;
-        await reconcilePlan(ctx, plan._id);
-        const current = await ctx.db.get(plan._id);
-        if (current && isActivePlan(current)) await scheduleBoundaries(ctx, current);
-        plansReconciled += 1;
-      }
-    }
-    return { plansReconciled };
-  },
+  handler: async (ctx, { offsetMs, updatedBy }) => await applyClockOffset(ctx, offsetMs, updatedBy),
 });
+
+async function applyClockOffset(
+  ctx: MutationCtx,
+  offsetMs: number,
+  updatedBy: string | undefined,
+): Promise<{ plansReconciled: number }> {
+  const settings = await ctx.db.query("demoSettings").first();
+  const row = { clockOffsetMs: offsetMs, updatedAt: Date.now(), updatedBy };
+  if (settings) await ctx.db.patch(settings._id, row);
+  else await ctx.db.insert("demoSettings", row);
+
+  let plansReconciled = 0;
+  for (const status of ["forming", "set"] as const) {
+    const plans = await ctx.db
+      .query("meetups")
+      .withIndex("by_status", (q) => q.eq("status", status))
+      .collect();
+    for (const plan of plans) {
+      if (!plan.isDemoPlan) continue;
+      await reconcilePlan(ctx, plan._id);
+      const current = await ctx.db.get(plan._id);
+      if (current && isActivePlan(current)) await scheduleBoundaries(ctx, current);
+      plansReconciled += 1;
+    }
+  }
+  return { plansReconciled };
+}
 
 // "Act as" a demo student on the admin page.
 export const actAs = internalMutation({

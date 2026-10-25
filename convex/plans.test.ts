@@ -334,7 +334,7 @@ describe("changes of plan", () => {
     await bothIn(t, p);
     await reconcileAt(t, p.meetupId, MEET);
     await expect(asUser(t, p.sam).mutation(api.plans.cantMakeIt, { seatId: p.samSeat })).rejects.toThrow(
-      /validation_failed/,
+      /seat_unavailable/,
     );
   });
 });
@@ -372,7 +372,7 @@ describe("meetup day, leaving, and completion", () => {
     const t = await setup();
     const p = await pairUp(t);
     await bothIn(t, p);
-    await expect(asUser(t, p.sam).mutation(api.plans.leave, { seatId: p.samSeat })).rejects.toThrow(/validation_failed/);
+    await expect(asUser(t, p.sam).mutation(api.plans.leave, { seatId: p.samSeat })).rejects.toThrow(/seat_unavailable/);
     await reconcileAt(t, p.meetupId, MEET);
     expect((await asUser(t, p.sam).query(api.plans.current, {}))!.canLeave).toBe(true);
     await asUser(t, p.sam).mutation(api.plans.leave, { seatId: p.samSeat });

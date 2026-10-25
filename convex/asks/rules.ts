@@ -2,6 +2,7 @@ import type { Doc } from "../_generated/dataModel";
 import { ASK_RERANK } from "../matching/config";
 import { normalizeName } from "../matching/taste";
 import type { Area } from "../lib/validators";
+import { priceLabel } from "../lib/format";
 
 // Candidate rules and the rerank for "Can you make it?" asks (CLAUDE.md §6.2). Pure functions.
 
@@ -17,6 +18,12 @@ export function knownPrice(event: Pick<Doc<"events">, "priceMin" | "priceMax" | 
   const price = event.priceMin ?? event.priceMax;
   if (price !== null) return price;
   return event.freeEntryNote ? 0 : null;
+}
+
+// The price students see: "Free" for a clear free-entry note with no listed price, never invented.
+export function eventPriceLabel(event: Pick<Doc<"events">, "priceMin" | "priceMax" | "freeEntryNote">): string {
+  if (event.priceMin === null && event.priceMax === null && event.freeEntryNote) return "Free";
+  return priceLabel(event.priceMin, event.priceMax);
 }
 
 // An unknown price passes, but ranks lower.

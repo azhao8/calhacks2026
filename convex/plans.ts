@@ -4,7 +4,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { requireVerifiedUser } from "./lib/access";
 import { verifiedViewerId } from "./plans/viewer";
 import { fail } from "./lib/errors";
-import { dayLabel, priceLabel, timeLabel } from "./lib/format";
+import { dayLabel, timeLabel } from "./lib/format";
+import { eventPriceLabel } from "./asks/rules";
 import { vPlanView, type PlanView } from "./lib/views";
 import { TIMING } from "./lib/config";
 import {
@@ -83,11 +84,16 @@ export const current = query({
     const event = await ctx.db.get(plan.eventId);
     if (event === null) return null;
     const venue = event.venueId ? await ctx.db.get(event.venueId) : null;
-    const { offset } = await planClock(ctx.db, plan);
+    const { offset, now: planNow } = await planClock(ctx.db, plan);
     const seats = await seatsOf(ctx.db, plan._id);
     const partnerSeat = seats.find((other) => other._id !== seat._id && isActiveSeat(other)) ?? null;
     const partnerUser = partnerSeat ? await ctx.db.get(partnerSeat.userId) : null;
-    const someoneLeftSeat = seats.some((other) => other.userId !== userId && other.seat === "out");
+    // Only seats that went out while this student held theirs: someone refilled into a seat is never
+    // told who left it.
+    const leftWhileIHeld = seats.filter(
+      (other) => other.userId !== userId && other.seat === "out" && (other.outAt ?? 0) >= seat.offeredAt,
+    );
+    const someoneLeftSeat = leftWhileIHeld.length > 0;
     const metAtMeetingTime = plan.meetingStartedAt !== undefined;
 
     const stage: PlanView["stage"] =
@@ -105,13 +111,16 @@ export const current = query({
 
     // The meeting spot appears once both are in. The person who stayed keeps it while a dropped seat is
     // refilled; someone newly offered a seat doesn't see it until they're in.
+    // Keeping the spot after a drop needs a plan that was set while this student was already in.
+    const wasSetWithMe = plan.setAt !== undefined && (seat.respondedAt ?? Infinity) <= plan.setAt;
     const seesMeeting =
       seat.seat === "in" &&
       (plan.status === "set" ||
         stage === "after" ||
-        (plan.status !== "called_off" &&
+        (wasSetWithMe &&
+          plan.status !== "called_off" &&
           seats.some((other) => other.seat === "out" && (other.outReason === "cant_make_it" || other.outReason === "no_ticket"))) ||
-        (plan.status === "called_off" && plan.endReason === "nobody_by_cutoff"));
+        (wasSetWithMe && plan.status === "called_off" && plan.endReason === "nobody_by_cutoff"));
     const spot = seesMeeting && plan.meetingSpotId ? await ctx.db.get(plan.meetingSpotId) : null;
     const meeting =
       seesMeeting && spot
@@ -131,15 +140,14 @@ export const current = query({
     else if (partnerSeat?.leftAt !== undefined) notice = "partner_left";
     // Whether I'm in or still deciding on my offer, a partner who gave up their seat is named.
     else if (partnerSeat === null && someoneLeftSeat) notice = "partner_dropped";
-    else if (partnerSeat !== null && someoneLeftSeat && partnerSeat.offeredAt > (seat.respondedAt ?? 0))
+    // The partner arrived after me to take a seat someone gave up while I was here.
+    else if (partnerSeat !== null && someoneLeftSeat && partnerSeat.offeredAt > seat.offeredAt)
       notice = "partner_replaced";
 
     // The person who gave up the seat; this student already saw the name in the offer.
     let previousPartnerFirstName: string | null = null;
     if (notice === "partner_dropped" || notice === "partner_replaced") {
-      const lastOut = seats
-        .filter((other) => other.userId !== userId && other.seat === "out")
-        .sort((a, b) => (b.outAt ?? 0) - (a.outAt ?? 0))[0];
+      const lastOut = [...leftWhileIHeld].sort((a, b) => (b.outAt ?? 0) - (a.outAt ?? 0))[0];
       const previous = lastOut ? await ctx.db.get(lastOut.userId) : null;
       previousPartnerFirstName = previous?.firstName ?? null;
     }
@@ -157,7 +165,7 @@ export const current = query({
         venueName: venue?.name ?? "",
         dayLabel: dayLabel(event.startsAt),
         timeLabel: timeLabel(event.startsAt),
-        priceLabel: priceLabel(event.priceMin, event.priceMax),
+        priceLabel: eventPriceLabel(event),
       },
       hook: plan.hook,
       me: {
@@ -184,8 +192,8 @@ export const current = query({
       icebreaker: revealDay ? plan.icebreaker : null,
       // A seat given up now reopens and is refilled only before the cutoff (same clock as reconcile).
       beforeCutoff: isActivePlan(plan) && plan.cutoffPassedAt === undefined,
-      canCantMakeIt: seat.seat === "in" && isActivePlan(plan) && !meetingTimeReached,
-      canLeave: plan.status === "set" && meetingTimeReached && seat.leftAt === undefined,
+      canCantMakeIt: seat.seat === "in" && isActivePlan(plan) && !meetingTimeReached && planNow < plan.meetAt,
+      canLeave: plan.status === "set" && (meetingTimeReached || planNow >= plan.meetAt) && seat.leftAt === undefined,
       canShare: eligible,
     };
   },
@@ -211,7 +219,8 @@ export const nextTime = mutation({
     const userId = (await requireVerifiedUser(ctx))._id;
     const seat = await ownSeat(ctx, userId, seatId);
     if (seat.seat === "out") return null; // Already given up: repeating is harmless.
-    if (seat.seat !== "offered") fail("validation_failed", "Use cantMakeIt for a seat you accepted");
+    // The seat changed under the student (it was accepted or reopened): the screen refreshes.
+    if (seat.seat !== "offered") fail("seat_unavailable");
     await dropSeat(ctx, seat, "next_time");
     return null;
   },
@@ -253,7 +262,7 @@ export const leave = mutation({
     if (plan === null || seat.seat !== "in") fail("seat_unavailable");
     await reconcilePlan(ctx, plan._id);
     const current = (await ctx.db.get(plan._id))!;
-    if (current.meetingStartedAt === undefined) fail("validation_failed", "Before the meeting time, use cantMakeIt");
+    if (current.meetingStartedAt === undefined) fail("seat_unavailable");
     const { now } = await planClock(ctx.db, current);
     await ctx.db.patch(seat._id, { leftAt: now });
     await reconcilePlan(ctx, plan._id);
