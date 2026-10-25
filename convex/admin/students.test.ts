@@ -77,6 +77,11 @@ test("the list shows every account with its kind, stage and seat, with search an
   expect(found.rows).toHaveLength(1);
   expect(found.rows[0]).toMatchObject({ userId: maya, kind: "real", stage: "ready", seat: { seat: "offered", planStatus: "forming" } });
   expect((await admin.query(api.admin.students.list, { kind: "team" })).rows[0].isYou).toBe(true);
+
+  // The Spotify email the app owner adds shows on the row, and search finds it.
+  await t.run((ctx) => ctx.db.insert("spotifyAccess", { userId: maya, spotifyEmail: "maya.listens@gmail.com", status: "requested", requestedAt: 1 }));
+  const bySpotify = await admin.query(api.admin.students.list, { search: "maya.listens" });
+  expect(bySpotify.rows.map((row) => [row.userId, row.spotifyEmail, row.spotify])).toEqual([[maya, "maya.listens@gmail.com", "no_app"]]);
 });
 
 test("deleting a student removes all their data and reopens their partner's seat", async () => {

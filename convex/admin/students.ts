@@ -48,6 +48,8 @@ export const list = query({
         signedUpAt: v.number(),
         verified: v.boolean(),
         spotify: v.union(v.string(), v.null()),
+        spotifyEmail: v.union(v.string(), v.null()),
+        appLabel: v.union(v.string(), v.null()),
         seat: v.union(v.null(), v.object({ eventTitle: v.string(), seat: v.string(), planStatus: v.string() })),
         isYou: v.boolean(),
       }),
@@ -61,10 +63,11 @@ export const list = query({
     const kinds = { real: 0, demo: 0, team: 0 };
     for (const user of users) kinds[kindOf(user)] += 1;
     const search = (args.search ?? "").trim().toLowerCase();
+    const spotifyEmails = new Map((await ctx.db.query("spotifyAccess").collect()).map((row) => [row.userId, row.spotifyEmail]));
     const matching = users.filter((user) => {
       if (args.kind !== undefined && kindOf(user) !== args.kind) return false;
       if (args.stage !== undefined && user.onboarding !== args.stage) return false;
-      if (search && !`${user.firstName ?? ""} ${user.email ?? ""}`.toLowerCase().includes(search)) return false;
+      if (search && !`${user.firstName ?? ""} ${user.email ?? ""} ${spotifyEmails.get(user._id) ?? ""}`.toLowerCase().includes(search)) return false;
       return true;
     });
     const limit = Math.min(Math.max(1, Math.floor(args.limit ?? PAGE)), PAGE_MAX);
@@ -84,6 +87,7 @@ export const list = query({
             .query("meetupMembers")
             .withIndex("by_user_seat", (q) => q.eq("userId", user._id).eq("seat", "offered"))
             .first());
+        const app = access?.spotifyAppId ? await ctx.db.get(access.spotifyAppId) : null;
         const plan = held ? await ctx.db.get(held.meetupId) : null;
         const event = plan ? await ctx.db.get(plan.eventId) : null;
         return {
@@ -95,6 +99,8 @@ export const list = query({
           signedUpAt: user._creationTime,
           verified: user.verifiedAt !== undefined,
           spotify: access ? adminStatus(access) : null,
+          spotifyEmail: access?.spotifyEmail ?? null,
+          appLabel: app?.label ?? null,
           seat: held && plan && event ? { eventTitle: event.title, seat: held.seat, planStatus: plan.status } : null,
           isYou: user._id === admin._id,
         };
