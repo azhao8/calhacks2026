@@ -137,6 +137,8 @@ export const AUDIENCE = {
   labelsMin: 3,
   labelsMax: 8,
   effort: "low",
+  // A queued profile job counts as in flight for this long; after that the backfill may try again.
+  inFlightMs: 1 * HOUR,
 } as const;
 
 export function dropsEnabled(): boolean {

@@ -50,6 +50,7 @@ export const backfill = internalMutation({
   handler: async (ctx) => {
     // Drops off: write nothing new, so the old flow sees exactly what main has today.
     if (!dropsEnabled()) return 0;
+    const now = Date.now();
     const events = await ctx.db
       .query("events")
       .withIndex("by_status_startsAt", (q) => q.eq("status", "published").gt("startsAt", Date.now()))
@@ -59,6 +60,14 @@ export const backfill = internalMutation({
       const venue = event.venueId ? await ctx.db.get(event.venueId) : null;
       const key = audienceSourceKey(event, venue?.name ?? "");
       if (event.audienceProfile?.sourceKey === key && event.audienceEmbedding !== undefined) continue;
+      // Already queued for this version of the event within the hour: still in flight or retrying.
+      const job = await ctx.db
+        .query("audienceJobs")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .first();
+      if (job !== null && job.sourceKey === key && now - job.queuedAt < AUDIENCE.inFlightMs) continue;
+      if (job === null) await ctx.db.insert("audienceJobs", { eventId: event._id, sourceKey: key, queuedAt: now });
+      else await ctx.db.patch(job._id, { sourceKey: key, queuedAt: now });
       await aiPool.enqueueAction(ctx, internal.drops.audience.generate, { eventId: event._id });
       queued += 1;
     }

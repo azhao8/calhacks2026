@@ -36,7 +36,10 @@ export async function matchDrop(ctx: MutationCtx, dropId: Id<"drops">): Promise<
 
   async function member(entry: Doc<"dropEntries">): Promise<Member | null> {
     const user = await ctx.db.get(entry.userId);
-    if (user === null) return null;
+    // Gone, no longer ready (for example after a Spotify disconnect), or a real student with no
+    // confirmed taste: never matched.
+    if (user === null || user.onboarding !== "ready") return null;
+    if (!user.isDemo && !profiles.has(user._id)) return null;
     const prefs = await ctx.db
       .query("preferences")
       .withIndex("by_userId", (q) => q.eq("userId", user._id))
@@ -93,11 +96,13 @@ export async function matchDrop(ctx: MutationCtx, dropId: Id<"drops">): Promise<
   const byEvent = new Map<Id<"events">, Member[]>();
   const demoMembers: Member[] = [];
   for (const entry of accepted.sort((x, y) => x.userId.localeCompare(y.userId))) {
-    if (entry.eventId === undefined) continue;
-    const m = await member(entry);
-    if (m === null) continue;
+    const m = entry.eventId === undefined ? null : await member(entry);
+    if (m === null) {
+      await ctx.db.patch(entry._id, { state: "unmatched", endedAt: real });
+      continue;
+    }
     if (m.user.isDemo) demoMembers.push(m);
-    else byEvent.set(entry.eventId, [...(byEvent.get(entry.eventId) ?? []), m]);
+    else byEvent.set(entry.eventId!, [...(byEvent.get(entry.eventId!) ?? []), m]);
   }
   // Demo students in the pool for refills of any event: they hold one seat per event.
   const allDemos = (

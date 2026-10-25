@@ -31,10 +31,10 @@ const T0 = Date.now();
 const DROP_EVENT = { title: "Indie folk night", venue: "The UC Theatre", startsAt: Date.UTC(2026, 9, 30, 3, 0), price: "$18 to $25", kind: "concert" };
 const DROP = {
   none: { kind: "none" },
-  choosing: { kind: "choosing", endsAt: T0 + 2 * 3600e3, card: { startsAt: Date.UTC(2026, 9, 30, 3, 0), price: "$18 to $25" } },
-  deciding: { kind: "deciding", endsAt: T0 + 2 * 3600e3, acceptBy: T0 + 24 * 3600e3 - 1000, event: DROP_EVENT },
-  accepted: { kind: "accepted", endsAt: T0 + 3600e3, matchAt: Date.UTC(2026, 9, 26, 12, 30), event: DROP_EVENT },
-  done: { kind: "done", endsAt: T0 + 45 * 60e3 },
+  choosing: { kind: "choosing", phase: "choosing", endsAt: T0 + 2 * 3600e3, card: { startsAt: Date.UTC(2026, 9, 30, 3, 0), price: "$18 to $25" } },
+  deciding: { kind: "deciding", phase: "choosing", endsAt: T0 + 2 * 3600e3, acceptBy: T0 + 24 * 3600e3 - 1000, event: DROP_EVENT },
+  accepted: { kind: "accepted", phase: "confirming", endsAt: T0 + 3600e3, matchAt: Date.UTC(2026, 9, 26, 12, 30), event: DROP_EVENT },
+  done: { kind: "done", phase: "confirming", endsAt: T0 + 45 * 60e3 },
 };
 
 const scenarios = [
@@ -167,6 +167,8 @@ const scenarios = [
   { id: "drop-deciding-fail", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.deciding }), handlers: { "drops:accept": () => { throw fail("offer_expired"); } }, script: "tapDropAccept" },
   { id: "drop-accepted", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.accepted }), variants: ALL },
   { id: "drop-done", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.done }) },
+  { id: "drop-called-off", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.none, "plans:current": F.plans.calledOff }) },
+  { id: "drop-after", screen: "Drop", path: "/drop", data: ready({ "drops:mine": DROP.choosing, "plans:current": F.plans.after, "contacts:shareable": [{ meetupId: "meetup_1", partnerFirstName: "Maya", eventTitle: "Indie folk night", startsAt: Date.UTC(2026, 9, 30, 3, 0) }] }) },
   { id: "drop-loading", screen: "Drop", path: "/drop", data: ready({ "drops:mine": hold }) },
 ];
 

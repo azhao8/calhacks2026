@@ -7,11 +7,12 @@ import { Button } from "@/components/Button";
 import { Card, InlineError, Meta, MetaItem } from "@/components/Card";
 import { ChoiceCard } from "@/components/ChoiceCard";
 import { DropTimer } from "@/components/DropTimer";
-import { countdownDigits, dropsApi, useDrop, whenLabel, type DropEvent, type DropView } from "@/app/_lib/drop";
+import { countdownDigits, dropPhase, dropsApi, useDrop, whenLabel, type DropEvent, type DropView } from "@/app/_lib/drop";
 import { errorCopy } from "@/app/_lib/errors";
 import { useGate, useNow, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
 import { LoadingScreen, Panel, Screen, ScreenTitle } from "@/app/_components/Screen";
+import { EndedPlanNotices } from "./PlanNotices";
 
 type Action = "seeMore" | "passForever" | "accept" | "nextTime";
 
@@ -28,14 +29,22 @@ export default function DropPage() {
     if (revealTo) router.replace(revealTo);
   }, [revealTo, router]);
 
-  if (!ready || drop === undefined || drop.kind === "reveal") return <LoadingScreen object="ticket" title="Loading the drop" />;
+  const plan = gate.status === "ready" ? gate.plan : undefined;
+  if (!ready || drop === undefined || drop.kind === "reveal" || plan === undefined) {
+    return <LoadingScreen object="ticket" title="Loading the drop" />;
+  }
+  // Home is the Drop, so the notices for a plan that ended live here (they were on the week).
+  const notices = <EndedPlanNotices plan={plan} />;
   if (drop.kind === "none") {
     return (
-      <Screen object="radio" menu top={<ScreenTitle lead="Come back later. We'll email you when the next one opens.">No drop right now</ScreenTitle>} />
+      <Screen object="radio" menu top={<ScreenTitle lead="Come back later. We'll email you when the next one opens.">No drop right now</ScreenTitle>}>
+        {notices}
+      </Screen>
     );
   }
   return (
-    <Screen object="ticket" menu top={<DropTimer endsAt={drop.endsAt} />}>
+    <Screen object="ticket" menu top={<DropTimer endsAt={drop.endsAt} phase={dropPhase(drop)} />}>
+      {notices}
       <DropState key={drop.kind} drop={drop} />
     </Screen>
   );

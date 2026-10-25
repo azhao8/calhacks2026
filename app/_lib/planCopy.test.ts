@@ -50,6 +50,16 @@ test("confirm copy promises a replacement only before the cutoff", () => {
   expect(afterLeavingText({ kind: "next_time", beforeCutoff: false, meetupId: "m" }).title).toBe("No problem. We will keep looking.");
 });
 
+test("after a seat ends, the next step is the next drop, never other yeses", () => {
+  for (const kind of ["next_time", "cant_make_it", "no_ticket"] as const) {
+    for (const beforeCutoff of [true, false]) {
+      const { title, body } = afterLeavingText({ kind, beforeCutoff, meetupId: "m" });
+      expect(body).toBe("We'll email you when the next drop opens.");
+      expect(title + body).not.toMatch(/yes/i);
+    }
+  }
+});
+
 test("no pronouns for the partner and no dashes in any line", () => {
   const lines = [
     cantMakeItDetail(plan({ beforeCutoff: false })),

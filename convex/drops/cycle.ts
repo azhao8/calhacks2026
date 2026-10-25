@@ -49,12 +49,12 @@ export async function entriesIn(db: DatabaseReader, dropId: Id<"drops">, state: 
     .collect();
 }
 
-// Onboarding ready and holding no active plan. Demo students hold one seat per event, so they always
-// take part.
+// Onboarding ready and holding no active plan (a seat they left at the meeting time doesn't count:
+// they're no longer part of it). Demo students hold one seat per event, so they always take part.
 async function isEligible(db: DatabaseReader, user: Doc<"users">): Promise<boolean> {
   if (user.onboarding !== "ready") return false;
   if (user.isDemo) return true;
-  return (await heldSeats(db, user._id)).length === 0;
+  return (await heldSeats(db, user._id)).every(({ seat }) => seat.leftAt !== undefined);
 }
 
 // Published events near the drop window, with their venue's area.
@@ -220,8 +220,18 @@ export async function joinLate(ctx: MutationCtx, userId: Id<"users">): Promise<v
   await createEntry(ctx, drop, user);
 }
 
+// A student freed from a plan (seat out, left, or the plan done or called off) joins while choosing.
+export const joinLateFor = internalMutation({
+  args: { userId: v.id("users") },
+  returns: v.null(),
+  handler: async (ctx, { userId }) => {
+    await joinLate(ctx, userId);
+    return null;
+  },
+});
+
 // Choosing ends: demo students finish, students still on cards are turned away, and students on an
-// event screen keep until matchAt to accept.
+// event screen get 24 hours from now to accept (matchAt moves, and the match is scheduled there).
 export async function endChoosingFor(ctx: MutationCtx, drop: Drop): Promise<void> {
   if (drop.status !== "choosing") return;
   const now = Date.now();
@@ -229,11 +239,9 @@ export async function endChoosingFor(ctx: MutationCtx, drop: Drop): Promise<void
   for (const entry of await entriesIn(ctx.db, drop._id, "choosing")) {
     await ctx.db.patch(entry._id, { state: "turned_away", endedAt: now });
   }
-  await ctx.db.patch(drop._id, {
-    status: "confirming",
-    endedChoosingAt: now,
-    choosingEndsAt: Math.min(drop.choosingEndsAt, now),
-  });
+  const matchAt = now + DROP.confirmMs;
+  await ctx.db.patch(drop._id, { status: "confirming", endedChoosingAt: now, choosingEndsAt: now, matchAt });
+  await ctx.scheduler.runAt(matchAt, internal.drops.cycle.match, { dropId: drop._id });
 }
 
 export const endChoosing = internalMutation({
@@ -247,9 +255,12 @@ export const endChoosing = internalMutation({
 });
 
 // Matching: anyone who hasn't accepted is turned away, then each event's accepted students are paired.
-export async function matchFor(ctx: MutationCtx, dropId: Id<"drops">): Promise<void> {
+// A scheduled run matches only when the drop is confirming and matchAt has come, so a stale job (from
+// before matchAt moved) does nothing. Match now passes `force`.
+export async function matchFor(ctx: MutationCtx, dropId: Id<"drops">, force = false): Promise<void> {
   let drop = await ctx.db.get(dropId);
   if (drop === null || drop.status === "matched") return;
+  if (!force && (drop.status !== "confirming" || Date.now() < drop.matchAt)) return;
   await endChoosingFor(ctx, drop);
   drop = (await ctx.db.get(dropId))!;
   await fastForwardDemos(ctx, drop);
@@ -263,10 +274,10 @@ export async function matchFor(ctx: MutationCtx, dropId: Id<"drops">): Promise<v
 }
 
 export const match = internalMutation({
-  args: { dropId: v.id("drops") },
+  args: { dropId: v.id("drops"), force: v.optional(v.boolean()) },
   returns: v.null(),
-  handler: async (ctx, { dropId }) => {
-    await matchFor(ctx, dropId);
+  handler: async (ctx, { dropId, force }) => {
+    await matchFor(ctx, dropId, force === true);
     return null;
   },
 });
@@ -292,7 +303,7 @@ export async function startDrop(ctx: MutationCtx, by: string, quiet = false): Pr
   return dropId;
 }
 
-// Admin: End choosing, now. The 24 hours to accept keep their original end (matchAt).
+// Admin: End choosing, now. The 24 hours to accept start from now.
 export async function requestEndChoosing(ctx: MutationCtx): Promise<void> {
   const drop = await openDrop(ctx.db);
   if (drop === null || drop.status !== "choosing") fail("validation_failed", "No drop is choosing right now.");
@@ -304,7 +315,7 @@ export async function requestMatchNow(ctx: MutationCtx, quiet = false): Promise<
   const drop = await openDrop(ctx.db);
   if (drop === null) fail("validation_failed", "No drop is open right now.");
   if (quiet && !drop.quiet) await ctx.db.patch(drop._id, { quiet: true });
-  await ctx.scheduler.runAfter(0, internal.drops.cycle.match, { dropId: drop._id });
+  await ctx.scheduler.runAfter(0, internal.drops.cycle.match, { dropId: drop._id, force: true });
 }
 
 export async function adminStatus(db: DatabaseReader): Promise<Infer<typeof vAdminDropStatus>> {

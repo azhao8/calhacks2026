@@ -4,6 +4,7 @@ import { fail } from "../lib/errors";
 import { eventPriceLabel } from "../asks/rules";
 import { hookItems } from "../matching/names";
 import { documentFrequency, sharedItems } from "../matching/taste";
+import { normalizeTrackKey } from "../lib/normalize";
 import { isActivePlan, isActiveSeat, seatsOf } from "../plans/model";
 import { entryFor, latestDrop, openDrop, type Drop, type Entry } from "./cycle";
 import type { DropView, Reveal } from "./views";
@@ -12,6 +13,10 @@ import type { DropView, Reveal } from "./views";
 
 function endsAt(drop: Drop): number {
   return drop.status === "choosing" ? drop.choosingEndsAt : drop.matchAt;
+}
+
+function phase(drop: Drop): "choosing" | "confirming" {
+  return drop.status === "choosing" ? "choosing" : "confirming";
 }
 
 async function eventDetails(db: DatabaseReader, eventId: Id<"events">) {
@@ -53,22 +58,22 @@ export async function dropView(db: DatabaseReader, userId: Id<"users">): Promise
   switch (entry.state) {
     case "choosing": {
       const event = await db.get(entry.choices[entry.index]);
-      if (event === null) return { kind: "done", endsAt: endsAt(drop) };
-      return { kind: "choosing", endsAt: endsAt(drop), card: { startsAt: event.startsAt, price: eventPriceLabel(event) } };
+      if (event === null) return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
+      return { kind: "choosing", phase: phase(drop), endsAt: endsAt(drop), card: { startsAt: event.startsAt, price: eventPriceLabel(event) } };
     }
     case "deciding": {
       const event = await eventDetails(db, entry.eventId!);
-      if (event === null) return { kind: "done", endsAt: endsAt(drop) };
-      return { kind: "deciding", endsAt: endsAt(drop), acceptBy: drop.matchAt, event };
+      if (event === null) return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
+      return { kind: "deciding", phase: phase(drop), endsAt: endsAt(drop), acceptBy: drop.matchAt, event };
     }
     case "accepted": {
       const event = await eventDetails(db, entry.eventId!);
-      if (event === null) return { kind: "done", endsAt: endsAt(drop) };
-      return { kind: "accepted", endsAt: endsAt(drop), matchAt: drop.matchAt, event };
+      if (event === null) return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
+      return { kind: "accepted", phase: phase(drop), endsAt: endsAt(drop), matchAt: drop.matchAt, event };
     }
     case "passed":
     case "declined":
-      return { kind: "done", endsAt: endsAt(drop) };
+      return { kind: "done", phase: phase(drop), endsAt: endsAt(drop) };
     default:
       return { kind: "none" };
   }
@@ -139,6 +144,9 @@ async function trackArtist(db: DatabaseReader, key: string, userIds: Id<"users">
       .first();
     const track = snapshot?.topTracks.find((t) => t.normalizedKey === key);
     if (track?.artistNames[0]) return track.artistNames[0];
+    // A song shared only through liked songs.
+    const liked = snapshot?.likedSongs.find((s) => normalizeTrackKey(s.name, s.artistNames) === key);
+    if (liked?.artistNames[0]) return liked.artistNames[0];
   }
   return key.split("|")[1] ?? "";
 }

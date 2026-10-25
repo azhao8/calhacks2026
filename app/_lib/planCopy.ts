@@ -41,9 +41,12 @@ export function couldntGetOneDetail(plan: Plan): string {
     : `That's okay. ${TOO_CLOSE}`;
 }
 
+// Under Drops there is nothing else pending after a seat ends; the next chance is the next drop.
+const NEXT_DROP = "We'll email you when the next drop opens.";
+
 export function afterLeavingText(ended: Ended): { title: string; body: string } {
-  if (ended.kind === "next_time") return { title: "No problem. We will keep looking.", body: "Your other yeses still count." };
+  if (ended.kind === "next_time") return { title: "No problem. We will keep looking.", body: NEXT_DROP };
   return ended.beforeCutoff
-    ? { title: "Done. Your seat is open for someone else.", body: "We will keep looking for your other yeses." }
-    : { title: "Done. Thanks for letting us know.", body: "We will keep looking for your other yeses." };
+    ? { title: "Done. Your seat is open for someone else.", body: NEXT_DROP }
+    : { title: "Done. Thanks for letting us know.", body: NEXT_DROP };
 }

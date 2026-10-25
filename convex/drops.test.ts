@@ -5,6 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import { DROP } from "./lib/config";
 import { pickChoices, type PickEvent } from "./drops/pick";
 import { validateAudience } from "./drops/audience";
+import { normalizeTrackKey } from "./lib/normalize";
 import { advance, asUser, DAY, HOUR, makeEvent, makeStudent, seatsFor, setup, T0, type T } from "./testing.helpers";
 
 const mocks = vi.hoisted(() => ({ generateJson: vi.fn(), embed: vi.fn(), sendEmail: vi.fn() }));
@@ -168,9 +169,12 @@ describe("the drop cycle", () => {
 
     await advance(t, DROP.choosingMs + 1000);
     expect((await admin.query(api.admin.drops.status, {})).drop?.status).toBe("confirming");
-    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "accepted", endsAt: drop.matchAt });
+    // Choosing ended: the 24 hours to accept run from then.
+    const confirming = (await admin.query(api.admin.drops.status, {})).drop!;
+    expect(confirming.matchAt).toBeGreaterThanOrEqual(drop.matchAt);
+    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "accepted", phase: "confirming", endsAt: confirming.matchAt });
 
-    await advance(t, DROP.confirmMs);
+    await advance(t, confirming.matchAt - Date.now() + 1000);
     const status = await admin.query(api.admin.drops.status, {});
     expect(status.drop?.status).toBe("matched");
     const view2 = await asUser(t, sam).query(api.drops.mine, {});
@@ -205,7 +209,7 @@ describe("the drop cycle", () => {
     const text = JSON.stringify(view);
     expect(text).not.toContain("Show");
     expect(text).not.toContain("UC Theatre");
-    expect(Object.keys(view).sort()).toEqual(["card", "endsAt", "kind"]);
+    expect(Object.keys(view).sort()).toEqual(["card", "endsAt", "kind", "phase"]);
     if (view.kind === "choosing") expect(Object.keys(view.card).sort()).toEqual(["price", "startsAt"]);
 
     // A plan Eve isn't in is forbidden to her.
@@ -450,7 +454,7 @@ describe("quiet drops", () => {
     await advance(t, 1000);
     await asUser(t, sam).mutation(api.drops.seeMore, {});
     await asUser(t, sam).mutation(api.drops.accept, {});
-    await advance(t, DROP.choosingMs + DROP.confirmMs);
+    await advance(t, DROP.choosingMs + DROP.confirmMs + 4 * HOUR);
     expect((await entryOf(t, sam))!.state).toBe("matched");
     expect(mocks.sendEmail).not.toHaveBeenCalled();
   });
@@ -469,5 +473,186 @@ describe("quiet drops", () => {
     await advance(t, 10_000);
     expect((await entryOf(t, sam))!.state).toBe("matched");
     expect(mocks.sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("review fixes", () => {
+  test("a student who accepts and then disconnects Spotify is unmatched, not matched or emailed", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: "d", email: "d@demo.invalid" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    await startDrop(t, admin);
+    await asUser(t, sam).mutation(api.drops.seeMore, {});
+    await asUser(t, sam).mutation(api.drops.accept, {});
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sam, { onboarding: "needs_spotify_connect" });
+      const profile = (await ctx.db.query("tasteProfiles").collect()).find((p) => p.userId === sam)!;
+      await ctx.db.delete(profile._id);
+    });
+    mocks.sendEmail.mockClear();
+    await admin.mutation(api.admin.drops.matchNow, {});
+    await advance(t, 10_000);
+    expect((await entryOf(t, sam))!.state).toBe("unmatched");
+    expect(await t.run(async (ctx) => (await ctx.db.query("meetups").collect()).length)).toBe(0);
+    expect(mocks.sendEmail.mock.calls.filter(([m]) => m.subject === "You've been matched")).toHaveLength(0);
+  });
+
+  test("a song shared only through liked songs shows its artist as Spotify spells it", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const key = normalizeTrackKey("Not", ["Big Thief"]);
+    const ids = [await makeStudent(t, { firstName: "Ann" }), await makeStudent(t, { firstName: "Ben" })];
+    await t.run(async (ctx) => {
+      for (const userId of ids) {
+        const profile = (await ctx.db.query("tasteProfiles").collect()).find((p) => p.userId === userId)!;
+        await ctx.db.patch(profile._id, { fingerprint: { ...profile.fingerprint, tracks: [key] } });
+        await ctx.db.insert("tasteSnapshots", {
+          userId,
+          source: "spotify",
+          topArtists: [],
+          topTracks: [],
+          likedSongs: [{ spotifyId: "s1", name: "Not", artistIds: ["a1"], artistNames: ["Big Thief"] }],
+          fetchedAt: Date.now(),
+        });
+      }
+    });
+    await startDrop(t, admin);
+    for (const id of ids) {
+      await asUser(t, id).mutation(api.drops.seeMore, {});
+      await asUser(t, id).mutation(api.drops.accept, {});
+    }
+    await admin.mutation(api.admin.drops.matchNow, {});
+    await advance(t, 10_000);
+    const view = await asUser(t, ids[0]).query(api.drops.mine, {});
+    if (view.kind !== "reveal") throw new Error("expected a reveal");
+    const { steps } = await asUser(t, ids[0]).query(api.drops.reveal, { meetupId: view.meetupId });
+    expect(steps.find((s) => s.kind === "song")).toEqual({ kind: "song", title: "Not", artist: "Big Thief" });
+  });
+});
+
+describe("End choosing restarts the 24 hours", () => {
+  test("matchAt moves to End choosing + 24h, the stale job no-ops, and the phase shows", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: "d", email: "d@demo.invalid" });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    await startDrop(t, admin);
+    const original = (await admin.query(api.admin.drops.status, {})).drop!;
+    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "choosing", phase: "choosing" });
+    await asUser(t, sam).mutation(api.drops.seeMore, {});
+    await asUser(t, sam).mutation(api.drops.accept, {});
+    await advance(t, 10 * 60_000);
+    const endedAt = Date.now();
+    await admin.mutation(api.admin.drops.endChoosing, {});
+    await advance(t, 1000);
+    const moved = (await admin.query(api.admin.drops.status, {})).drop!;
+    expect(moved.status).toBe("confirming");
+    expect(moved.matchAt).toBeGreaterThanOrEqual(endedAt + DROP.confirmMs);
+    expect(moved.matchAt).toBeLessThan(endedAt + DROP.confirmMs + 2000);
+    expect(moved.choosingEndsAt).toBeLessThan(original.choosingEndsAt);
+    expect(await asUser(t, sam).query(api.drops.mine, {})).toMatchObject({ kind: "accepted", phase: "confirming", endsAt: moved.matchAt, matchAt: moved.matchAt });
+    // A scheduled match run before matchAt does nothing.
+    await t.mutation(internal.drops.cycle.match, { dropId: (await entryOf(t, sam))!.dropId });
+    expect((await admin.query(api.admin.drops.status, {})).drop!.status).toBe("confirming");
+    expect((await entryOf(t, sam))!.state).toBe("accepted");
+    await advance(t, moved.matchAt - Date.now() + 1000);
+    expect((await admin.query(api.admin.drops.status, {})).drop!.status).toBe("matched");
+    expect((await entryOf(t, sam))!.state).toBe("matched");
+    // The original job at start + 2h + 24h then finds the drop matched and does nothing.
+    const plans = async () => t.run(async (ctx) => (await ctx.db.query("meetups").collect()).length);
+    const before = await plans();
+    await advance(t, original.matchAt - Date.now() + 1000);
+    expect(await plans()).toBe(before);
+  });
+});
+
+describe("audience jobs in flight", () => {
+  test("overlapping backfills queue one job per event version, and retry after an hour", async () => {
+    const { t } = await world();
+    await makeEvent(t, { startsAt: START });
+    expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(1);
+    expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(0);
+    vi.advanceTimersByTime(HOUR + 1000);
+    expect(await t.mutation(internal.drops.audience.backfill, {})).toBe(1);
+  });
+});
+
+describe("students freed from a plan join an open drop", () => {
+  // A set plan for a real student and a demo student, for an event at `startsAt`.
+  async function setPlan(t: T, userId: Id<"users">, startsAt: number) {
+    const eventId = await makeEvent(t, { startsAt, title: "Earlier show" });
+    const demo = await makeStudent(t, { firstName: "Demo", isDemo: true, demoKey: `p${startsAt}`, email: `p${startsAt}@demo.invalid` });
+    return await t.run(async (ctx) => {
+      const event = (await ctx.db.get(eventId))!;
+      const meetAt = event.startsAt - 30 * 60_000;
+      const meetupId = await ctx.db.insert("meetups", {
+        eventId,
+        status: "set",
+        marker: 12,
+        meetAt,
+        cutoffAt: meetAt - 2 * HOUR,
+        hook: "",
+        icebreaker: "",
+        hookFromClaude: false,
+        isDemoPlan: false,
+        setAt: Date.now(),
+        createdAt: Date.now(),
+      });
+      const seats: Id<"meetupMembers">[] = [];
+      for (const id of [userId, demo]) {
+        seats.push(
+          await ctx.db.insert("meetupMembers", {
+            meetupId,
+            userId: id,
+            seat: "in",
+            offeredAt: Date.now(),
+            offerExpiresAt: Date.now(),
+            ticket: "none",
+          }),
+        );
+      }
+      return { meetupId, seatId: seats[0] };
+    });
+  }
+
+  test("held at start: no entry; seat goes out during choosing: an entry", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const { seatId } = await setPlan(t, sam, START + DAY);
+    await startDrop(t, admin);
+    expect(await entryOf(t, sam)).toBeNull();
+    await asUser(t, sam).mutation(api.plans.cantMakeIt, { seatId });
+    await advance(t, 1000);
+    expect((await asUser(t, sam).query(api.drops.mine, {})).kind).toBe("choosing");
+  });
+
+  test("the plan completes during choosing: an entry", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const { meetupId } = await setPlan(t, sam, T0 - 3 * HOUR);
+    await startDrop(t, admin);
+    expect(await entryOf(t, sam)).toBeNull();
+    await advance(t, HOUR + 1000);
+    await t.mutation(internal.plans.reconcile.run, { meetupId });
+    await advance(t, 1000);
+    expect((await t.run(async (ctx) => ctx.db.get(meetupId)))!.status).toBe("done");
+    expect((await entryOf(t, sam))?.state).toBe("choosing");
+  });
+
+  test("the plan ends during confirming: no entry", async () => {
+    const { t, admin } = await world();
+    await makeEvent(t, { startsAt: START });
+    const sam = await makeStudent(t, { firstName: "Sam" });
+    const { meetupId } = await setPlan(t, sam, T0 - 3 * HOUR);
+    await startDrop(t, admin);
+    await admin.mutation(api.admin.drops.endChoosing, {});
+    await advance(t, HOUR + 1000);
+    await t.mutation(internal.plans.reconcile.run, { meetupId });
+    await advance(t, 1000);
+    expect((await t.run(async (ctx) => ctx.db.get(meetupId)))!.status).toBe("done");
+    expect(await entryOf(t, sam)).toBeNull();
   });
 });
