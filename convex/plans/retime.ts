@@ -7,7 +7,7 @@ import { scheduleAskCloses } from "../asks/close";
 // An event's start time or meeting offset changed: every plan still forming or set gets the new
 // meeting time and cutoff, is reconciled at once (offers now past the cutoff expire, an empty seat past
 // it calls the plan off), and has its time boundaries rescheduled. Reconcile reads now(forDemo).
-// INTEGRATION: stream B's convex/events/imports.ts and admin edits call this after changing the times.
+// stream B's convex/events/imports.ts and admin edits call this after changing the times.
 export const forEvent = internalMutation({
   args: { eventId: v.id("events") },
   returns: v.object({ plansRetimed: v.number() }),

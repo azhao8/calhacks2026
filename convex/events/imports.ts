@@ -238,8 +238,8 @@ export const upsertEvent = internalMutation({
       const wasPublished = existing.status === "published";
       await ctx.db.patch(existing._id, { ...seen, status: "rejected", rejectReason, featured: false });
       if (wasPublished) {
-        // INTEGRATION: stream C releases seats and closes asks for an event that left the catalog:
-        // ctx.scheduler.runAfter(0, internal.plans.release.forEvent, { eventId: existing._id })
+        // It left the catalog (now 21+): close its asks, withdraw offers, and call off its plans.
+        await ctx.runMutation(internal.plans.release.forEvent, { eventId: existing._id });
       }
       return { outcome: "rejected" as const, eventId: existing._id, needsEmbedding: false };
     }
@@ -282,8 +282,8 @@ export const upsertEvent = internalMutation({
       ...(textChanged ? { embedding: undefined } : {}),
     });
     if (timeChanged && !wasRejected) {
-      // INTEGRATION: recompute meetAt and cutoffAt for plans on this event:
-      // ctx.scheduler.runAfter(0, internal.plans.retime.forEvent, { eventId: existing._id })
+      // Plans on this event move their meeting time and cutoff, and reconcile right away.
+      await ctx.runMutation(internal.plans.retime.forEvent, { eventId: existing._id });
     }
     const outcome = wasRejected ? "published" : priceChanged || timeChanged ? "updated" : "duplicate";
     return {
@@ -358,7 +358,7 @@ export const finish = internalMutation({
   handler: async (ctx, { importId, counts, errors }) => {
     await ctx.db.patch(importId, { status: "done", counts, errors: errors.slice(0, 50), finishedAt: Date.now() });
     if (counts.published > 0) {
-      // INTEGRATION: ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
+      await ctx.scheduler.runAfter(0, internal.asks.picker.pickAfterImport, {});
     }
     return null;
   },

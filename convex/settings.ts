@@ -1,4 +1,5 @@
 import { mutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { requireVerifiedUser } from "./lib/access";
 import { accessFor } from "./onboarding/apps";
@@ -30,7 +31,8 @@ export const disconnectSpotify = mutation({
       user.onboarding === "ready";
     if (reachedConnect) await ctx.db.patch(userId, { onboarding: "needs_spotify_connect" });
 
-    // INTEGRATION: await ctx.runMutation(internal.plans.release.forUser, { userId }); gives up any seat (it reopens) and closes asks.
+    // Gives up any seat (it reopens for the partner) and closes asks, in the same transaction.
+    await ctx.runMutation(internal.plans.release.forUser, { userId });
     return null;
   },
 });
