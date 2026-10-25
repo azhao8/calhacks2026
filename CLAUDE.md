@@ -1,6 +1,6 @@
 # CLAUDE.md — Shared product and implementation specification
 
-Version 2.1 · October 24, 2026 · Product: **Melos** · Owner: azhao8
+Version 2.2 · October 24, 2026 · Product: **Melos** · Owner: azhao8
 
 ## 0. Read this before changing the project
 
@@ -504,14 +504,14 @@ Taste and event vectors come from Voyage `voyage-4`, not from Claude (§6.3).
 - **Queries** read and are live. They are where privacy is enforced: a query never returns data the student may not see yet.
 - **Mutations** are the only writes, each a transaction. Accept, seat changes, and match commits are mutations, so two taps can’t double-book anyone.
 - **Actions** are the only code that calls outside services. They never write directly.
-- **HTTP endpoints** are where outside services call us: Spotify’s sign-in redirect, Apify’s webhook, and Convex Auth’s routes.
+- **HTTP endpoints** are where outside services call us: Apify’s webhook and Convex Auth’s routes. Spotify redirects to our own `/spotify/callback` page instead (§8.9).
 - **The scheduler** runs timers (offer expiry, reconcile, matcher wake-ups), and **crons** run the sweep.
 - **Each outside service has exactly one module** in `convex/services/`; nothing else imports that service’s library, so swapping a provider touches one file.
 
 ### 8.2 Flows
 
 - **Sign-in:** email → Convex Auth sign-in → our user callback refuses non-`.edu` addresses and enforces the 30-second wait before anything is stored → the code is stored hashed → Resend sends it → the code is entered → Convex Auth verifies it; we set `verifiedAt` and the onboarding state → the browser keeps the session, and a reload restores it.
-- **Onboarding:** About you (mutation: access request and app) → the app owner taps “Mark added” (mutation flips the state; a scheduled action sends the email) → Connect (signed state → Spotify consent → our HTTP endpoint → an action swaps the code for tokens → a mutation stores them and starts the analysis job) → analysis (an action fetches Spotify and calls Claude; a mutation stores the result) → confirm (an action gets the Voyage vector; a mutation stores it, marks the student ready, and schedules the ask picker).
+- **Onboarding:** About you (mutation: access request and app) → the app owner taps “Mark added” (mutation flips the state; a scheduled action sends the email) → Connect (signed state → Spotify consent → our `/spotify/callback` page → an action swaps the code for tokens → a mutation stores them and starts the analysis job) → analysis (an action fetches Spotify and calls Claude; a mutation stores the result) → confirm (an action gets the Voyage vector; a mutation stores it, marks the student ready, and schedules the ask picker).
 - **Events:** Apify’s schedule or the admin button → the scout (§6.1, §7) → the run’s dataset → Apify’s webhook → our HTTP endpoint (secret checked, repeated runs ignored) → the import action (checks, duplicates, venues, Voyage vectors) → mutations write venues, spots, and events and flag missing ones → new events wake the ask picker.
 - **Asks:** a trigger (§6.2) → the ask picker action (vector search, rules, rerank, Claude) → a mutation saves up to 3, re-checking the weekly limit → the student answers (mutation) → a yes wakes the matcher.
 - **Matching:** a wake-up → the matcher action loads the pool, scores every pair, refills seats, runs blossom, and fills gaps (§6.4) → a mutation commits each seat after re-checking → offers appear live → the Workpool writes hooks and icebreakers.
@@ -604,7 +604,8 @@ Convex is the backend (CONFIRMED). Create exact typed schemas in `convex/schema.
 
 ### 8.9 Spotify implementation notes — BASELINE
 
-- Authorization code flow. The callback is a Convex HTTP endpoint on the deployment’s `.convex.site` address; register both the development and production callback addresses on every app (Spotify requires HTTPS).
+- Authorization code flow. Spotify redirects to our own site, which never changes when a Convex deployment does: `https://melos.azhao.dev/spotify/callback` in production and `http://127.0.0.1:3000/spotify/callback` locally (Spotify rejects `localhost`, so local development always uses `127.0.0.1`). Register both on every app. That page passes the code and state to a Convex action, which swaps them for tokens server-side.
+- Each app’s client secret lives in the Convex environment variable `SPOTIFY_CLIENT_SECRET_<LABEL>`, where the label is the app’s `spotifyApps` label in uppercase with dashes as underscores (for example `SPOTIFY_CLIENT_SECRET_MELOS_ALEX`).
 - Fetch once per connection: `GET /me/top/artists` and `GET /me/top/tracks` for `short_term` and `medium_term` (limit 50 each), and the first 200 liked songs from `GET /me/tracks`. Store normalized artist and track names next to the Spotify IDs. Don’t depend on `genres`.
 - Request quota is shared per developer account, so never poll Spotify; refresh tokens only when a fetch needs them.
 - Capacity counts every allow-listed slot, including team accounts, whether or not they’ve connected.

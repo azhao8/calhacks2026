@@ -109,3 +109,9 @@ Entry format:
 - Why: raise the odds of winning a track without changing the product.
 - Replaces: BASELINE — the §11 prize table and live demo script.
 - Affects: `CLAUDE.md` §11; the Devpost write-up.
+
+## 2026-10-24 17:05 PT · azhao8 · Spotify redirects to our own site; foundation choices
+- Changed: Spotify redirects to `https://melos.azhao.dev/spotify/callback` (production) and `http://127.0.0.1:3000/spotify/callback` (local), and that page hands the code and state to a Convex action. Each app's client secret is the Convex env var `SPOTIFY_CLIENT_SECRET_<LABEL>`. Foundation choices recorded here once, per `CLAUDE.md` §5 and §9: routes are `/` (S01, then the home router), `/school`, `/sign-in`, `/about-you`, `/preferences`, `/waiting`, `/connect`, `/spotify/callback`, `/analyzing`, `/taste`, `/week`, `/plan` (S11–S13), `/stay-in-touch`, `/contacts`, `/menu`, `/privacy`, `/admin`, defined in `app/_lib/routes.ts`. `convex/lib/` also holds `validators.ts`, `views.ts` (the UI contract), `access.ts`, `edu.ts`, and `format.ts`. Each parallel worktree uses its own local Convex deployment, because every push replaces a deployment's whole set of functions. The Convex project is `melos` on team `tenderpork`.
+- Why: Spotify apps can be created now, before any Convex deployment exists, and never need editing when deployments change; parallel sessions must not overwrite each other's functions.
+- Replaces: BASELINE — the callback on the deployment's `.convex.site` address (§8.9).
+- Affects: S07; `CLAUDE.md` §8.1, §8.2, §8.9; `docs/setup.md` (already uses these addresses).
