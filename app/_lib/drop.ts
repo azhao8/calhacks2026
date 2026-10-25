@@ -1,32 +1,15 @@
 import { useQuery } from "convex/react";
-import { makeFunctionReference } from "convex/server";
-import type { Id } from "@/convex/_generated/dataModel";
+import { api } from "../../convex/_generated/api";
+import type { DropView } from "../../convex/drops/views";
 import { dayLabel, timeLabel } from "../../convex/lib/format";
 
-// The Drop contract (backend `api.drops.*`). Typed by hand until the backend PR lands its generated
-// types; swap these references for `api.drops.*` then, the shapes stay the same.
+// The Drop contract lives in convex/drops/views.ts; these are the screen's names for it.
+export type { DropView };
+export type DropEvent = Extract<DropView, { kind: "deciding" }>["event"];
 
-export type DropEvent = { title: string; venue: string; startsAt: number; price: string; kind: string };
+export const dropsApi = api.drops;
 
-export type DropView =
-  | { kind: "none" }
-  | { kind: "choosing"; endsAt: number; card: { startsAt: number; price: string } }
-  | { kind: "deciding"; endsAt: number; acceptBy: number; event: DropEvent }
-  | { kind: "accepted"; endsAt: number; matchAt: number; event: DropEvent }
-  | { kind: "done"; endsAt: number }
-  | { kind: "reveal"; meetupId: Id<"meetups"> };
-
-type NoArgs = Record<string, never>;
-
-export const dropsApi = {
-  mine: makeFunctionReference<"query", NoArgs, DropView>("drops:mine"),
-  seeMore: makeFunctionReference<"mutation", NoArgs, null>("drops:seeMore"),
-  passForever: makeFunctionReference<"mutation", NoArgs, null>("drops:passForever"),
-  accept: makeFunctionReference<"mutation", NoArgs, null>("drops:accept"),
-  nextTime: makeFunctionReference<"mutation", NoArgs, null>("drops:nextTime"),
-};
-
-export const useDrop = (skip?: "skip") => useQuery(dropsApi.mine, skip === "skip" ? "skip" : {});
+export const useDrop = (skip?: "skip") => useQuery(api.drops.mine, skip === "skip" ? "skip" : {});
 
 // "Thursday, Oct 29 · 8:00 pm", in Pacific time whatever the device's zone.
 export function whenLabel(ms: number): string {
