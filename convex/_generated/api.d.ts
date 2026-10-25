@@ -9,6 +9,10 @@
  */
 
 import type * as admin from "../admin.js";
+import type * as admin_demo from "../admin/demo.js";
+import type * as admin_events from "../admin/events.js";
+import type * as admin_matching from "../admin/matching.js";
+import type * as admin_queue from "../admin/queue.js";
 import type * as ai_hooks from "../ai/hooks.js";
 import type * as ai_labels from "../ai/labels.js";
 import type * as ai_taste from "../ai/taste.js";
@@ -37,7 +41,9 @@ import type * as lib_config from "../lib/config.js";
 import type * as lib_edu from "../lib/edu.js";
 import type * as lib_errors from "../lib/errors.js";
 import type * as lib_format from "../lib/format.js";
+import type * as lib_normalize from "../lib/normalize.js";
 import type * as lib_pools from "../lib/pools.js";
+import type * as lib_registered from "../lib/registered.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_views from "../lib/views.js";
 import type * as matching_admin from "../matching/admin.js";
@@ -86,6 +92,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
+  "admin/demo": typeof admin_demo;
+  "admin/events": typeof admin_events;
+  "admin/matching": typeof admin_matching;
+  "admin/queue": typeof admin_queue;
   "ai/hooks": typeof ai_hooks;
   "ai/labels": typeof ai_labels;
   "ai/taste": typeof ai_taste;
@@ -114,7 +124,9 @@ declare const fullApi: ApiFromModules<{
   "lib/edu": typeof lib_edu;
   "lib/errors": typeof lib_errors;
   "lib/format": typeof lib_format;
+  "lib/normalize": typeof lib_normalize;
   "lib/pools": typeof lib_pools;
+  "lib/registered": typeof lib_registered;
   "lib/validators": typeof lib_validators;
   "lib/views": typeof lib_views;
   "matching/admin": typeof matching_admin;
