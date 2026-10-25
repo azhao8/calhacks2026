@@ -43,6 +43,7 @@ import type * as plans_hooks from "../plans/hooks.js";
 import type * as plans_model from "../plans/model.js";
 import type * as plans_reconcile from "../plans/reconcile.js";
 import type * as plans_release from "../plans/release.js";
+import type * as plans_retime from "../plans/retime.js";
 import type * as plans_viewer from "../plans/viewer.js";
 import type * as schools from "../schools.js";
 import type * as seed from "../seed.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   "plans/model": typeof plans_model;
   "plans/reconcile": typeof plans_reconcile;
   "plans/release": typeof plans_release;
+  "plans/retime": typeof plans_retime;
   "plans/viewer": typeof plans_viewer;
   schools: typeof schools;
   seed: typeof seed;

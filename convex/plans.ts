@@ -126,7 +126,8 @@ export const current = query({
     const revealDay = (stage === "meetup_day" || stage === "after") && plan.dayRevealedAt !== undefined;
 
     let notice: PlanView["notice"] = null;
-    if (plan.status === "called_off" && plan.endReason === "nobody_by_cutoff") notice = "nobody_by_cutoff";
+    if (plan.status === "called_off" && plan.endReason === "event_pulled") notice = "event_pulled";
+    else if (plan.status === "called_off" && plan.endReason === "nobody_by_cutoff") notice = "nobody_by_cutoff";
     else if (partnerSeat?.leftAt !== undefined) notice = "partner_left";
     else if (partnerSeat === null && someoneLeftSeat && seat.seat === "in") notice = "partner_dropped";
     else if (partnerSeat !== null && someoneLeftSeat && seat.seat === "in" && partnerSeat.offeredAt > (seat.respondedAt ?? 0))

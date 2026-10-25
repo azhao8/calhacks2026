@@ -457,3 +457,66 @@ describe("Spotify disconnect", () => {
     expect(asks.every((ask) => ask.closedReason === "dropped")).toBe(true);
   });
 });
+
+describe("event changes", () => {
+  test("pulling an event closes its asks, calls off its plans, and withdraws offers", async () => {
+    const t = await setup();
+    const p = await pairUp(t);
+    await asUser(t, p.maya).mutation(api.plans.accept, { seatId: p.mayaSeat });
+    const lee = await makeStudent(t, { firstName: "Lee" });
+    await makeAsk(t, lee, p.eventId, "pending");
+
+    const result = await t.mutation(internal.plans.release.forEvent, { eventId: p.eventId });
+    expect(result).toEqual({ asksClosed: 2, plansCalledOff: 1, offersWithdrawn: 1 });
+    const current = await plan(t, p.meetupId);
+    expect(current.status).toBe("called_off");
+    expect(current.endReason).toBe("event_pulled");
+    const samSeat = (await seatsFor(t, p.meetupId)).find((s) => s._id === p.samSeat)!;
+    expect(samSeat.seat).toBe("out");
+    expect(samSeat.outReason).toBe("no_answer");
+
+    const view = (await asUser(t, p.maya).query(api.plans.current, {}))!;
+    expect(view.stage).toBe("called_off");
+    expect(view.notice).toBe("event_pulled");
+    expect(view.meeting).toBeNull();
+    expect(view.beforeCutoff).toBe(false);
+    expect(await asUser(t, p.sam).query(api.plans.current, {})).toBeNull();
+    const leeAsk = await t.run(async (ctx) =>
+      ctx.db
+        .query("asks")
+        .withIndex("by_user_event", (q) => q.eq("userId", lee).eq("eventId", p.eventId))
+        .unique(),
+    );
+    expect(leeAsk!.closedReason).toBe("event_pulled");
+    // Running it again changes nothing.
+    expect(await t.mutation(internal.plans.release.forEvent, { eventId: p.eventId })).toEqual({
+      asksClosed: 0,
+      plansCalledOff: 0,
+      offersWithdrawn: 0,
+    });
+  });
+
+  test("a new start time moves the meeting time and cutoff, and reconciles at once", async () => {
+    const t = await setup();
+    const p = await pairUp(t);
+    await bothIn(t, p);
+    // The show moves one day later: the plan follows.
+    await t.run(async (ctx) => ctx.db.patch(p.eventId, { startsAt: STARTS + 24 * HOUR }));
+    expect(await t.mutation(internal.plans.retime.forEvent, { eventId: p.eventId })).toEqual({ plansRetimed: 1 });
+    let current = await plan(t, p.meetupId);
+    expect(current.meetAt).toBe(MEET + 24 * HOUR);
+    expect(current.cutoffAt).toBe(CUTOFF + 24 * HOUR);
+    vi.setSystemTime(pacificMidnight(STARTS));
+    await t.mutation(internal.plans.reconcile.run, { meetupId: p.meetupId });
+    expect((await plan(t, p.meetupId)).dayRevealedAt).toBeUndefined();
+
+    // The show moves earlier, to before now's cutoff, while one seat is only offered: it is called off.
+    const q = await pairUp(t);
+    await asUser(t, q.maya).mutation(api.plans.accept, { seatId: q.mayaSeat });
+    await t.run(async (ctx) => ctx.db.patch(q.eventId, { startsAt: Date.now() + 2 * HOUR }));
+    await t.mutation(internal.plans.retime.forEvent, { eventId: q.eventId });
+    current = await plan(t, q.meetupId);
+    expect(current.status).toBe("called_off");
+    expect(current.endReason).toBe("nobody_by_cutoff");
+  });
+});

@@ -1,6 +1,6 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
-import { afterSeatOut, heldSeats } from "./model";
+import { afterSeatOut, heldSeats, isActivePlan, planClock, seatsOf } from "./model";
 
 // Spotify disconnect (S16): gives up any seat the student was offered or holds (it reopens for the
 // partner) and closes their open asks, so no new asks or offers reach them.
@@ -32,5 +32,47 @@ export const forUser = internalMutation({
       }
     }
     return { seatsReleased, asksClosed };
+  },
+});
+
+// The team pulled an event (S17): open asks for it close, and every plan for it that is still forming
+// or set is called off. An offer is withdrawn, not declined, so it goes out as no_answer.
+// INTEGRATION: stream B's convex/events/admin.ts calls this when an event is pulled.
+export const forEvent = internalMutation({
+  args: { eventId: v.id("events") },
+  returns: v.object({ asksClosed: v.number(), plansCalledOff: v.number(), offersWithdrawn: v.number() }),
+  handler: async (ctx, { eventId }) => {
+    let asksClosed = 0;
+    for (const answer of ["pending", "yes", "no"] as const) {
+      const asks = await ctx.db
+        .query("asks")
+        .withIndex("by_event_answer", (q) => q.eq("eventId", eventId).eq("answer", answer))
+        .collect();
+      for (const ask of asks) {
+        if (ask.closedReason !== undefined) continue;
+        await ctx.db.patch(ask._id, { closedReason: "event_pulled" });
+        asksClosed += 1;
+      }
+    }
+    let plansCalledOff = 0;
+    let offersWithdrawn = 0;
+    for (const status of ["forming", "set"] as const) {
+      const plans = await ctx.db
+        .query("meetups")
+        .withIndex("by_event_status", (q) => q.eq("eventId", eventId).eq("status", status))
+        .collect();
+      for (const plan of plans) {
+        if (!isActivePlan(plan)) continue;
+        const { now } = await planClock(ctx.db, plan);
+        for (const seat of await seatsOf(ctx.db, plan._id)) {
+          if (seat.seat !== "offered") continue;
+          await ctx.db.patch(seat._id, { seat: "out", outReason: "no_answer", outAt: now });
+          offersWithdrawn += 1;
+        }
+        await ctx.db.patch(plan._id, { status: "called_off", endReason: "event_pulled" });
+        plansCalledOff += 1;
+      }
+    }
+    return { asksClosed, plansCalledOff, offersWithdrawn };
   },
 });
