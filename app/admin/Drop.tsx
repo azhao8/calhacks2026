@@ -2,7 +2,7 @@
 
 import { Component, useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import { makeFunctionReference, type FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/Button";
 import { Icon } from "@/components/Icon";
@@ -13,6 +13,9 @@ import { countdown } from "./format";
 type Drop = NonNullable<FunctionReturnType<typeof api.admin.drops.status>["drop"]>;
 type DropStatus = Drop["status"];
 type DropCounts = Drop["counts"];
+
+// Start takes { email } (default true on the server). Typed here until Drop 1's generated types carry it.
+const startDrop = makeFunctionReference<"mutation", { email?: boolean }, null>("admin/drops:start");
 
 const PHASE: Record<DropStatus | "none", string> = {
   none: "No drop",
@@ -44,7 +47,8 @@ export function DropTab() {
 
 function DropControls() {
   const status = useQuery(api.admin.drops.status);
-  const start = useMutation(api.admin.drops.start);
+  const start = useMutation(startDrop);
+  const [email, setEmail] = useState(false);
   const end = useMutation(api.admin.drops.endChoosing);
   const match = useMutation(api.admin.drops.matchNow);
   const { busy, error, done, run } = useRun();
@@ -71,7 +75,16 @@ function DropControls() {
             yes="Start drop"
             busy={busy === "start"}
             disabledReason={waiting ?? (open ? "A drop is already open. Match it first." : null)}
-            onConfirm={() => run("start", () => start({}), "Drop started. Cards are going out now.")}
+            extra={<EmailToggle checked={email} onChange={setEmail} />}
+            onConfirm={async () => {
+              const ok = await run(
+                "start",
+                () => start({ email }),
+                email ? "Drop started. Cards and emails are going out now." : "Quiet drop started. Cards are going out, no emails.",
+              );
+              // Back to quiet, so the next rehearsal doesn't inherit a real drop's choice.
+              if (ok) setEmail(false);
+            }}
           />
           <BigAction
             label="End choosing"
@@ -163,6 +176,7 @@ function BigAction({
   onConfirm,
   busy,
   disabledReason,
+  extra,
 }: {
   label: string;
   explain: string;
@@ -171,6 +185,7 @@ function BigAction({
   onConfirm: () => Promise<unknown>;
   busy: boolean;
   disabledReason: string | null;
+  extra?: ReactNode;
 }) {
   const [asking, setAsking] = useState(false);
   // A phase change from elsewhere (another phone, the timer) makes an open question stale, so it hides.
@@ -193,6 +208,7 @@ function BigAction({
         {question}
       </p>
       <p className="text-small text-ink-muted">{explain}</p>
+      {extra}
       <div className="flex flex-col gap-2">
         <Button
           variant="primary"
@@ -210,6 +226,27 @@ function BigAction({
         </Button>
       </div>
     </div>
+  );
+}
+
+// Off by default, so a rehearsal never emails real students.
+function EmailToggle({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <label className="flex min-h-12 cursor-pointer items-start gap-3">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        aria-describedby="drop-email-hint"
+        className="mt-0.5 size-6 shrink-0 accent-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      />
+      <span className="flex flex-col gap-0.5">
+        <span className="text-body-strong text-ink">Email students</span>
+        <span id="drop-email-hint" className="text-caption text-ink-muted">
+          Leave off for rehearsals. Turn on for the real drop.
+        </span>
+      </span>
+    </label>
   );
 }
 
