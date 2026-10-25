@@ -26,7 +26,7 @@ export function MatchCard({
     <article className={cardClasses(stage === "invite", true)}>
       <div className="flex flex-col gap-2 bg-surface-brand p-5">
         <p className="text-caption text-accent">{eyebrow ?? EYEBROW[stage]}</p>
-        <h1 className="font-display text-title text-balance">{title}</h1>
+        <h1 className="font-display text-title text-balance wrap-break-word">{title}</h1>
         <Meta>
           <MetaItem icon="calendar">{when}</MetaItem>
           {price ? <MetaItem icon="ticket">{price}</MetaItem> : null}

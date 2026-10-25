@@ -13,6 +13,7 @@ import { setDeviceSchool } from "@/app/_lib/device";
 import { errorCopy } from "@/app/_lib/errors";
 import { useDeviceSchool, useGate, useOnline } from "@/app/_lib/hooks";
 import { ROUTES } from "@/app/_lib/routes";
+import { BackLink } from "@/app/_components/BackLink";
 import { LoadingScreen, Screen, ScreenTitle } from "@/app/_components/Screen";
 
 // S02 School picker (mockup school.png). Only open schools can be picked; picking one applies its
@@ -59,7 +60,15 @@ export default function SchoolPage() {
   }
 
   return (
-    <Screen object="speaker" top={<ScreenTitle>Where do you go to school?</ScreenTitle>}>
+    <Screen
+      object="speaker"
+      top={
+        <div className="flex flex-col gap-2">
+          <BackLink fallback={ROUTES.welcome} className="-ml-3 self-start" />
+          <ScreenTitle>Where do you go to school?</ScreenTitle>
+        </div>
+      }
+    >
       {schools === undefined ? (
         <StateView kind="loading" title="Finding schools" body="This takes a few seconds." />
       ) : schools.length === 0 ? (

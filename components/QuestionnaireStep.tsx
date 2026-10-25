@@ -7,6 +7,9 @@ export type QuestionOption = { id: string; label: string; sub?: string };
 
 // One question per screen with chips and "Surprise me" (design/components/QuestionnaireStep).
 // Surprise me is never smaller than a chip. `extra` holds a follow up toggle under the chips.
+// The count says "Question", not "Step", so it doesn't compete with onboarding's "Step x of 4".
+// Without `total` there is no progress bar (one question edited on its own); without `onSurprise`
+// there is no Surprise me button.
 export function QuestionnaireStep({
   id = "q",
   step,
@@ -26,8 +29,8 @@ export function QuestionnaireStep({
   error,
 }: {
   id?: string;
-  step: number;
-  total: number;
+  step?: number;
+  total?: number;
   title: string;
   hint?: string;
   options: QuestionOption[];
@@ -35,7 +38,7 @@ export function QuestionnaireStep({
   value: string | string[] | null;
   onChange: (id: string) => void;
   onNext: () => void;
-  onSurprise: () => void;
+  onSurprise?: () => void;
   nextLabel?: string;
   nextDisabled?: boolean;
   busy?: "next" | "surprise" | null;
@@ -45,16 +48,18 @@ export function QuestionnaireStep({
   const isOn = (option: string) => (Array.isArray(value) ? value.includes(option) : value === option);
   return (
     <section aria-labelledby={`${id}-title`} className="flex flex-col gap-5">
-      <div className="flex flex-col gap-2">
-        <div aria-hidden="true" className="flex gap-1">
-          {Array.from({ length: total }, (_, i) => (
-            <span key={i} className={cx("h-1 flex-1 rounded-pill", i < step ? "bg-accent" : "bg-line")} />
-          ))}
+      {step !== undefined && total !== undefined ? (
+        <div className="flex flex-col gap-2">
+          <div aria-hidden="true" className="flex gap-1">
+            {Array.from({ length: total }, (_, i) => (
+              <span key={i} className={cx("h-1 flex-1 rounded-pill", i < step ? "bg-accent" : "bg-line")} />
+            ))}
+          </div>
+          <p className="text-caption text-ink-muted">
+            Question {step} of {total}
+          </p>
         </div>
-        <p className="text-caption text-ink-muted">
-          Step {step} of {total}
-        </p>
-      </div>
+      ) : null}
       <div className="flex flex-col gap-2">
         <h1 id={`${id}-title`} className="font-display text-title text-balance text-ink">
           {title}
@@ -70,10 +75,12 @@ export function QuestionnaireStep({
       </div>
       {extra}
       {error}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="quiet" icon="spark" onClick={onSurprise} loading={busy === "surprise"} disabled={busy === "next"}>
-          Surprise me
-        </Button>
+      <div className={cx("flex flex-wrap items-center gap-3", onSurprise ? "justify-between" : "justify-end")}>
+        {onSurprise ? (
+          <Button variant="quiet" icon="spark" onClick={onSurprise} loading={busy === "surprise"} disabled={busy === "next"}>
+            Surprise me
+          </Button>
+        ) : null}
         <Button iconAfter="arrow" onClick={onNext} loading={busy === "next"} disabled={nextDisabled || busy === "surprise"}>
           {nextLabel}
         </Button>
