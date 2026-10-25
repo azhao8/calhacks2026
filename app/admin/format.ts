@@ -48,3 +48,76 @@ export function parseLatLng(text: string): { lat: number; lng: number } | null {
   const lng = Number(match[2]);
   return Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
 }
+
+// The event editor's text fields, as the form shows them.
+export type EventFormValues = {
+  title: string;
+  startsAt: string;
+  priceMin: string;
+  priceMax: string;
+  ticketUrl: string;
+  freeEntryNote: string;
+  ageLimit: string;
+};
+
+type EditableEvent = {
+  title: string;
+  startsAt: number;
+  priceMin: number | null;
+  priceMax: number | null;
+  ticketUrl: string | null;
+  freeEntryNote: string | null;
+  ageLimit: number | null;
+};
+
+export type EventPatch = {
+  title?: string;
+  startsAt?: number;
+  priceMin?: number | null;
+  priceMax?: number | null;
+  ticketUrl?: string | null;
+  freeEntryNote?: string | null;
+  ageLimit?: number | null;
+};
+
+export function eventFormValues(event: EditableEvent): EventFormValues {
+  return {
+    title: event.title,
+    startsAt: event.startsAt > 0 ? toPacificInput(event.startsAt) : "",
+    priceMin: event.priceMin === null ? "" : String(event.priceMin),
+    priceMax: event.priceMax === null ? "" : String(event.priceMax),
+    ticketUrl: event.ticketUrl ?? "",
+    freeEntryNote: event.freeEntryNote ?? "",
+    ageLimit: event.ageLimit === null ? "" : String(event.ageLimit),
+  };
+}
+
+// Only the fields the admin changed from the values the form opened with, so the server locks
+// nothing else against later imports.
+export function eventPatch(baseline: EventFormValues, form: EventFormValues): { patch: EventPatch } | { error: string } {
+  const patch: EventPatch = {};
+  const changed = (key: keyof EventFormValues) => form[key].trim() !== baseline[key].trim();
+  if (changed("title")) {
+    if (form.title.trim() === "") return { error: "Add a title." };
+    patch.title = form.title.trim();
+  }
+  if (changed("startsAt")) {
+    const startsAt = fromPacificInput(form.startsAt);
+    if (startsAt === null) return { error: "Pick a start date and time." };
+    patch.startsAt = startsAt;
+  }
+  for (const key of ["priceMin", "priceMax"] as const) {
+    if (!changed(key)) continue;
+    const price = parsePrice(form[key]);
+    if (price === "invalid") return { error: "Prices are dollar amounts like 15, or empty when not listed." };
+    patch[key] = price;
+  }
+  if (changed("ticketUrl")) patch.ticketUrl = form.ticketUrl.trim() || null;
+  if (changed("freeEntryNote")) patch.freeEntryNote = form.freeEntryNote.trim() || null;
+  if (changed("ageLimit")) {
+    const age = form.ageLimit.trim() === "" ? null : Number(form.ageLimit);
+    if (age !== null && !(Number.isInteger(age) && age >= 0)) return { error: "The age limit is a whole number, or empty for all ages." };
+    patch.ageLimit = age;
+  }
+  return { patch };
+}
