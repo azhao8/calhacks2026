@@ -277,7 +277,7 @@ export async function acceptSeat(ctx: MutationCtx, seat: Seat): Promise<void> {
 
   const bothIn = active.length === 2 && active.every((other) => other._id === seat._id || other.seat === "in");
   if (bothIn) {
-    await ctx.db.patch(plan._id, { status: "set" });
+    await ctx.db.patch(plan._id, { status: "set", ...(plan.setAt === undefined ? { setAt: now } : {}) });
     for (const member of active) {
       const memberUser = await ctx.db.get(member.userId);
       if (memberUser?.isDemo) {
@@ -369,7 +369,8 @@ export async function cantMakeIt(ctx: MutationCtx, seat: Seat, reason: "cant_mak
   const plan = await ctx.db.get(seat.meetupId);
   if (plan === null || !isActivePlan(plan)) fail("seat_unavailable");
   const { now } = await planClock(ctx.db, plan);
-  if (now >= plan.meetAt) fail("validation_failed", "From the meeting time on, use leave");
+  // From the meeting time on the screen offers "I need to leave" instead.
+  if (now >= plan.meetAt) fail("seat_unavailable");
   await dropSeat(ctx, seat, reason);
 }
 

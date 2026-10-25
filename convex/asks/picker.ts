@@ -145,6 +145,8 @@ export const shortlist = internalQuery({
           .withIndex("by_userId", (q) => q.eq("userId", ask.userId))
           .unique();
         if (other === null) continue;
+        // Demo students say yes to everything, so they'd inflate the boost.
+        if ((await ctx.db.get(ask.userId))?.isDemo) continue;
         const theirs = itemSets(other.fingerprint);
         const sharesSomething =
           [...theirs.artist].some((name) => mySets.artist.has(name)) ||

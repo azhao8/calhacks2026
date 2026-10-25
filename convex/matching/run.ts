@@ -90,7 +90,17 @@ export async function runMatcher(
     const user = await ctx.db.get(ask.userId);
     if (user === null || user.isDemo || pool.has(user._id)) continue;
     if (!(await canHoldSeat(ctx.db, user, eventId))) continue;
-    const member = await loadMember(ctx, user, profiles, ask.answeredAt ?? ask.createdAt);
+    // The wait starts when the yes was given, or when it resumed after the student gave up a seat.
+    const lastSeatOut = Math.max(
+      0,
+      ...(
+        await ctx.db
+          .query("meetupMembers")
+          .withIndex("by_user_seat", (q) => q.eq("userId", user._id).eq("seat", "out"))
+          .collect()
+      ).map((seat) => seat.outAt ?? 0),
+    );
+    const member = await loadMember(ctx, user, profiles, Math.max(ask.answeredAt ?? ask.createdAt, lastSeatOut));
     if (member !== null) pool.set(user._id, member);
   }
 
@@ -117,7 +127,11 @@ export async function runMatcher(
     for (const seat of seats) {
       if (seat._creationTime < real - TIMING.repeatPairBlockMs) continue;
       for (const other of await seatsOf(ctx.db, seat.meetupId)) {
-        if (other.userId !== userId && other._creationTime >= real - TIMING.repeatPairBlockMs) partners.add(other.userId);
+        if (other.userId === userId || other._creationTime < real - TIMING.repeatPairBlockMs) continue;
+        // Only people who actually held seats in the plan at the same time were paired.
+        const overlapped =
+          other.offeredAt <= (seat.outAt ?? Infinity) && seat.offeredAt <= (other.outAt ?? Infinity);
+        if (overlapped) partners.add(other.userId);
       }
     }
     recentCache.set(userId, partners);
@@ -258,10 +272,13 @@ export async function runMatcher(
     .withIndex("by_demoKey", (q) => q.gt("demoKey", ""))
     .collect();
   const demos: Member[] = [];
+  // Demo students still being set up (after Reset, their taste is written asynchronously).
+  let demosNotReady = 0;
   for (const user of demoUsers.sort((x, y) => (x.demoKey ?? "").localeCompare(y.demoKey ?? ""))) {
     if (!user.isDemo || !(await canHoldSeat(ctx.db, user, eventId))) continue;
     const member = await loadMember(ctx, user, profiles, real);
     if (member !== null) demos.push(member);
+    else demosNotReady += 1;
   }
   async function bestDemo(person: Member, previous: Set<Id<"users">>) {
     let best: { member: Member; score: PairScore } | null = null;
@@ -285,7 +302,10 @@ export async function runMatcher(
       continue;
     }
     const best = await bestDemo(open.stayer, open.previous);
-    if (best === null) continue;
+    if (best === null) {
+      if (demosNotReady > 0) noteDue(real + TIMING.demoFillWaitMs);
+      continue;
+    }
     const items = await hookItems(ctx.db, best.score.shared, [open.stayerUser._id, best.member.user._id]);
     await refillSeat(ctx, open.plan, best.member.user, items);
     demos.splice(demos.indexOf(best.member), 1);
@@ -299,7 +319,10 @@ export async function runMatcher(
       continue;
     }
     const best = await bestDemo(member, new Set());
-    if (best === null) continue;
+    if (best === null) {
+      if (demosNotReady > 0) noteDue(real + TIMING.demoFillWaitMs);
+      continue;
+    }
     if (await pastCutoffFor([member.user, best.member.user])) {
       errors.push(`skipped ${member.user._id} + ${best.member.user._id}: demo clock is past the cutoff`);
       continue;

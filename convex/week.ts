@@ -3,7 +3,8 @@ import { v } from "convex/values";
 import { requireVerifiedUser } from "./lib/access";
 import { verifiedViewerId } from "./plans/viewer";
 import { fail } from "./lib/errors";
-import { dayLabel, distanceLabel, priceLabel, timeLabel } from "./lib/format";
+import { dayLabel, distanceLabel, timeLabel } from "./lib/format";
+import { eventPriceLabel } from "./asks/rules";
 import { vWeekCard, type WeekCard } from "./lib/views";
 import { TIMING } from "./lib/config";
 import { wakeForDemoFill, wakeMatcher } from "./matching/wake";
@@ -36,7 +37,7 @@ export const mine = query({
         askId: ask._id,
         dayLabel: dayLabel(event.startsAt),
         timeLabel: timeLabel(event.startsAt),
-        priceLabel: priceLabel(event.priceMin, event.priceMax),
+        priceLabel: eventPriceLabel(event),
         distanceLabel: venue ? distanceLabel(venue.distanceFromCampusMeters) : "",
         answer: ask.answer,
         locked: ask.closedReason === "seated" || heldEvents.has(event._id),
@@ -70,7 +71,7 @@ export const answer = mutation({
     const event = await ctx.db.get(ask.eventId);
     const now = Date.now();
     if (event === null || event.status !== "published" || now >= eventCutoff(event) || ask.closedReason !== undefined) {
-      fail("validation_failed", "This ask has closed");
+      fail("validation_failed", "This one has closed. Your week shows what's still open.");
     }
     // Answers can change until you hold a seat for that event.
     if ((await heldSeats(ctx.db, user._id)).some(({ plan }) => plan.eventId === ask.eventId)) fail("already_seated");
