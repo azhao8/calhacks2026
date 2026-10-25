@@ -54,15 +54,19 @@ export default function AnalyzingPage() {
 
   const failed = job?.status === "failed" || startError !== null;
   const tooLittle = job?.status === "failed" && job.failure === "too_little_data" && startError === null;
+  // A failed job stays failed until the student retries, so both failure states keep a way forward:
+  // "Try again" fetches fresh listening data (the thin snapshot was dropped), and the menu stays reachable.
   return (
-    <Screen object="cassette" top={<ScreenTitle>Getting to know your music</ScreenTitle>}>
+    <Screen object="cassette" menu={failed} top={<ScreenTitle>Getting to know your music</ScreenTitle>}>
       {tooLittle ? (
         <StateView
           kind="empty"
           icon="music"
           title="There isn't enough listening on your Spotify yet"
-          body="We need at least a few artists you play often. Listen for a few days, then come back."
-          action={null}
+          body="We need at least a few artists you play often. Listen for a few days, then try again."
+          action="Try again"
+          onAction={retry}
+          actionLoading={retrying}
           className="rounded-lg bg-backdrop-vignette"
         />
       ) : failed ? (
