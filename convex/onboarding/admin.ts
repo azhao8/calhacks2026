@@ -125,8 +125,7 @@ export const sendReadyEmail = internalAction({
       subject: "Spotify is ready to connect",
       text: [
         firstName ? `Hi ${firstName},` : "Hi,",
-        "You're off the list. Spotify is ready to connect to Melos.",
-        `Open ${SITE.prodUrl} to connect and see your taste.`,
+        `Spotify is ready to connect. Open ${SITE.prodUrl} to connect it and see your taste read.`,
       ].join("\n\n"),
     });
     return null;
