@@ -118,7 +118,8 @@ export const vPlanView = v.object({
     timeLabel: v.string(),
     priceLabel: v.string(),
   }),
-  hook: v.string(),
+  // Null while the other seat is open: no pair to describe while the app is only searching.
+  hook: v.union(v.string(), v.null()),
   me: v.object({
     seat: v.union(v.literal("offered"), v.literal("in")),
     ticket: vTicket,
