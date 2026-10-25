@@ -148,7 +148,13 @@ async function deleteUserData(ctx: MutationCtx, userId: Id<"users">): Promise<vo
     await deleteWhere(ctx, await ctx.db.query("authVerificationCodes").withIndex("accountId", (q) => q.eq("accountId", account._id)).collect());
     await ctx.db.delete(account._id);
   }
-  for (const session of await ctx.db.query("authSessions").withIndex("userId", (q) => q.eq("userId", userId)).collect()) {
+  const sessions = await ctx.db.query("authSessions").withIndex("userId", (q) => q.eq("userId", userId)).collect();
+  const sessionIds = new Set(sessions.map((session) => session._id));
+  if (sessionIds.size > 0) {
+    // OAuth verifiers have no index by session; the table only holds short-lived rows.
+    await deleteWhere(ctx, (await ctx.db.query("authVerifiers").collect()).filter((row) => row.sessionId !== undefined && sessionIds.has(row.sessionId)));
+  }
+  for (const session of sessions) {
     await deleteWhere(ctx, await ctx.db.query("authRefreshTokens").withIndex("sessionId", (q) => q.eq("sessionId", session._id)).collect());
     await ctx.db.delete(session._id);
   }
@@ -183,18 +189,20 @@ export const purgeDecisions = internalMutation({
   },
 });
 
-// "Delete student": permanent. Never your own account, so you can't lock yourself out.
+// "Delete student": permanent, including your own account. That isn't a lockout: admin access comes
+// from ADMIN_EMAILS, so signing in again with the same school email makes a fresh account that is
+// still on the team. `deletedSelf` tells the page to sign out.
 export const deleteStudent = mutation({
   args: { userId: v.id("users") },
-  returns: v.null(),
-  handler: async (ctx, { userId }): Promise<null> => {
+  returns: v.object({ deletedSelf: v.boolean() }),
+  handler: async (ctx, { userId }): Promise<{ deletedSelf: boolean }> => {
     const admin = await requireAdmin(ctx);
-    if (userId === admin._id) fail("validation_failed", "You can't delete the account you're signed in with.");
-    if ((await ctx.db.get(userId)) === null) return null;
+    const deletedSelf = userId === admin._id;
+    if ((await ctx.db.get(userId)) === null) return { deletedSelf };
     await deleteUserData(ctx, userId);
     // Their Spotify slot is free now.
     await assignWaitingRequests(ctx);
-    return null;
+    return { deletedSelf };
   },
 });
 
@@ -213,7 +221,7 @@ export const NUKE_PHRASES: Record<Scope, string> = {
 type Step = "students" | TableNames;
 const EVENT_TABLES: TableNames[] = ["contactShares", "meetupMembers", "meetups", "asks", "matchRuns", "events", "eventImports"];
 const STEPS: Record<Scope, Step[]> = {
-  // Every non-team account and its data, then the matcher logs that named them.
+  // Every account, team accounts included (the caller too), and its data, then the matcher logs.
   students: ["students", "matchRuns"],
   // Events and everything built on them: asks, plans, seats, shares and matcher logs. Venues and
   // meeting spots stay; they're a map cache with no student data.
@@ -249,7 +257,8 @@ export const nukeStep = internalMutation({
     if (name === undefined) return null;
     let more: boolean;
     if (name === "students") {
-      const users = (await ctx.db.query("users").collect()).filter((user) => kindOf(user) !== "team");
+      // Every account, team ones too. The steps run with no session, so the caller losing theirs doesn't stop them.
+      const users = await ctx.db.query("users").take(USERS_PER_STEP + 1);
       for (const user of users.slice(0, USERS_PER_STEP)) await deleteUserData(ctx, user._id);
       more = users.length > USERS_PER_STEP;
       if (!more) await assignWaitingRequests(ctx);
@@ -266,12 +275,20 @@ export const nukeStep = internalMutation({
 // Row counts for the danger zone, so the admin sees what a wipe would remove.
 export const dangerCounts = query({
   args: {},
-  returns: v.object({ students: v.number(), events: v.number(), plans: v.number(), asks: v.number(), helpNotes: v.number() }),
+  returns: v.object({
+    students: v.number(),
+    teamAccounts: v.number(),
+    events: v.number(),
+    plans: v.number(),
+    asks: v.number(),
+    helpNotes: v.number(),
+  }),
   handler: async (ctx) => {
     await requireAdmin(ctx);
     const users = await ctx.db.query("users").collect();
     return {
       students: users.filter((user) => kindOf(user) !== "team").length,
+      teamAccounts: users.filter((user) => kindOf(user) === "team").length,
       events: (await ctx.db.query("events").collect()).length,
       plans: (await ctx.db.query("meetups").collect()).length,
       asks: (await ctx.db.query("asks").collect()).length,

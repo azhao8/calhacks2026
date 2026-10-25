@@ -15,7 +15,9 @@ export const whoami = query({
     const userId = await getAuthUserId(ctx);
     if (userId === null) return { signedIn: false, isAdmin: false, email: null };
     const user = await ctx.db.get(userId);
-    return { signedIn: true, isAdmin: isTeamEmail(user?.email), email: user?.email ?? null };
+    // A session can outlive its account (deleted from the admin page): that is signed out.
+    if (user === null) return { signedIn: false, isAdmin: false, email: null };
+    return { signedIn: true, isAdmin: isTeamEmail(user.email), email: user.email ?? null };
   },
 });
 

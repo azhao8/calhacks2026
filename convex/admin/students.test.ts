@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { api, internal } from "../_generated/api";
 import type { Id, TableNames } from "../_generated/dataModel";
+import { createOrUpdateUser } from "../onboarding/signIn";
 import { advance, asUser, makeAsk, makeEvent, makeStudent, plansFor, seatsFor, setup, MINUTE, type T } from "../testing.helpers";
 
 vi.mock("../services/claude", () => ({
@@ -119,13 +120,44 @@ test("deleting a student removes all their data and reopens their partner's seat
   await expect(asUser(t, sam).query(api.plans.current, {})).resolves.not.toBeUndefined();
 });
 
-test("you can't delete the account you're signed in with", async () => {
+// What Convex Auth does when a code checks out: our createOrUpdateUser callback finds or makes the user.
+async function signInAgain(t: T, email: string): Promise<Id<"users">> {
+  return await t.run(async (ctx) =>
+    createOrUpdateUser(ctx as never, { existingUserId: null, type: "verification", profile: { email } }),
+  );
+}
+
+test("you can delete your own account: its sessions go, the old session is refused, and signing in again makes a fresh admin", async () => {
   const t = await setup();
   const team = await makeStudent(t, { firstName: "Team", email: TEAM });
-  await expect(asUser(t, team).mutation(api.admin.students.deleteStudent, { userId: team })).rejects.toThrow(/signed in with/);
+  await t.run(async (ctx) => {
+    const sessionId = await ctx.db.insert("authSessions", { userId: team, expirationTime: Date.now() + 1e6 });
+    await ctx.db.insert("authRefreshTokens", { sessionId, expirationTime: Date.now() + 1e6 });
+    await ctx.db.insert("authVerifiers", { sessionId });
+    await ctx.db.insert("authAccounts", { userId: team, provider: "resend-otp", providerAccountId: TEAM });
+  });
+  const me = asUser(t, team);
+  expect(await me.mutation(api.admin.students.deleteStudent, { userId: team })).toEqual({ deletedSelf: true });
+
+  await t.run(async (ctx) => {
+    expect(await ctx.db.get(team)).toBeNull();
+    for (const table of ["authSessions", "authRefreshTokens", "authVerifiers", "authAccounts"] as const) {
+      expect(await ctx.db.query(table).collect(), table).toHaveLength(0);
+    }
+  });
+  // A token for the deleted account reads as signed out and can't use the admin page.
+  expect(await me.query(api.admin.whoami, {})).toEqual({ signedIn: false, isAdmin: false, email: null });
+  await expect(me.query(api.admin.students.list, {})).rejects.toThrow(/not_signed_in/);
+
+  const fresh = await signInAgain(t, TEAM);
+  expect(fresh).not.toBe(team);
+  expect(await asUser(t, fresh).query(api.admin.whoami, {})).toEqual({ signedIn: true, isAdmin: true, email: TEAM });
+  await t.run(async (ctx) => {
+    expect((await ctx.db.get(fresh))?.onboarding).toBe("needs_about_you");
+  });
 });
 
-test("nukes need the exact phrase and remove only their scope, keeping team accounts and setup", async () => {
+test("nukes need the exact phrase; deleting students or everything removes team accounts too, the caller included", async () => {
   const t = await setup();
   const team = await makeStudent(t, { firstName: "Team", email: TEAM });
   const admin = asUser(t, team);
@@ -137,24 +169,24 @@ test("nukes need the exact phrase and remove only their scope, keeping team acco
 
   await admin.mutation(api.admin.students.nuke, { scope: "events", confirm: "Delete all events" });
   await advance(t, MINUTE);
-  let counts = await admin.query(api.admin.students.dangerCounts, {});
-  expect(counts).toMatchObject({ events: 0, plans: 0, asks: 0, students: 3 });
+  expect(await admin.query(api.admin.students.dangerCounts, {})).toMatchObject({ events: 0, plans: 0, asks: 0, students: 3, teamAccounts: 1 });
 
   await admin.mutation(api.admin.students.nuke, { scope: "students", confirm: "delete all students" });
   await advance(t, MINUTE);
-  counts = await admin.query(api.admin.students.dangerCounts, {});
-  expect(counts.students).toBe(0);
   await t.run(async (ctx) => {
-    expect(await ctx.db.get(team)).not.toBeNull();
+    expect(await ctx.db.query("users").collect()).toHaveLength(0);
+    expect(await ctx.db.get(team)).toBeNull();
     expect(await ctx.db.query("spotifyApps").collect()).toHaveLength(1);
     expect((await ctx.db.query("universities").collect()).length).toBeGreaterThan(0);
   });
+  expect(await admin.query(api.admin.whoami, {})).toMatchObject({ signedIn: false });
 
+  // Sign in again, then wipe everything: the new account goes too.
+  const again = asUser(t, await signInAgain(t, TEAM));
   await makeStudent(t, { firstName: "Late" });
   await makeEvent(t);
-  await t.run((ctx) => ctx.db.insert("helpNotes", { userId: team, text: "x", createdAt: 1 }));
-  await admin.mutation(api.admin.students.nuke, { scope: "everything", confirm: "delete everything" });
+  await again.mutation(api.admin.students.nuke, { scope: "everything", confirm: "delete everything" });
   await advance(t, MINUTE);
-  expect(await admin.query(api.admin.students.dangerCounts, {})).toEqual({ students: 0, events: 0, plans: 0, asks: 0, helpNotes: 0 });
-  expect(await admin.query(api.admin.whoami, {})).toMatchObject({ isAdmin: true });
+  const last = asUser(t, await signInAgain(t, TEAM));
+  expect(await last.query(api.admin.students.dangerCounts, {})).toEqual({ students: 0, teamAccounts: 1, events: 0, plans: 0, asks: 0, helpNotes: 0 });
 });
