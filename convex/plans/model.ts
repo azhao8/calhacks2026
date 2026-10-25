@@ -96,8 +96,11 @@ export async function canHoldSeat(
   user: Doc<"users">,
   eventId: Id<"events">,
   except?: Id<"meetupMembers">,
+  onlyIn = false,
 ): Promise<boolean> {
-  const held = (await heldSeats(db, user._id)).filter(({ seat }) => seat._id !== except);
+  const held = (await heldSeats(db, user._id)).filter(
+    ({ seat }) => seat._id !== except && (!onlyIn || seat.seat === "in"),
+  );
   if (user.isDemo) return !held.some(({ plan }) => plan.eventId === eventId);
   return held.length === 0;
 }
@@ -252,7 +255,8 @@ export async function acceptSeat(ctx: MutationCtx, seat: Seat): Promise<void> {
   if (now >= seat.offerExpiresAt || now >= plan.cutoffAt) fail("offer_expired");
   const user = await ctx.db.get(seat.userId);
   if (user === null) fail("seat_unavailable");
-  if (!(await canHoldSeat(ctx.db, user, plan.eventId, seat._id))) fail("already_seated");
+  // Another seat the student is already in blocks this one (the matcher never offers two at once).
+  if (!(await canHoldSeat(ctx.db, user, plan.eventId, seat._id, true))) fail("already_seated");
   const active = (await seatsOf(ctx.db, plan._id)).filter(isActiveSeat);
   if (active.length > 2) fail("seat_unavailable");
 
