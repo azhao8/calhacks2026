@@ -1,0 +1,238 @@
+/// <reference types="vite/client" />
+// Scratch review probes (not part of the PR).
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { api, internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import { pacificMidnight } from "./plans/model";
+import { validateHook } from "./ai/hooks";
+import { hookItems } from "./matching/names";
+import {
+  advance,
+  asUser,
+  HOUR,
+  makeAsk,
+  makeEvent,
+  makeStudent,
+  MINUTE,
+  plansFor,
+  seatsFor,
+  setup,
+  type T,
+} from "./testing.helpers";
+
+vi.mock("./services/claude", () => ({
+  generateJson: vi.fn(async () => {
+    throw new Error("Claude is not available in tests");
+  }),
+}));
+
+afterEach(() => {
+  vi.useRealTimers();
+  delete process.env.ADMIN_EMAILS;
+});
+
+const STARTS = Date.UTC(2026, 9, 30, 3, 0); // Thu Oct 29, 8:00 pm PT
+const MEET = STARTS - 30 * MINUTE;
+
+async function pair(t: T, a: Id<"users">, b: Id<"users">, eventId: Id<"events">) {
+  await makeAsk(t, a, eventId);
+  await makeAsk(t, b, eventId);
+  await t.mutation(internal.matching.run.forEvent, { eventId, trigger: "admin" });
+  const plans = await plansFor(t, eventId);
+  return plans[0];
+}
+
+describe("review probes", () => {
+  test("P1: two team accounts who rehearsed together can't be paired on stage, even after reset", async () => {
+    process.env.ADMIN_EMAILS = "t1@berkeley.edu,t2@berkeley.edu";
+    const t = await setup();
+    await t.mutation(internal.demo.admin.seed, {});
+    const t1 = await makeStudent(t, { firstName: "Alex", email: "t1@berkeley.edu" });
+    const t2 = await makeStudent(t, { firstName: "John", email: "t2@berkeley.edu" });
+    const rehearsal = await makeEvent(t, { title: "Rehearsal", startsAt: STARTS });
+    const plan = await pair(t, t1, t2, rehearsal);
+    expect(plan).toBeDefined();
+    for (const seat of await seatsFor(t, plan._id)) {
+      await asUser(t, seat.userId).mutation(api.plans.nextTime, { seatId: seat._id });
+    }
+    await t.mutation(internal.demo.admin.reset, {});
+    const stage = await makeEvent(t, { title: "Stage", startsAt: STARTS + 24 * HOUR });
+    await makeAsk(t, t1, stage);
+    await makeAsk(t, t2, stage);
+    await t.mutation(internal.matching.run.forEvent, { eventId: stage, trigger: "admin" });
+    const stagePlans = await plansFor(t, stage);
+    // Record what happened: no plan pairing t1 with t2.
+    const pairs = [];
+    for (const p of stagePlans) pairs.push((await seatsFor(t, p._id)).map((s) => s.userId).sort());
+    console.log("P1 stage plans:", stagePlans.length, "t1+t2 paired:", pairs.some((ids) => ids.includes(t1) && ids.includes(t2)));
+    // Asks: the rehearsal ask still counts toward the rolling window.
+    const slots = await t.query(internal.asks.picker.context, { userId: t1 });
+    console.log("P1 t1 ask slots left:", slots.slots);
+  });
+
+  test("P2: plans.cantMakeIt on an offered seat reveals the meeting spot to the partner before both accepted", async () => {
+    const t = await setup();
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const a = await makeStudent(t, { firstName: "Ana" });
+    const b = await makeStudent(t, { firstName: "Ben" });
+    const plan = await pair(t, a, b, eventId);
+    const seats = await seatsFor(t, plan._id);
+    const aSeat = seats.find((s) => s.userId === a)!._id;
+    const bSeat = seats.find((s) => s.userId === b)!._id;
+    await asUser(t, a).mutation(api.plans.accept, { seatId: aSeat });
+    // Ben never accepted; he calls cantMakeIt on the offered seat.
+    await asUser(t, b).mutation(api.plans.cantMakeIt, { seatId: bSeat });
+    const status = (await t.run(async (ctx) => ctx.db.get(plan._id)))!.status;
+    const view = (await asUser(t, a).query(api.plans.current, {}))!;
+    console.log("P2 plan status:", status, "stage:", view.stage, "meeting:", JSON.stringify(view.meeting), "ticketUrl:", view.ticketUrl);
+  });
+
+  test("P3: a plan set on the event day shows set, not meetup day, until a later reconcile", async () => {
+    const t = await setup();
+    vi.setSystemTime(pacificMidnight(STARTS) + 9 * HOUR); // 9:00 am PT on the event day
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const a = await makeStudent(t, { firstName: "Ana" });
+    const b = await makeStudent(t, { firstName: "Ben" });
+    const plan = await pair(t, a, b, eventId);
+    for (const seat of await seatsFor(t, plan._id)) {
+      await asUser(t, seat.userId).mutation(api.plans.accept, { seatId: seat._id });
+    }
+    const view = (await asUser(t, a).query(api.plans.current, {}))!;
+    console.log("P3 right after both accept on the event day: stage", view.stage, "marker", view.marker);
+    await advance(t, 29 * MINUTE);
+    const later = (await asUser(t, a).query(api.plans.current, {}))!;
+    console.log("P3 29 min later (no sweep in convex-test crons):", later.stage, later.marker);
+  });
+
+  test("P4: reset deletes the demo seat; the real student who stays loses the meeting spot and gets no notice", async () => {
+    const t = await setup();
+    await t.mutation(internal.demo.admin.seed, {});
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const ana = await makeStudent(t, { firstName: "Ana" });
+    await makeAsk(t, ana, eventId);
+    await advance(t, 2 * MINUTE);
+    await t.mutation(internal.matching.run.forEvent, { eventId, trigger: "admin" });
+    const [plan] = await plansFor(t, eventId);
+    const anaSeat = (await seatsFor(t, plan._id)).find((s) => s.userId === ana)!;
+    await asUser(t, ana).mutation(api.plans.accept, { seatId: anaSeat._id });
+    await advance(t, 25_000); // demo auto-accepts
+    const before = (await asUser(t, ana).query(api.plans.current, {}))!;
+    console.log("P4 before reset:", before.stage, "meeting:", before.meeting?.spotName);
+    await t.mutation(internal.demo.admin.reset, {});
+    const after = (await asUser(t, ana).query(api.plans.current, {}))!;
+    console.log("P4 after reset:", after.stage, "meeting:", JSON.stringify(after.meeting), "notice:", after.notice, "prev:", after.previousPartnerFirstName);
+  });
+
+  test("P5: Spotify disconnect after the meeting time calls the plan off with the 'nobody by cutoff' notice", async () => {
+    const t = await setup();
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const a = await makeStudent(t, { firstName: "Ana" });
+    const b = await makeStudent(t, { firstName: "Ben" });
+    const plan = await pair(t, a, b, eventId);
+    for (const seat of await seatsFor(t, plan._id)) {
+      await asUser(t, seat.userId).mutation(api.plans.accept, { seatId: seat._id });
+    }
+    vi.setSystemTime(MEET + 10 * MINUTE);
+    await t.mutation(internal.plans.reconcile.run, { meetupId: plan._id });
+    await t.mutation(internal.plans.release.forUser, { userId: b });
+    const p = (await t.run(async (ctx) => ctx.db.get(plan._id)))!;
+    const view = (await asUser(t, a).query(api.plans.current, {}))!;
+    console.log("P5 plan:", p.status, p.endReason, "Ana stage:", view.stage, "notice:", view.notice, "canShare:", view.canShare);
+  });
+
+  test("P6: a real student refilling a jumped demo plan sees the marker days early", async () => {
+    process.env.ADMIN_EMAILS = "t1@berkeley.edu";
+    const t = await setup(); // real now: Sat Oct 24, 10 am PT; event Thu Oct 29
+    await t.mutation(internal.demo.admin.seed, {});
+    const eventId = await makeEvent(t, { startsAt: STARTS });
+    const team = await makeStudent(t, { firstName: "Alex", email: "t1@berkeley.edu" });
+    await makeAsk(t, team, eventId);
+    await advance(t, 2 * MINUTE);
+    await t.mutation(internal.matching.run.forEvent, { eventId, trigger: "admin" });
+    const [plan] = await plansFor(t, eventId);
+    const teamSeat = (await seatsFor(t, plan._id)).find((s) => s.userId === team)!;
+    await asUser(t, team).mutation(api.plans.accept, { seatId: teamSeat._id });
+    await advance(t, 25_000);
+    // Jump the demo clock to 9 am on the event day (before the cutoff).
+    await t.mutation(internal.demo.admin.setClockOffset, { offsetMs: pacificMidnight(STARTS) + 9 * HOUR - Date.now() });
+    expect((await t.run(async (ctx) => ctx.db.get(plan._id)))!.dayRevealedAt).toBeDefined();
+    const demoSeat = (await seatsFor(t, plan._id)).find((s) => s.userId !== team)!;
+    await t.mutation(internal.demo.admin.actAs, { userId: demoSeat.userId, action: "cant_make_it" });
+    const real = await makeStudent(t, { firstName: "Ana" });
+    await makeAsk(t, real, eventId);
+    await t.mutation(internal.matching.run.forEvent, { eventId, trigger: "seat_open" });
+    const realSeat = (await seatsFor(t, plan._id)).find((s) => s.userId === real);
+    if (!realSeat) {
+      console.log("P6: no refill happened");
+      return;
+    }
+    await asUser(t, real).mutation(api.plans.accept, { seatId: realSeat._id });
+    const p = (await t.run(async (ctx) => ctx.db.get(plan._id)))!;
+    const view = (await asUser(t, real).query(api.plans.current, {}))!;
+    console.log("P6 real now:", new Date(Date.now()).toISOString(), "isDemoPlan:", p.isDemoPlan, "real student's stage:", view.stage, "marker:", view.marker, "icebreaker:", view.icebreaker);
+  });
+
+  test("P7: shared liked-song tracks in stream A's key format show the raw key in the hook", async () => {
+    const t = await setup();
+    const ids = await t.run(async (ctx) => {
+      const out: Id<"users">[] = [];
+      for (const name of ["Ana", "Ben"]) {
+        const userId = await ctx.db.insert("users", { firstName: name, onboarding: "ready", verifiedAt: Date.now() });
+        await ctx.db.insert("tasteSnapshots", {
+          userId,
+          source: "spotify",
+          topArtists: [],
+          topTracks: [],
+          likedSongs: [{ spotifyId: "x", name: "Motion Sickness", artistIds: ["p"], artistNames: ["Phoebe Bridgers"] }],
+          fetchedAt: Date.now(),
+        });
+        await ctx.db.insert("tasteProfiles", {
+          userId,
+          summary: "s",
+          labels: [],
+          artists: [],
+          revision: 0,
+          confirmedAt: Date.now(),
+          fingerprint: { topArtists: [], likedArtists: ["phoebe bridgers"], tracks: ["motion sickness|phoebe bridgers"], labels: [] },
+        });
+        out.push(userId);
+      }
+      return out;
+    });
+    const items = await t.run(async (ctx) =>
+      hookItems(ctx.db, [{ kind: "track", name: "motion sickness|phoebe bridgers", weight: 1 }], ids),
+    );
+    console.log("P7 hook item display name:", JSON.stringify(items));
+  });
+
+  test("P9: a decliner's other yes isn't re-matched until the sweep", async () => {
+    const t = await setup();
+    const e1 = await makeEvent(t, { title: "E1", startsAt: STARTS });
+    const e2 = await makeEvent(t, { title: "E2", startsAt: STARTS + 24 * HOUR });
+    const a = await makeStudent(t, { firstName: "Ana" });
+    const b = await makeStudent(t, { firstName: "Ben" });
+    const c = await makeStudent(t, { firstName: "Cy" });
+    const plan = await pair(t, a, b, e1);
+    // Ana also said yes to E2, where Cy is waiting alone (no demo students seeded).
+    const aE2 = await makeAsk(t, a, e2, "pending");
+    const cE2 = await makeAsk(t, c, e2, "pending");
+    await asUser(t, a).mutation(api.week.answer, { askId: aE2, answer: "yes" });
+    await asUser(t, c).mutation(api.week.answer, { askId: cE2, answer: "yes" });
+    await advance(t, 2 * MINUTE); // the yes runs and the demo-wait runs come and go
+    expect(await plansFor(t, e2)).toHaveLength(0); // Ana holds an E1 seat
+    const aSeat = (await seatsFor(t, plan._id)).find((s) => s.userId === a)!;
+    await asUser(t, a).mutation(api.plans.nextTime, { seatId: aSeat._id });
+    await advance(t, 10 * MINUTE);
+    console.log("P9 E2 plans 10 min after Ana is free:", (await plansFor(t, e2)).length);
+  });
+
+  test("P8: the validator lets Claude name a label only one student has", () => {
+    const shared = [{ kind: "artist" as const, name: "Big Thief" }];
+    // setPairHook builds `known` from artists and tracks only; labels are never added.
+    const known = new Set(["big thief", "mitski"]);
+    console.log(
+      "P8:",
+      JSON.stringify(validateHook({ hook: "You both have Big Thief on repeat, plus a soft spot for jazz.", icebreaker: "Which jazz record got you started?" }, shared, known)),
+    );
+  });
+});

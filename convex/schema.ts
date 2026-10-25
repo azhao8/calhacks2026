@@ -227,6 +227,10 @@ export default defineSchema({
     missingSince: v.optional(v.number()),
     embedding: v.optional(v.array(v.float64())),
     matcherWakeAt: v.optional(v.number()),
+    // Fields the team edited on the admin page; later imports leave them alone (§6.1 team control).
+    teamFields: v.optional(v.array(v.string())),
+    // Consecutive runs that covered this event's source without seeing it; flagged at 2, reset on sight (§6.1).
+    missedRuns: v.optional(v.number()),
   })
     .index("by_status_startsAt", ["status", "startsAt"])
     .index("by_dedupeKey", ["dedupeKey"])
@@ -280,6 +284,8 @@ export default defineSchema({
     // Set by the reconcile step, so time-based changes reach live queries.
     dayRevealedAt: v.optional(v.number()),
     meetingStartedAt: v.optional(v.number()),
+    // Set by reconcile at the cutoff, so live views stop promising a refill (queries don't rerun as time passes).
+    cutoffPassedAt: v.optional(v.number()),
     createdAt: v.number(),
     endReason: v.optional(v.string()),
   })

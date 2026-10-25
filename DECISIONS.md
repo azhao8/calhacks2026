@@ -127,3 +127,15 @@ Entry format:
 - Why: one source for the redirect addresses; two clients for the same pool would fight over its settings; and `@auth/core` below 0.41.3 had a critical advisory about validating email before Unicode normalization.
 - Replaces: BASELINE — `spotifyApps.redirectUri` in §8.5.
 - Affects: S03, S07; `CLAUDE.md` §8.5 `spotifyApps`, §8.9; `convex/lib/`.
+
+## 2026-10-24 19:35 PT · azhao8 · Each matcher run is one mutation per event
+- Changed: a matcher run for an event is a single internal mutation that loads the pool, scores every pair, refills seats, runs blossom matching, and fills gaps with demo students, instead of an action that scores and then commits through mutations. Hooks and icebreakers still go through the AI pool after the commit, so no Claude or Voyage call ever runs inside the matcher.
+- Why: a mutation is serialized and re-reads current state by construction, so "one run per event at a time" and "re-check before committing" hold without extra locking; a pool of a few dozen students scores well within a mutation's limits.
+- Replaces: BASELINE — the matching flow in §8.2 ("the matcher action loads the pool ... a mutation commits each seat").
+- Affects: `CLAUDE.md` §6.4, §8.2 Matching; no screens or data contracts.
+
+## 2026-10-24 19:46 PT · azhao8 · Team rehearsals never block the stage demo
+- Changed: two team accounts (emails on `ADMIN_EMAILS`) are exempt from the 7-day repeat-pair block with each other, and "Reset demo" also deletes demo plans (every member a demo student or a team account) and the team accounts' asks, so rehearsals don't use up their asks. Reset still never deletes a real student's records.
+- Why: the stage demo pairs the two team phones on a real event; a rehearsal earlier that night would otherwise block that pair for 7 days and hand each phone a demo partner instead.
+- Replaces: BASELINE — the repeat-pair block for every pair (§6.4, §6.6) and the scope of "Reset demo" (§6.7).
+- Affects: `CLAUDE.md` §6.4, §6.6, §6.7; S17 demo controls.
