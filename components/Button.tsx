@@ -12,7 +12,9 @@ export function buttonClasses({ variant = "primary", block, className }: Look): 
   return cx(
     "inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center gap-2 rounded-pill border-[1.5px] py-2.5 text-center text-body-strong leading-[1.3]",
     "transition-[background-color,border-color,color,transform] duration-160 ease-out motion-safe:active:scale-[0.98]",
-    "disabled:cursor-not-allowed disabled:border-transparent disabled:bg-surface-raised disabled:text-ink-faint motion-safe:disabled:active:scale-100",
+    // A loading button is natively disabled too (so a form can't submit twice) but keeps its look.
+    "not-aria-busy:disabled:cursor-not-allowed not-aria-busy:disabled:border-transparent not-aria-busy:disabled:bg-surface-raised not-aria-busy:disabled:text-ink-faint",
+    "aria-busy:cursor-progress motion-safe:disabled:active:scale-100",
     "aria-disabled:cursor-not-allowed aria-disabled:border-transparent aria-disabled:bg-surface-raised aria-disabled:text-ink-faint",
     variant === "primary" && "border-transparent bg-accent px-5.5 text-on-accent hover:bg-accent-strong",
     variant === "secondary" &&
@@ -44,12 +46,14 @@ export function Button({
   children,
   onClick,
   type = "button",
+  disabled,
   ...rest
 }: ButtonProps) {
   return (
     <button
       type={type}
       {...rest}
+      disabled={disabled || loading}
       aria-busy={loading || undefined}
       aria-pressed={pressed === undefined ? undefined : pressed}
       onClick={loading ? undefined : onClick}
