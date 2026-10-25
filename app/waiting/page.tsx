@@ -32,14 +32,13 @@ export default function WaitingPage() {
 
   return (
     <Screen object="cassette" menu>
-      <Panel className="flex flex-col gap-3 py-4">{body}</Panel>
+      <Panel className="flex flex-col gap-3">{body}</Panel>
       <StateView
         kind="empty"
         icon="clock"
         title="Melos is in early access with Spotify"
         body="We add each account by hand, so it isn't instant. This page updates on its own."
         action={null}
-        className="px-0 py-2"
       />
       <Link href={ROUTES.preferences} className={buttonClasses({ variant: "secondary", block: true })}>
         Change my preferences

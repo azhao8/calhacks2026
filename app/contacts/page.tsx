@@ -31,7 +31,7 @@ export default function ContactsPage() {
         <ul className="m-0 flex list-none flex-col gap-4 p-0">
           {contacts.map((c) => (
             <li key={c.meetupId}>
-              <Panel className="flex flex-col gap-3 py-4">
+              <Panel className="flex flex-col gap-3">
                 <div>
                   <h2 className="text-headline">{c.firstName}</h2>
                   <p className="text-small text-ink-muted">

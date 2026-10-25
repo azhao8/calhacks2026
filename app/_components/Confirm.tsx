@@ -27,7 +27,7 @@ export function Confirm({
     <div role="group" aria-label={question} className="flex flex-col gap-3 rounded-sm bg-surface-raised p-4">
       <p className="text-body-strong">{question}</p>
       {detail ? <p className="text-small text-ink-muted">{detail}</p> : null}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
         <Button variant="secondary" block onClick={onYes} loading={busy} disabled={disabled}>
           {yes}
         </Button>

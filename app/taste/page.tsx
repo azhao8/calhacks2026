@@ -97,7 +97,7 @@ function Review({ me }: { me: NonNullable<MeView> }) {
       object="cassette"
       menu={!onboarding}
       step={onboarding ? ONBOARDING_STEP[ROUTES.taste] : undefined}
-      top={<ScreenTitle>{onboarding ? "Here is how you sound" : "Your taste"}</ScreenTitle>}
+      top={<ScreenTitle>{onboarding ? "Does this sound like you?" : "Your taste"}</ScreenTitle>}
     >
       {revised ? (
         <p role="status" className="text-small text-ink">
@@ -124,7 +124,7 @@ function Review({ me }: { me: NonNullable<MeView> }) {
               hint="Your words win over our read."
               autoFocus
             />
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
               <Button type="submit" block loading={busy === "correct"} disabled={!online}>
                 Save
               </Button>

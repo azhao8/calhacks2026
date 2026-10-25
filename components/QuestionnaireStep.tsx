@@ -71,7 +71,7 @@ export function QuestionnaireStep({
       {extra}
       {error}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="quiet" icon="spark" onClick={onSurprise} loading={busy === "surprise"} disabled={busy === "next"} className="min-w-32">
+        <Button variant="quiet" icon="spark" onClick={onSurprise} loading={busy === "surprise"} disabled={busy === "next"}>
           Surprise me
         </Button>
         <Button iconAfter="arrow" onClick={onNext} loading={busy === "next"} disabled={nextDisabled || busy === "surprise"}>

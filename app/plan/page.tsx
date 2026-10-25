@@ -101,7 +101,7 @@ function Offer({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void }) {
         <p className="text-headline">{eventLine(plan)}</p>
         <SharedLine>{plan.hook}</SharedLine>
         {expiry ? <p className="text-small text-ink-muted">{expiry}</p> : null}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
           <Button block loading={busy === "accept"} disabled={busy === "next" || expired || !online} onClick={() => run("accept", () => accept({ seatId: plan.seatId }))}>
             Accept
           </Button>
@@ -156,7 +156,7 @@ function TicketBlock({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => voi
           onNo={() => setConfirming(false)}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3">
           <Button block icon="check" loading={busy === "got"} disabled={!online} onClick={() => run("got", () => setTicket({ seatId: plan.seatId, ticket: "got" }))}>
             Got my ticket
           </Button>
@@ -258,7 +258,7 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
       top={<ScreenTitle eyebrow={`Today, ${plan.event.timeLabel}`} display>{name ? `Look for ${name}.` : "Today's the day."}</ScreenTitle>}
     >
       <PartnerNotice plan={plan} />
-      <MatchCard stage="dayof" title={eventLine(plan)} when={when(plan)} price={plan.event.priceLabel}>
+      <MatchCard stage="dayof" eyebrow="Your plan" title={eventLine(plan)} when={when(plan)} price={plan.event.priceLabel}>
         {plan.marker !== null ? <MelosNumber value={plan.marker} /> : null}
         {plan.meeting ? (
           <p className="flex flex-col text-body">
@@ -309,7 +309,7 @@ function MeetupDay({ plan, onEnded }: { plan: Plan; onEnded: (e: Ended) => void 
 function AfterLeaving({ ended }: { ended: Ended }) {
   return (
     <Screen object="radio" menu>
-      <Panel className="flex flex-col gap-2 py-4">
+      <Panel className="flex flex-col gap-2">
         <ScreenTitle>{ended === "next_time" ? "No problem. We will keep looking." : "Done. Your seat is open for someone else."}</ScreenTitle>
         <p className="text-body text-ink">
           {ended === "next_time" ? "Your other yeses still count." : "We will keep looking for your other yeses."}

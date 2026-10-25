@@ -3,9 +3,11 @@ import { cx } from "./cx";
 import { Icon, type IconName } from "./Icon";
 
 // The design's .ml-card. `selected` marks the one thing that just changed (shadow-glow).
-export const cardClasses = (selected?: boolean) =>
+// `flush` drops the padding and gap for cards with their own regions (MatchCard).
+export const cardClasses = (selected?: boolean, flush?: boolean) =>
   cx(
-    "flex flex-col gap-4 rounded-lg border bg-surface p-5 text-ink",
+    "flex flex-col rounded-lg border bg-surface text-ink",
+    flush ? "overflow-hidden" : "gap-4 p-5",
     selected ? "border-accent shadow-glow" : "border-line shadow-card",
   );
 

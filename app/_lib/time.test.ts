@@ -27,4 +27,6 @@ test("secondsLeft rounds up and stops at zero", () => {
   expect(secondsLeft(30_000, 0)).toBe(30);
   expect(secondsLeft(30_000, 29_001)).toBe(1);
   expect(secondsLeft(30_000, 31_000)).toBe(0);
+  // The clock ticks on whole seconds, so a fresh wait could read 31 without the cap.
+  expect(secondsLeft(30_500, 0, 30)).toBe(30);
 });

@@ -38,7 +38,7 @@ export default function WeekPage() {
     return (
       <Screen object="radio" menu top={<ScreenTitle>Your week</ScreenTitle>}>
         {notices}
-        <Panel className="flex flex-col gap-3 py-4">
+        <Panel className="flex flex-col gap-3">
           <h2 className="font-display text-title">Nothing this week yet</h2>
           <p className="text-body text-ink">New events land every day. We will let you know when something sounds like you.</p>
         </Panel>
@@ -132,7 +132,7 @@ function PlanNotices({ plan }: { plan: PlanView | null }) {
     return (
       <Card>
         <p className="font-display text-title">Want to stay in touch?</p>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
           <Link href={ROUTES.stayInTouch} onClick={dismiss} className={buttonClasses({ block: true })}>
             Share
           </Link>

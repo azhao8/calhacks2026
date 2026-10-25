@@ -51,7 +51,7 @@ export function TasteSummary({
       {confirmed ? (
         <Ok>Saved. You can change this anytime.</Ok>
       ) : onConfirm || onCorrect ? (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(9rem,100%),1fr))] gap-3">
           <Button block onClick={onConfirm} loading={busy}>
             That&apos;s me
           </Button>

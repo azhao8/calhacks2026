@@ -10,14 +10,14 @@ type Look = { variant?: ButtonVariant; block?: boolean; className?: string };
 // Shared with links styled as buttons (Buy your ticket, Open directions).
 export function buttonClasses({ variant = "primary", block, className }: Look): string {
   return cx(
-    "inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center gap-2 rounded-pill border-[1.5px] border-transparent py-2.5 text-center text-body-strong leading-[1.3]",
+    "inline-flex min-h-12 min-w-12 cursor-pointer items-center justify-center gap-2 rounded-pill border-[1.5px] py-2.5 text-center text-body-strong leading-[1.3]",
     "transition-[background-color,border-color,color,transform] duration-160 ease-out motion-safe:active:scale-[0.98]",
     "disabled:cursor-not-allowed disabled:border-transparent disabled:bg-surface-raised disabled:text-ink-faint motion-safe:disabled:active:scale-100",
     "aria-disabled:cursor-not-allowed aria-disabled:border-transparent aria-disabled:bg-surface-raised aria-disabled:text-ink-faint",
-    variant === "primary" && "bg-accent px-5.5 text-on-accent hover:bg-accent-strong",
+    variant === "primary" && "border-transparent bg-accent px-5.5 text-on-accent hover:bg-accent-strong",
     variant === "secondary" &&
       "border-line-strong bg-transparent px-5.5 text-ink hover:bg-surface-raised aria-pressed:border-accent aria-pressed:bg-accent-soft aria-pressed:text-accent",
-    variant === "quiet" && "bg-transparent px-3 text-ink-muted hover:text-ink",
+    variant === "quiet" && "border-transparent bg-transparent px-3 text-ink-muted hover:text-ink",
     block && "flex w-full",
     className,
   );

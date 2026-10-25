@@ -11,6 +11,6 @@ export function offerExpiryText(expiresAt: number | null, now: number): string |
 }
 
 // Seconds left before a new code can be sent.
-export function secondsLeft(until: number, now: number): number {
-  return Math.max(0, Math.ceil((until - now) / 1000));
+export function secondsLeft(until: number, now: number, max = Infinity): number {
+  return Math.min(max, Math.max(0, Math.ceil((until - now) / 1000)));
 }

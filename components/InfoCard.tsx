@@ -38,7 +38,7 @@ export function InfoCard({ kind, from, value }: { kind: keyof typeof KIND; from:
           target={kind === "instagram" ? "_blank" : undefined}
           rel={kind === "instagram" ? "noopener noreferrer" : undefined}
           aria-label={`${openLabel}, ${value}`}
-          className="inline-flex min-h-12 items-center font-semibold break-all text-ink tabular-nums underline decoration-line-strong underline-offset-4"
+          className="inline-flex min-h-12 items-center font-semibold wrap-break-word text-ink tabular-nums underline decoration-line-strong underline-offset-4"
         >
           {value}
         </a>

@@ -45,7 +45,7 @@ export default function SignInPage() {
 
   if (me === undefined || me !== null || verified) return <LoadingScreen object="headphones" title={verified ? "Signing you in" : "Loading"} />;
 
-  const wait = secondsLeft(sentAt + SIGN_IN.resendCooldownMs, now);
+  const wait = secondsLeft(sentAt + SIGN_IN.resendCooldownMs, now, SIGN_IN.resendCooldownMs / 1000);
 
   async function send(event?: FormEvent) {
     event?.preventDefault();

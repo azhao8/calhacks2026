@@ -30,6 +30,8 @@ export function ConcertCard({
   venue?: string;
   kind?: string;
 }) {
+  // "Thursday, Oct 29" reads as a big weekday over the date and time, like the design's "Friday".
+  const [weekday, date] = day.includes(", ") ? day.split(", ", 2) : [day, null];
   return (
     <Card selected={going}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -44,8 +46,11 @@ export function ConcertCard({
       </div>
       <div className="flex flex-col gap-1">
         {revealed && artist ? <p className="text-headline">{artist}</p> : null}
-        <h2 className="font-display text-display leading-[1.05]">{day}</h2>
-        <p className="text-headline tabular-nums">{time}</p>
+        <h2 className="font-display text-display leading-[1.05] wrap-break-word">
+          {weekday}
+          {date ? <span className="sr-only">, {date}</span> : null}
+        </h2>
+        <p className="text-headline tabular-nums">{date ? `${date} · ${time}` : time}</p>
       </div>
       <Meta>
         <MetaItem icon="ticket">{price}</MetaItem>

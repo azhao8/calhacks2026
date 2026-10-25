@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Backdrop, type BackdropObject } from "@/components/Backdrop";
+import { cx } from "@/components/cx";
 import { MenuButton } from "@/components/MenuButton";
 import { StateView } from "@/components/StateView";
 import { Wordmark } from "@/components/Wordmark";
@@ -54,7 +55,7 @@ export function Screen({
 
 // A dark panel for text that has to sit mid screen (.ml-panel).
 export function Panel({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-sm bg-backdrop-vignette px-4 py-3 ${className ?? ""}`}>{children}</div>;
+  return <div className={cx("rounded-sm bg-backdrop-vignette px-4 py-3", className)}>{children}</div>;
 }
 
 // The loading state for a whole screen.

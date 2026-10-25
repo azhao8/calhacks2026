@@ -98,7 +98,7 @@ function Share({ plan }: { plan: PlanView }) {
 
   return (
     <Screen object="mic" menu top={<ScreenTitle lead={name ? `Only ${name} can see it.` : "Only the person from your plan can see it."}>Want to stay in touch?</ScreenTitle>}>
-      <Panel className="flex flex-col gap-3 py-4">
+      <Panel className="flex flex-col gap-3">
         <div className="grid gap-3">
           <ConnectorButton
             kind="phone"
@@ -156,12 +156,12 @@ function Share({ plan }: { plan: PlanView }) {
         {error ? <InlineError>{error}</InlineError> : null}
       </Panel>
       {anyShared ? (
-        <Panel className="flex flex-col gap-2 py-4">
+        <Panel className="flex flex-col gap-2">
           <p className="text-caption text-ink-muted">What you shared</p>
           {(["phone", "instagram"] as const).map((kind) =>
             shared[kind] === null ? null : (
               <div key={kind} className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-semibold break-all tabular-nums">
+                <span className="font-semibold wrap-break-word tabular-nums">
                   {kind === "phone" ? formatPhone(shared[kind]!) : instagramDisplay(shared[kind]!)}
                 </span>
                 <Button variant="quiet" loading={busy === `stop-${kind}`} disabled={!online} onClick={() => stop(kind)}>

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { cx } from "./cx";
 import { cardClasses, Meta, MetaItem } from "./Card";
 
 export type MatchStage = "invite" | "confirmed" | "dayof";
@@ -24,7 +23,7 @@ export function MatchCard({
   children: ReactNode;
 }) {
   return (
-    <article className={cx(cardClasses(stage === "invite"), "gap-0 overflow-hidden p-0")}>
+    <article className={cardClasses(stage === "invite", true)}>
       <div className="flex flex-col gap-2 bg-surface-brand p-5">
         <p className="text-caption text-accent">{eyebrow ?? EYEBROW[stage]}</p>
         <h1 className="font-display text-title text-balance">{title}</h1>
