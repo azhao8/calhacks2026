@@ -91,27 +91,33 @@ export function useFlash(): string | null {
 }
 
 // A signed-out deep link (say /plan from a shared link) is remembered for this tab, and after sign
-// in the student lands there if their account may open it; otherwise home picks. Only our own
-// routes are kept, never a full URL, so this can't redirect off Melos.
+// in the student lands there if their account may open it; otherwise home picks. The path must be
+// one of our own routes, so this can't redirect off Melos; its query string comes along, because
+// some screens read it (/stay-in-touch?meetupId= picks which plan to share with).
 const NEXT_KEY = "melos.next";
+const isRoute = (path: string): path is Route => (Object.values(ROUTES) as string[]).includes(path);
 
-export function rememberNext(path: string): void {
-  if (!(Object.values(ROUTES) as string[]).includes(path)) return;
+export function rememberNext(path: string, search = ""): void {
+  if (!isRoute(path)) return;
   try {
-    window.sessionStorage.setItem(NEXT_KEY, path);
+    window.sessionStorage.setItem(NEXT_KEY, search.startsWith("?") ? path + search : path);
   } catch {
     // Blocked storage: after sign in, home picks the screen.
   }
 }
 
-export function takeNext(me: MeView): Route {
-  let path: string | null = null;
+// Where to go after sign in: the remembered route and query, or home.
+export function takeNext(me: MeView): string {
+  let next: string | null = null;
   try {
-    path = window.sessionStorage.getItem(NEXT_KEY);
+    next = window.sessionStorage.getItem(NEXT_KEY);
     window.sessionStorage.removeItem(NEXT_KEY);
   } catch {
     return ROUTES.welcome;
   }
-  const route = (Object.values(ROUTES) as string[]).includes(path ?? "") ? (path as Route) : null;
-  return route !== null && route !== ROUTES.signIn && redirectFor(route, me) === null ? route : ROUTES.welcome;
+  if (next === null) return ROUTES.welcome;
+  const cut = next.indexOf("?");
+  const path = cut < 0 ? next : next.slice(0, cut);
+  if (!isRoute(path) || path === ROUTES.signIn || redirectFor(path, me) !== null) return ROUTES.welcome;
+  return next;
 }

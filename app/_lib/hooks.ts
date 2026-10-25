@@ -81,7 +81,7 @@ export function useGate(route: Route): Gate {
 
   useEffect(() => {
     // Signed out on a deep link: remember where they were going for after sign in.
-    if (me === null && target !== null) rememberNext(pathname);
+    if (me === null && target !== null) rememberNext(pathname, window.location.search);
     if (target !== null && target !== pathname) router.replace(target);
   }, [me, target, pathname, router]);
 
