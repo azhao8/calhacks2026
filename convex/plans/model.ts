@@ -3,7 +3,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { DatabaseReader, MutationCtx } from "../_generated/server";
 import { isTeamEmail } from "../lib/access";
 import { demoClockOffsetMs } from "../lib/clock";
-import { MATCHING, TIMING } from "../lib/config";
+import { legacyAsksOn, MATCHING, TIMING } from "../lib/config";
 import { fail } from "../lib/errors";
 import type { HookItem } from "../ai/hooks";
 import { DEMO_FILL_DELAY_MS, wakeForDemoFill, wakeMatcher } from "../matching/wake";
@@ -229,6 +229,55 @@ export async function createPlan(
   return meetupId;
 }
 
+// Drops: a plan made at matching time, already set, with both seats in (DECISIONS.md, Oct 25).
+export async function createSetPlan(
+  ctx: MutationCtx,
+  event: Doc<"events">,
+  users: [Doc<"users">, Doc<"users">],
+  items: HookItem[],
+): Promise<Id<"meetups">> {
+  const times = eventTimes(event);
+  const venue = event.venueId ? await ctx.db.get(event.venueId) : null;
+  const isDemoPlan = await computeIsDemoPlan(
+    ctx.db,
+    users.map((user) => user._id),
+  );
+  const { now } = await planClock(ctx.db, { isDemoPlan });
+  const meetupId = await ctx.db.insert("meetups", {
+    eventId: event._id,
+    status: "set",
+    marker: await pickMarker(ctx, event._id),
+    meetingSpotId: event.meetingSpotId ?? venue?.meetingSpotId,
+    meetAt: times.meetAt,
+    cutoffAt: times.cutoffAt,
+    hook: "",
+    icebreaker: "",
+    hookFromClaude: false,
+    isDemoPlan,
+    setAt: now,
+    createdAt: now,
+  });
+  for (const user of users) {
+    const seatId = await ctx.db.insert("meetupMembers", {
+      meetupId,
+      userId: user._id,
+      seat: "in",
+      offeredAt: now,
+      offerExpiresAt: now,
+      respondedAt: now,
+      ticket: "none",
+    });
+    if (user.isDemo) {
+      await ctx.scheduler.runAfter(TIMING.demoTicketDelayMs, internal.demo.behavior.autoTicket, { seatId });
+    }
+  }
+  await setPairHook(ctx, meetupId, items);
+  const plan = (await ctx.db.get(meetupId))!;
+  await scheduleBoundaries(ctx, plan);
+  await reconcilePlan(ctx, meetupId);
+  return meetupId;
+}
+
 // Offers a plan's open seat to someone new; the person who stayed keeps their place.
 export async function refillSeat(
   ctx: MutationCtx,
@@ -309,6 +358,8 @@ export async function dropSeat(ctx: MutationCtx, seat: Seat, reason: NonNullable
 // A student gave up a seat or a plan ended: no cooldown, so their other open yeses go back to the
 // matcher right away, and a closed ask may leave room for a new one.
 export async function freeStudent(ctx: MutationCtx, userId: Id<"users">, exceptEventId?: Id<"events">): Promise<void> {
+  // Drops: no asks, so a freed student waits for the next drop.
+  if (!legacyAsksOn()) return;
   await ctx.scheduler.runAfter(0, internal.asks.picker.pickForUser, { userId });
   const yeses = await ctx.db
     .query("asks")

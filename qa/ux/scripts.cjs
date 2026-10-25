@@ -86,6 +86,10 @@ const scripts = {
     await click(page, "I can make it");
     await settle(page, 800);
   },
+  async tapDropAccept(page) {
+    await page.getByRole("button", { name: /^Accept/ }).click();
+    await settle(page, 800);
+  },
   async clickAccept(page) {
     await click(page, "Accept", { exact: true });
     await settle(page, 800);

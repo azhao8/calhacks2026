@@ -121,3 +121,16 @@ export function eventPatch(baseline: EventFormValues, form: EventFormValues): { 
   }
   return { patch };
 }
+
+// "1 h 05 min", "4 min 09 s", "12 s" until a moment; "now" once it has passed.
+export function countdown(untilMs: number, nowMs: number): string {
+  const total = Math.max(0, Math.floor((untilMs - nowMs) / 1000));
+  if (total === 0) return "now";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  if (hours > 0) return `${hours} h ${pad(minutes)} min`;
+  if (minutes > 0) return `${minutes} min ${pad(seconds)} s`;
+  return `${seconds} s`;
+}

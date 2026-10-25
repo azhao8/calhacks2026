@@ -110,3 +110,41 @@ export const SITE = {
   prodUrl: "https://melos.azhao.dev",
   devUrl: "http://127.0.0.1:3000",
 } as const;
+
+// Drops (DECISIONS.md, Oct 25): replace the weekly asks, the separate offer step, and live matching.
+// The old ask picker and the live wake-up on a yes stay in code, switched off while drops are on.
+// Drops are on unless the Convex env var DROP_ENABLED is "false" (read at call time, so rolling back
+// needs no deploy).
+export const DROP = {
+  choosingMs: 2 * HOUR,
+  confirmMs: 24 * HOUR,
+  minLeadMs: 3 * HOUR,
+  horizonMs: 7 * DAY,
+  minChoices: 1,
+  maxChoices: 4,
+  // Picking: sample from the top of the ranking with a softmax, after an MMR pass for variety.
+  sampleTop: 8,
+  softmaxTemperature: 0.1,
+  sameKindPenalty: 0.15,
+  featuredBoost: 0.05,
+  // Demo students tap See more, then Accept, each after a random 3 to 10 seconds.
+  demoStepDelayMs: { min: 3 * SECOND, max: 10 * SECOND },
+  siteUrl: "https://melos.azhao.dev",
+} as const;
+
+export const AUDIENCE = {
+  maxChars: 300,
+  labelsMin: 3,
+  labelsMax: 8,
+  effort: "low",
+} as const;
+
+export function dropsEnabled(): boolean {
+  return process.env.DROP_ENABLED !== "false";
+}
+
+// The old "Your week" asks and live matching on a yes run only while drops are off. MELOS_LEGACY_ASKS=1
+// turns them back on too (the old test suites set it).
+export function legacyAsksOn(): boolean {
+  return !dropsEnabled() || process.env.MELOS_LEGACY_ASKS === "1";
+}
